@@ -1,0 +1,367 @@
+package com.example.ui.components
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Agriculture
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Egg
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.CheckCircleOutline
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.data.FarmTask
+import com.example.data.TaskCategory
+import com.example.data.TaskPriority
+import com.example.ui.theme.FarmGreenLight
+import com.example.ui.theme.FarmGreenPrimary
+import com.example.ui.theme.HarvestAmber
+import com.example.ui.theme.HarvestAmberLight
+import com.example.ui.theme.StatusCompleted
+import com.example.ui.theme.StatusUrgent
+
+@Composable
+fun TaskCard(
+    task: FarmTask,
+    onCompleteClick: (FarmTask) -> Unit,
+    onReopenClick: (FarmTask) -> Unit,
+    onViewProofClick: (FarmTask) -> Unit,
+    onDeleteClick: (FarmTask) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val categoryColor = when (task.category) {
+        TaskCategory.LIVESTOCK -> Color(0xFF6750A4)
+        TaskCategory.CROPS -> Color(0xFF166534)
+        TaskCategory.EQUIPMENT -> Color(0xFFD97706)
+        TaskCategory.GENERAL -> Color(0xFF49454F)
+    }
+
+    val categoryIcon = when (task.category) {
+        TaskCategory.LIVESTOCK -> Icons.Filled.Pets
+        TaskCategory.CROPS -> Icons.Filled.Agriculture
+        TaskCategory.EQUIPMENT -> Icons.Filled.Egg
+        TaskCategory.GENERAL -> Icons.Filled.Agriculture
+    }
+
+    val priorityColor = when (task.priority) {
+        TaskPriority.HIGH -> StatusUrgent
+        TaskPriority.MEDIUM -> HarvestAmber
+        TaskPriority.LOW -> Color(0xFF4CAF50)
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("task_card_${task.id}")
+            .clickable { expanded = !expanded },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (task.isCompleted) Color(0xFFF3EDF7).copy(alpha = 0.5f) else Color.White
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (task.isCompleted) 0.dp else 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Header Row: Category Badge, Priority Chip, Status
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = categoryColor.copy(alpha = 0.12f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = categoryIcon,
+                                contentDescription = null,
+                                tint = categoryColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = task.category.name,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = categoryColor
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = priorityColor.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = "${task.priority.name} PRIORITY",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = priorityColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = { onDeleteClick(task) },
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("delete_task_${task.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "Delete task",
+                        tint = Color.Gray.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Task Title & Target Unit
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = task.title,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (task.isCompleted) Color.Gray else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Unit: ${task.targetUnit}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                // Status Indicator Button
+                if (task.isCompleted) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = StatusCompleted.copy(alpha = 0.12f),
+                        modifier = Modifier
+                            .testTag("completed_badge_${task.id}")
+                            .clickable { onViewProofClick(task) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = "Completed",
+                                tint = StatusCompleted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "VERIFIED",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = StatusCompleted
+                            )
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = { onCompleteClick(task) },
+                        modifier = Modifier.testTag("complete_button_${task.id}"),
+                        shape = RoundedCornerShape(100.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF6750A4),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Image,
+                            contentDescription = "Upload Proof",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Proof & Done", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Time & Assigned Worker Footer
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Schedule,
+                        contentDescription = null,
+                        tint = Color.Gray,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (task.isCompleted) "Done: ${task.completedAt ?: "Recorded"}" else "Due: ${task.scheduledTime}",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+
+                Text(
+                    text = "Assigned: ${task.assignedWorker ?: "Farm Hand"}",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Normal
+                )
+            }
+
+            // Thumbnail Preview if task has proof photo
+            if (task.isCompleted && !task.proofPhotoUri.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFF1F5F9))
+                        .clickable { onViewProofClick(task) }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(task.proofPhotoUri)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Task Proof Photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Proof Attached",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = FarmGreenPrimary
+                        )
+                        Text(
+                            text = task.proofNotes ?: "Click to view full photo proof",
+                            fontSize = 11.sp,
+                            color = Color.DarkGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = "View",
+                        tint = FarmGreenPrimary
+                    )
+                }
+            }
+
+            // Expanded Instructions Details
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .background(Color(0xFFF8FAFC), shape = RoundedCornerShape(10.dp))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "Instructions:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = task.instructions ?: "No detailed instructions provided.",
+                        fontSize = 12.sp,
+                        color = Color.DarkGray
+                    )
+
+                    if (task.isCompleted) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { onReopenClick(task) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("reopen_button_${task.id}"),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Mark Incomplete / Reopen", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

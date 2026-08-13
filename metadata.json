@@ -1,0 +1,6 @@
+{
+  "name": "Mkulima Farm Manager",
+  "description": "Comprehensive farm management app for tracking livestock flocks, crop tasks, photo proof of work, and farm productivity.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

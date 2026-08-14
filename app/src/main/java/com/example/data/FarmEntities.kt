@@ -45,6 +45,7 @@ data class FarmUnit(
     val tagNumber: String = "",
     val breed: String = "",
     val dob: String = "",
+    val dateAdded: String = "",
     val weightAtBirth: String = "",
     val currentWeight: String = "",
     val sire: String = "",

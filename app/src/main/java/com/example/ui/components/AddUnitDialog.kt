@@ -45,6 +45,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.ForestGreenPrimary
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
 @Composable
 fun AddUnitDialog(
     onDismiss: () -> Unit,
@@ -65,11 +69,15 @@ fun AddUnitDialog(
 ) {
     var category by remember { mutableStateOf("CATTLE") } // CATTLE or POULTRY
 
+    val todayFormatted = remember {
+        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+    }
+
     // Common/Cattle state
     var name by remember { mutableStateOf("") }
     var tagNumber by remember { mutableStateOf("#") }
     var breed by remember { mutableStateOf("Friesian") }
-    var dob by remember { mutableStateOf("12/04/2023") }
+    var dob by remember { mutableStateOf(todayFormatted) }
     var weightAtBirth by remember { mutableStateOf("32 kg") }
     var currentWeight by remember { mutableStateOf("450 kg") }
     var sire by remember { mutableStateOf("Thunder #045") }
@@ -81,6 +89,7 @@ fun AddUnitDialog(
     var poultryName by remember { mutableStateOf("") }
     var poultryBreed by remember { mutableStateOf("Isa Brown") }
     var headCountText by remember { mutableStateOf("150") }
+    var poultryDateAdded by remember { mutableStateOf(todayFormatted) }
     var poultryStatus by remember { mutableStateOf("Active Laying") }
     var poultryLocation by remember { mutableStateOf("Coop 2 - East Sector") }
 
@@ -206,14 +215,13 @@ fun AddUnitDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        OutlinedTextField(
+                        AppDatePickerField(
                             value = dob,
                             onValueChange = { dob = it },
-                            label = { Text("Date of Birth") },
-                            placeholder = { Text("e.g. 15/05/2023") },
+                            label = "Date of Birth",
+                            placeholder = "Select DOB",
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
+                            testTag = "cattle_dob_picker"
                         )
 
                         OutlinedTextField(
@@ -395,6 +403,17 @@ fun AddUnitDialog(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
+                    AppDatePickerField(
+                        value = poultryDateAdded,
+                        onValueChange = { poultryDateAdded = it },
+                        label = "Date Added (Arrival / Hatch Date on Farm)",
+                        placeholder = "Select flock arrival date",
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "poultry_date_added_picker"
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
                     OutlinedTextField(
                         value = poultryStatus,
                         onValueChange = { poultryStatus = it },
@@ -462,7 +481,7 @@ fun AddUnitDialog(
                                     poultryLocation,
                                     "Count: ${headCountText.toIntOrNull() ?: 100}",
                                     poultryBreed,
-                                    "N/A",
+                                    poultryDateAdded,
                                     "N/A",
                                     "1.8kg avg",
                                     "N/A",

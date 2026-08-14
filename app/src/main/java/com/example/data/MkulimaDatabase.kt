@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
         FinanceRecord::class,
         EmployeeRequest::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {

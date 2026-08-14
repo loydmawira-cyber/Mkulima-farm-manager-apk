@@ -479,652 +479,232 @@ fun MilkLogScreen(
                 }
             }
 
-            // --- 2. OVERALL HERD TOTALS & LINE CHART ANALYTICS ---
-            if (activeViewTab == "HERD_TOTALS" || activeViewTab == "ALL") {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.TrendingUp, contentDescription = null, tint = ForestGreenPrimary)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Herd Totals & Analytics",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1E293B)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            // Timeframe Selector Chips: DAILY, CURRENT_MONTH, PREV_MONTH, SIX_MONTHS, YEAR
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(
-                                    listOf(
-                                        "DAILY" to "Daily",
-                                        "CURRENT_MONTH" to "Current Month",
-                                        "PREV_MONTH" to "Prev Month",
-                                        "SIX_MONTHS" to "6 Months",
-                                        "YEAR" to "Year (Annual)"
-                                    )
-                                ) { (key, label) ->
-                                    val isSel = overallTimeframe == key
-                                    FilterChip(
-                                        selected = isSel,
-                                        onClick = { overallTimeframe = key },
-                                        label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = ForestGreenPrimary,
-                                            selectedLabelColor = Color.White,
-                                            containerColor = Color(0xFFF1F5F9),
-                                            labelColor = Color(0xFF475569)
-                                        )
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // Totals Calculation based on overallTimeframe
-                            val summary = when (overallTimeframe) {
-                                "DAILY" -> MilkTotalsSummary("245.8 L", "245.8 L/day", "Bessie (#102) - 28.0L", "+4.2% vs yesterday")
-                                "PREV_MONTH" -> MilkTotalsSummary("6,950 L", "231.6 L/day", "Mimi (#115) - 820L", "+2.8% MoM")
-                                "SIX_MONTHS" -> MilkTotalsSummary("42,800 L", "237.7 L/day", "Bella (#112) - 4,800L", "+12.4% YoY")
-                                "YEAR" -> MilkTotalsSummary("88,400 L", "242.2 L/day", "Bessie (#102) - 9,600L", "Peak Herd Record")
-                                else -> MilkTotalsSummary("7,450 L", "248.3 L/day", "Bessie (#102) - 860L", "+7.1% vs prev month")
-                            }
-                            val totalLitres = summary.totalLitres
-                            val avgPerDay = summary.avgPerDay
-                            val topCow = summary.topCow
-                            val trendStr = summary.trendStr
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFFDCFCE7),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text("TOTAL YIELD", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
-                                        Text(totalLitres, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
-                                        Text(trendStr, fontSize = 11.sp, color = ForestGreenPrimary.copy(alpha = 0.8f))
-                                    }
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFFF1F5F9),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text("DAILY AVG", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                                        Text(avgPerDay, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                                        Text("Top: $topCow", fontSize = 10.sp, color = Color(0xFF64748B), maxLines = 1)
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(18.dp))
-
-                            Text(
-                                text = "PRODUCTION TREND LINE CHART",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF64748B)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Line Chart Component
-                            val chartData = when (overallTimeframe) {
-                                "DAILY" -> listOf(30f, 45f, 60f, 85f, 70f, 95f, 110f, 125f)
-                                "PREV_MONTH" -> listOf(210f, 220f, 215f, 230f, 240f, 225f, 235f, 245f)
-                                "SIX_MONTHS" -> listOf(6200f, 6800f, 7100f, 6900f, 7300f, 7450f)
-                                "YEAR" -> listOf(7000f, 7200f, 7100f, 7300f, 7500f, 7400f, 7600f, 7800f, 7900f, 7700f, 8000f, 8200f)
-                                else -> listOf(220f, 235f, 228f, 242f, 250f, 245f, 258f, 260f)
-                            }
-
-                            val xLabels = when (overallTimeframe) {
-                                "DAILY" -> listOf("6am", "8am", "10am", "12pm", "2pm", "4pm", "6pm", "8pm")
-                                "SIX_MONTHS" -> listOf("Mar", "Apr", "May", "Jun", "Jul", "Aug")
-                                "YEAR" -> listOf("Jan", "Mar", "May", "Jul", "Sep", "Nov")
-                                else -> listOf("1st", "5th", "10th", "15th", "20th", "25th", "30th")
-                            }
-
-                            MilkProductionLineChart(
-                                dataPoints = chartData,
-                                xLabels = xLabels,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // --- 3. SIMPLE QUICK ENTRY FORM CARD ---
-            if (activeViewTab == "QUICK_LOG" || activeViewTab == "ALL") {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.5.dp, ForestGreenPrimary.copy(alpha = 0.3f))
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color(0xFFDCFCE7)
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Add,
-                                        contentDescription = null,
-                                        tint = ForestGreenPrimary,
-                                        modifier = Modifier
-                                            .padding(6.dp)
-                                            .size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "Quick Milk Entry",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E293B)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // Step 1: Search Animal by Name, ID, or Tag
-                            Text(
-                                text = "1. SEARCH & SELECT ANIMAL",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF64748B)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                OutlinedTextField(
-                                    value = selectedCow?.name ?: cowSearchQuery,
-                                    onValueChange = {
-                                        cowSearchQuery = it
-                                        selectedCow = null
-                                        showCowDropdown = true
-                                    },
-                                    placeholder = { Text("Search by Name (e.g. Bessie), Tag (#102)...") },
-                                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = ForestGreenPrimary) },
-                                    trailingIcon = {
-                                        Icon(
-                                            Icons.Filled.ArrowDropDown,
-                                            contentDescription = "Dropdown",
-                                            modifier = Modifier.clickable { showCowDropdown = !showCowDropdown }
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("cow_search_input"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-
-                                DropdownMenu(
-                                    expanded = showCowDropdown,
-                                    onDismissRequest = { showCowDropdown = false },
-                                    modifier = Modifier.fillMaxWidth(0.9f)
-                                ) {
-                                    matchingCows.forEach { cow ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween
-                                                ) {
-                                                    Text(cow.name, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                                                    Text(cow.breed, fontSize = 12.sp, color = Color(0xFF64748B))
-                                                }
-                                            },
-                                            onClick = {
-                                                selectedCow = cow
-                                                cowSearchQuery = cow.name
-                                                showCowDropdown = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Quick Select Animal Chips
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                items(cowsList) { cow ->
-                                    val isSel = selectedCow?.tagId == cow.tagId
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
-                                        border = if (isSel) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                        modifier = Modifier.clickable {
-                                            selectedCow = cow
-                                            cowSearchQuery = cow.name
-                                        }
-                                    ) {
-                                        Text(
-                                            text = cow.name,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isSel) Color.White else Color(0xFF334155),
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // Step 2: Session Selection
-                            Text(
-                                text = "2. MILKING SESSION",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF64748B)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                listOf(
-                                    Triple("Morning", "🌅 Morning", Icons.Filled.WbSunny),
-                                    Triple("Afternoon", "☀️ Afternoon", Icons.Filled.WbCloudy),
-                                    Triple("Evening", "🌙 Evening", Icons.Filled.NightsStay)
-                                ).forEach { (sessionKey, sessionLabel, icon) ->
-                                    val isSelected = selectedSession.equals(sessionKey, ignoreCase = true)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(42.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSelected) ForestGreenPrimary else Color.Transparent)
-                                            .clickable { selectedSession = sessionKey },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = null,
-                                                tint = if (isSelected) Color.White else Color(0xFF64748B),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = sessionLabel,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) Color.White else Color(0xFF475569)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // Step 3: Record Date
-                            Text(
-                                text = "3. RECORD DATE",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF64748B)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                FilterChip(
-                                    selected = selectedLogDate == todayDateStr,
-                                    onClick = { selectedLogDate = todayDateStr },
-                                    label = { Text("Today", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ForestGreenPrimary,
-                                        selectedLabelColor = Color.White,
-                                        containerColor = Color(0xFFF1F5F9),
-                                        labelColor = Color(0xFF475569)
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                FilterChip(
-                                    selected = selectedLogDate == yesterdayDateStr,
-                                    onClick = { selectedLogDate = yesterdayDateStr },
-                                    label = { Text("Yesterday", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ForestGreenPrimary,
-                                        selectedLabelColor = Color.White,
-                                        containerColor = Color(0xFFF1F5F9),
-                                        labelColor = Color(0xFF475569)
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                FilterChip(
-                                    selected = selectedLogDate == twoDaysAgoDateStr,
-                                    onClick = { selectedLogDate = twoDaysAgoDateStr },
-                                    label = { Text("2 Days Ago", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ForestGreenPrimary,
-                                        selectedLabelColor = Color.White,
-                                        containerColor = Color(0xFFF1F5F9),
-                                        labelColor = Color(0xFF475569)
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            OutlinedTextField(
-                                value = selectedLogDate,
-                                onValueChange = { selectedLogDate = it },
-                                label = { Text("Log Date (e.g., 12 Aug 2026)") },
-                                leadingIcon = { Icon(Icons.Filled.CalendarToday, contentDescription = null, tint = ForestGreenPrimary) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true
-                            )
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // Step 4: Enter Milk Details
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = milkLitresText,
-                                    onValueChange = { milkLitresText = it },
-                                    label = { Text("Volume (Litres)*") },
-                                    placeholder = { Text("e.g. 14.5") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier
-                                        .weight(1.2f)
-                                        .testTag("milk_litres_input"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-
-                                OutlinedTextField(
-                                    value = fatPercentageText,
-                                    onValueChange = { fatPercentageText = it },
-                                    label = { Text("Fat % (Optional)") },
-                                    placeholder = { Text("e.g. 3.8") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Save Button
-                            Button(
-                                onClick = {
-                                    val cowName = selectedCow?.name ?: cowSearchQuery.ifBlank { "Unassigned Cow" }
-                                    val litres = milkLitresText.toDoubleOrNull() ?: 0.0
-                                    if (litres > 0) {
-                                        onQuickSaveMilkLog(cowName, litres, selectedSession, selectedLogDate)
-                                        saveSuccessMessage = "✓ Logged ${"%.1f".format(litres)}L for $cowName ($selectedSession on $selectedLogDate)"
-                                        milkLitresText = ""
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp)
-                                    .testTag("quick_save_milk_btn"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                                enabled = milkLitresText.isNotBlank() && (selectedCow != null || cowSearchQuery.isNotBlank())
-                            ) {
-                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "SAVE COW MILK LOG",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            saveSuccessMessage?.let { msg ->
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFDCFCE7),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        text = msg,
-                                        color = ForestGreenPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(10.dp),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- 4. INDIVIDUAL COW MILK PRODUCTION VIEWS ---
-            if (activeViewTab == "PER_COW" || activeViewTab == "ALL") {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Pets, contentDescription = null, tint = ForestGreenPrimary)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Per Cow Yield Performance",
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1E293B)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Text("SELECT COW TO ANALYZE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(cowsList) { cow ->
-                                    val isSel = perCowSelectedCow.tagId == cow.tagId
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
-                                        modifier = Modifier.clickable { perCowSelectedCow = cow }
-                                    ) {
-                                        Text(
-                                            text = cow.name,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isSel) Color.White else Color(0xFF334155)
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            Text("TIME PERIOD", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                listOf(
-                                    "TODAY" to "Today",
-                                    "WEEKLY" to "Weekly",
-                                    "MONTHLY" to "Monthly",
-                                    "LACTATION" to "Entire Lactation"
-                                ).forEach { (tfKey, tfLabel) ->
-                                    val isSel = perCowTimeframe == tfKey
-                                    FilterChip(
-                                        selected = isSel,
-                                        onClick = { perCowTimeframe = tfKey },
-                                        label = { Text(tfLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = ForestGreenPrimary,
-                                            selectedLabelColor = Color.White,
-                                            containerColor = Color(0xFFF1F5F9),
-                                            labelColor = Color(0xFF475569)
-                                        ),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            val (cowLitres, cowAvg, cowSessions) = when (perCowTimeframe) {
-                                "TODAY" -> Triple("28.0 L", "28.0 L/day", "AM: 14.0L | PM: 14.0L")
-                                "WEEKLY" -> Triple("192.5 L", "27.5 L/day", "7 Days Logged")
-                                "MONTHLY" -> Triple("825.0 L", "27.5 L/day", "30 Days Logged")
-                                else -> Triple("3,360.0 L", "28.0 L/day", "Lactation Day ${perCowSelectedCow.lactationDay}")
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFF8FAFC),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(14.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = perCowSelectedCow.name,
-                                                fontSize = 16.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF1E293B)
-                                            )
-                                            Text(
-                                                text = "${perCowSelectedCow.breed} • Lactation Day ${perCowSelectedCow.lactationDay}",
-                                                fontSize = 12.sp,
-                                                color = Color(0xFF64748B)
-                                            )
-                                        }
-
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                text = cowLitres,
-                                                fontSize = 20.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ForestGreenPrimary
-                                            )
-                                            Text(
-                                                text = cowAvg,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFF475569)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xFFDCFCE7)
-                                    ) {
-                                        Text(
-                                            text = cowSessions,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ForestGreenPrimary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- 5. HISTORY & RECENT LOGS REGISTER ---
-            if (activeViewTab == "HISTORY" || activeViewTab == "QUICK_LOG" || activeViewTab == "ALL") {
-                item {
-                    Column {
+        // --- 2. OVERALL HERD TOTALS & LINE CHART ANALYTICS (PLACED FIRST ON TOP) ---
+        if (activeViewTab == "HERD_TOTALS" || activeViewTab == "ALL") {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.TrendingUp, contentDescription = null, tint = ForestGreenPrimary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Herd Totals & Analytics",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Timeframe Selector Chips: DAILY, CURRENT_MONTH, PREV_MONTH, SIX_MONTHS, YEAR
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(
+                                listOf(
+                                    "DAILY" to "Daily",
+                                    "CURRENT_MONTH" to "Current Month",
+                                    "PREV_MONTH" to "Prev Month",
+                                    "SIX_MONTHS" to "6 Months",
+                                    "YEAR" to "Year (Annual)"
+                                )
+                            ) { (key, label) ->
+                                val isSel = overallTimeframe == key
+                                FilterChip(
+                                    selected = isSel,
+                                    onClick = { overallTimeframe = key },
+                                    label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color(0xFFF1F5F9),
+                                        labelColor = Color(0xFF475569)
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Totals Calculation based on overallTimeframe
+                        val summary = when (overallTimeframe) {
+                            "DAILY" -> MilkTotalsSummary("245.8 L", "245.8 L/day", "Bessie (#102) - 28.0L", "+4.2% vs yesterday")
+                            "PREV_MONTH" -> MilkTotalsSummary("6,950 L", "231.6 L/day", "Mimi (#115) - 820L", "+2.8% MoM")
+                            "SIX_MONTHS" -> MilkTotalsSummary("42,800 L", "237.7 L/day", "Bella (#112) - 4,800L", "+12.4% YoY")
+                            "YEAR" -> MilkTotalsSummary("88,400 L", "242.2 L/day", "Bessie (#102) - 9,600L", "Peak Herd Record")
+                            else -> MilkTotalsSummary("7,450 L", "248.3 L/day", "Bessie (#102) - 860L", "+7.1% vs prev month")
+                        }
+                        val totalLitres = summary.totalLitres
+                        val avgPerDay = summary.avgPerDay
+                        val topCow = summary.topCow
+                        val trendStr = summary.trendStr
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFDCFCE7),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("TOTAL YIELD", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                    Text(totalLitres, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                    Text(trendStr, fontSize = 11.sp, color = ForestGreenPrimary.copy(alpha = 0.8f))
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF1F5F9),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text("DAILY AVG", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                                    Text(avgPerDay, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                                    Text("Top: $topCow", fontSize = 10.sp, color = Color(0xFF64748B), maxLines = 1)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        Text(
+                            text = "PRODUCTION TREND LINE CHART",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64748B)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Line Chart Component
+                        val chartData = when (overallTimeframe) {
+                            "DAILY" -> listOf(30f, 45f, 60f, 85f, 70f, 95f, 110f, 125f)
+                            "PREV_MONTH" -> listOf(210f, 220f, 215f, 230f, 240f, 225f, 235f, 245f)
+                            "SIX_MONTHS" -> listOf(6200f, 6800f, 7100f, 6900f, 7300f, 7450f)
+                            "YEAR" -> listOf(7000f, 7200f, 7100f, 7300f, 7500f, 7400f, 7600f, 7800f, 7900f, 7700f, 8000f, 8200f)
+                            else -> listOf(220f, 235f, 228f, 242f, 250f, 245f, 258f, 260f)
+                        }
+
+                        val xLabels = when (overallTimeframe) {
+                            "DAILY" -> listOf("6am", "8am", "10am", "12pm", "2pm", "4pm", "6pm", "8pm")
+                            "SIX_MONTHS" -> listOf("Mar", "Apr", "May", "Jun", "Jul", "Aug")
+                            "YEAR" -> listOf("Jan", "Mar", "May", "Jul", "Sep", "Nov")
+                            else -> listOf("1st", "5th", "10th", "15th", "20th", "25th", "30th")
+                        }
+
+                        MilkProductionLineChart(
+                            dataPoints = chartData,
+                            xLabels = xLabels,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- 3. SIMPLE QUICK ENTRY FORM CARD ---
+        if (activeViewTab == "QUICK_LOG" || activeViewTab == "ALL") {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.5.dp, ForestGreenPrimary.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFDCFCE7)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = null,
+                                    tint = ForestGreenPrimary,
+                                    modifier = Modifier
+                                        .padding(6.dp)
+                                        .size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Recent Milk Logs",
+                                text = "Quick Milk Entry",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)
                             )
+                        }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                listOf("ALL", "MORNING", "AFTERNOON", "EVENING").forEach { sessionKey ->
-                                    val isSel = historySessionFilter == sessionKey
-                                    FilterChip(
-                                        selected = isSel,
-                                        onClick = { historySessionFilter = sessionKey },
-                                        label = { Text(sessionKey, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = ForestGreenPrimary,
-                                            selectedLabelColor = Color.White,
-                                            containerColor = Color(0xFFF1F5F9),
-                                            labelColor = Color(0xFF475569)
-                                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Step 1: Search Animal by Name, ID, or Tag
+                        Text(
+                            text = "1. SEARCH & SELECT ANIMAL",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64748B)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = selectedCow?.name ?: cowSearchQuery,
+                                onValueChange = {
+                                    cowSearchQuery = it
+                                    selectedCow = null
+                                    showCowDropdown = true
+                                },
+                                placeholder = { Text("Search by Name (e.g. Bessie), Tag (#102)...") },
+                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = ForestGreenPrimary) },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.Filled.ArrowDropDown,
+                                        contentDescription = "Dropdown",
+                                        modifier = Modifier.clickable { showCowDropdown = !showCowDropdown }
+                                    )
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("cow_search_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+
+                            DropdownMenu(
+                                expanded = showCowDropdown,
+                                onDismissRequest = { showCowDropdown = false },
+                                modifier = Modifier.fillMaxWidth(0.9f)
+                            ) {
+                                matchingCows.forEach { cow ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(cow.name, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                                                Text(cow.breed, fontSize = 12.sp, color = Color(0xFF64748B))
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedCow = cow
+                                            cowSearchQuery = cow.name
+                                            showCowDropdown = false
+                                        }
                                     )
                                 }
                             }
@@ -1132,121 +712,544 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        OutlinedTextField(
-                            value = historySearchQuery,
-                            onValueChange = { historySearchQuery = it },
-                            placeholder = { Text("Search history by cow or date...") },
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Color.Gray) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    }
-                }
+                        // Quick Select Animal Chips
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(cowsList) { cow ->
+                                val isSel = selectedCow?.tagId == cow.tagId
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    border = if (isSel) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    modifier = Modifier.clickable {
+                                        selectedCow = cow
+                                        cowSearchQuery = cow.name
+                                    }
+                                ) {
+                                    Text(
+                                        text = cow.name,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSel) Color.White else Color(0xFF334155),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
 
-                if (filteredHistoryLogs.isEmpty()) {
-                    item {
-                        Box(
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Step 2: Session Selection (Morning, Afternoon, Evening)
+                        Text(
+                            text = "2. MILKING SESSION",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64748B)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
+                                .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text("No milk logs found matching your filter.", color = Color.Gray, fontSize = 13.sp)
-                        }
-                    }
-                } else {
-                    items(filteredHistoryLogs, key = { it.id }) { log ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .padding(14.dp)
-                                    .fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = when (log.session.lowercase()) {
-                                            "morning" -> Color(0xFFFEF3C7)
-                                            "afternoon", "midday" -> Color(0xFFE0F2FE)
-                                            else -> Color(0xFFF3E8FF)
-                                        }
-                                    ) {
+                            listOf(
+                                Triple("Morning", "🌅 Morning", Icons.Filled.WbSunny),
+                                Triple("Afternoon", "☀️ Afternoon", Icons.Filled.WbCloudy),
+                                Triple("Evening", "🌙 Evening", Icons.Filled.NightsStay)
+                            ).forEach { (sessionKey, sessionLabel, icon) ->
+                                val isSelected = selectedSession.equals(sessionKey, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) ForestGreenPrimary else Color.Transparent)
+                                        .clickable { selectedSession = sessionKey },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            imageVector = when (log.session.lowercase()) {
-                                                "morning" -> Icons.Filled.WbSunny
-                                                "afternoon", "midday" -> Icons.Filled.WbCloudy
-                                                else -> Icons.Filled.NightsStay
-                                            },
+                                            imageVector = icon,
                                             contentDescription = null,
-                                            tint = when (log.session.lowercase()) {
-                                                "morning" -> Color(0xFFB45309)
-                                                "afternoon", "midday" -> Color(0xFF0369A1)
-                                                else -> Color(0xFF6B21A8)
-                                            },
-                                            modifier = Modifier
-                                                .padding(8.dp)
-                                                .size(20.dp)
+                                            tint = if (isSelected) Color.White else Color(0xFF64748B),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = sessionLabel,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Color.White else Color(0xFF475569)
                                         )
                                     }
+                                }
+                            }
+                        }
 
-                                    Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
+                        // Step 3: Record Date (Today, Yesterday, 2 Days Ago, Custom)
+                        Text(
+                            text = "3. RECORD DATE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64748B)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedLogDate == todayDateStr,
+                                onClick = { selectedLogDate = todayDateStr },
+                                label = { Text("Today", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = ForestGreenPrimary,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = Color(0xFFF1F5F9),
+                                    labelColor = Color(0xFF475569)
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            FilterChip(
+                                selected = selectedLogDate == yesterdayDateStr,
+                                onClick = { selectedLogDate = yesterdayDateStr },
+                                label = { Text("Yesterday", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = ForestGreenPrimary,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = Color(0xFFF1F5F9),
+                                    labelColor = Color(0xFF475569)
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            FilterChip(
+                                selected = selectedLogDate == twoDaysAgoDateStr,
+                                onClick = { selectedLogDate = twoDaysAgoDateStr },
+                                label = { Text("2 Days Ago", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = ForestGreenPrimary,
+                                    selectedLabelColor = Color.White,
+                                    containerColor = Color(0xFFF1F5F9),
+                                    labelColor = Color(0xFF475569)
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        OutlinedTextField(
+                            value = selectedLogDate,
+                            onValueChange = { selectedLogDate = it },
+                            label = { Text("Log Date (e.g., 12 Aug 2026)") },
+                            leadingIcon = { Icon(Icons.Filled.CalendarToday, contentDescription = null, tint = ForestGreenPrimary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Step 4: Enter Milk Details (Litres & Fat %)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = milkLitresText,
+                                onValueChange = { milkLitresText = it },
+                                label = { Text("Volume (Litres)*") },
+                                placeholder = { Text("e.g. 14.5") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier
+                                    .weight(1.2f)
+                                    .testTag("milk_litres_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+
+                            OutlinedTextField(
+                                value = fatPercentageText,
+                                onValueChange = { fatPercentageText = it },
+                                label = { Text("Fat % (Optional)") },
+                                placeholder = { Text("e.g. 3.8") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Save Button
+                        Button(
+                            onClick = {
+                                val cowName = selectedCow?.name ?: cowSearchQuery.ifBlank { "Unassigned Cow" }
+                                val litres = milkLitresText.toDoubleOrNull() ?: 0.0
+                                if (litres > 0) {
+                                    onQuickSaveMilkLog(cowName, litres, selectedSession, selectedLogDate)
+                                    saveSuccessMessage = "✓ Logged ${"%.1f".format(litres)}L for $cowName ($selectedSession on $selectedLogDate)"
+                                    milkLitresText = ""
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("quick_save_milk_btn"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                            enabled = milkLitresText.isNotBlank() && (selectedCow != null || cowSearchQuery.isNotBlank())
+                        ) {
+                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "SAVE COW MILK LOG",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        saveSuccessMessage?.let { msg ->
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFDCFCE7),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = msg,
+                                    color = ForestGreenPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(10.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 4. INDIVIDUAL COW MILK PRODUCTION VIEWS ---
+        if (activeViewTab == "PER_COW" || activeViewTab == "ALL") {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Pets, contentDescription = null, tint = ForestGreenPrimary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Per Cow Yield Performance",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Cow Selector Dropdown Row
+                        Text("SELECT COW TO ANALYZE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(cowsList) { cow ->
+                                val isSel = perCowSelectedCow.tagId == cow.tagId
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    modifier = Modifier.clickable { perCowSelectedCow = cow }
+                                ) {
+                                    Text(
+                                        text = cow.name,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSel) Color.White else Color(0xFF334155)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Timeframe Chips for Per Cow View: TODAY, WEEKLY, MONTHLY, ENTIRE LACTATION
+                        Text("TIME PERIOD", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                "TODAY" to "Today",
+                                "WEEKLY" to "Weekly",
+                                "MONTHLY" to "Monthly",
+                                "LACTATION" to "Entire Lactation"
+                            ).forEach { (tfKey, tfLabel) ->
+                                val isSel = perCowTimeframe == tfKey
+                                FilterChip(
+                                    selected = isSel,
+                                    onClick = { perCowTimeframe = tfKey },
+                                    label = { Text(tfLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color(0xFFF1F5F9),
+                                        labelColor = Color(0xFF475569)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Selected Cow Stats Summary
+                        val (cowLitres, cowAvg, cowSessions) = when (perCowTimeframe) {
+                            "TODAY" -> Triple("28.0 L", "28.0 L/day", "AM: 14.0L | PM: 14.0L")
+                            "WEEKLY" -> Triple("192.5 L", "27.5 L/day", "7 Days Logged")
+                            "MONTHLY" -> Triple("825.0 L", "27.5 L/day", "30 Days Logged")
+                            else -> Triple("3,360.0 L", "28.0 L/day", "Lactation Day ${perCowSelectedCow.lactationDay}")
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Column {
                                         Text(
-                                            text = log.cowName,
-                                            fontSize = 15.sp,
+                                            text = perCowSelectedCow.name,
+                                            fontSize = 16.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFF1E293B)
                                         )
                                         Text(
-                                            text = "${log.session} • ${log.date}",
-                                            fontSize = 11.sp,
+                                            text = "${perCowSelectedCow.breed} • Lactation Day ${perCowSelectedCow.lactationDay}",
+                                            fontSize = 12.sp,
                                             color = Color(0xFF64748B)
+                                        )
+                                    }
+
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = cowLitres,
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ForestGreenPrimary
+                                        )
+                                        Text(
+                                            text = cowAvg,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF475569)
                                         )
                                     }
                                 }
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            text = "%.1f L".format(log.litres),
-                                            fontSize = 17.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ForestGreenPrimary
-                                        )
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = Color(0xFFDCFCE7)
-                                        ) {
-                                            Text(
-                                                text = "${log.fatPercentage}% Fat",
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ForestGreenPrimary
-                                            )
-                                        }
-                                    }
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    IconButton(onClick = { onDeleteMilkLog(log.id) }) {
-                                        Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
-                                    }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFDCFCE7)
+                                ) {
+                                    Text(
+                                        text = cowSessions,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ForestGreenPrimary
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
-        } else {
+        }
+
+        // --- 5. HISTORY & RECENT LOGS REGISTER ---
+        if (activeViewTab == "HISTORY" || activeViewTab == "QUICK_LOG" || activeViewTab == "ALL") {
+            item {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Recent Milk Logs",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E293B)
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("ALL", "MORNING", "AFTERNOON", "EVENING").forEach { sessionKey ->
+                                val isSel = historySessionFilter == sessionKey
+                                FilterChip(
+                                    selected = isSel,
+                                    onClick = { historySessionFilter = sessionKey },
+                                    label = { Text(sessionKey, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color(0xFFF1F5F9),
+                                        labelColor = Color(0xFF475569)
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = historySearchQuery,
+                        onValueChange = { historySearchQuery = it },
+                        placeholder = { Text("Search history by cow or date...") },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Color.Gray) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+
+            if (filteredHistoryLogs.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No milk logs found matching your filter.", color = Color.Gray, fontSize = 13.sp)
+                    }
+                }
+            } else {
+                items(filteredHistoryLogs, key = { it.id }) { log ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(14.dp)
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = when (log.session.lowercase()) {
+                                        "morning" -> Color(0xFFFEF3C7)
+                                        "afternoon", "midday" -> Color(0xFFE0F2FE)
+                                        else -> Color(0xFFF3E8FF)
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = when (log.session.lowercase()) {
+                                            "morning" -> Icons.Filled.WbSunny
+                                            "afternoon", "midday" -> Icons.Filled.WbCloudy
+                                            else -> Icons.Filled.NightsStay
+                                        },
+                                        contentDescription = null,
+                                        tint = when (log.session.lowercase()) {
+                                            "morning" -> Color(0xFFB45309)
+                                            "afternoon", "midday" -> Color(0xFF0369A1)
+                                            else -> Color(0xFF6B21A8)
+                                        },
+                                        modifier = Modifier
+                                            .padding(8.dp)
+                                            .size(20.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column {
+                                    Text(
+                                        text = log.cowName,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1E293B)
+                                    )
+                                    Text(
+                                        text = "${log.session} • ${log.date}",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "%.1f L".format(log.litres),
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ForestGreenPrimary
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFDCFCE7)
+                                    ) {
+                                        Text(
+                                            text = "${log.fatPercentage}% Fat",
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ForestGreenPrimary
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                IconButton(onClick = { onDeleteMilkLog(log.id) }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
             // --- EGG PRODUCTION LOGS & ANALYTICS VIEW ---
             item {
                 Row(
@@ -1349,6 +1352,7 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
+                            // Flock Selector Row
                             Text("SELECT POULTRY FLOCK:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                             Spacer(modifier = Modifier.height(4.dp))
 
@@ -1389,6 +1393,7 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
+                            // Timeframe Selector Chips
                             Text("TIMEFRAME:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                             Spacer(modifier = Modifier.height(4.dp))
 
@@ -1420,6 +1425,7 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
+                            // Calculate analytics for selected flock and timeframe
                             val selectedFlockLogs = if (analyticsEggFlock == "ALL") eggLogs else eggLogs.filter { it.unitName.equals(analyticsEggFlock, ignoreCase = true) }
                             val totalFlockEggs = if (selectedFlockLogs.isNotEmpty()) selectedFlockLogs.sumOf { it.totalEggs } else 1250
                             val totalFlockTrays = totalFlockEggs / 30
@@ -1476,6 +1482,7 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
+                            // Cracked/Damaged Eggs Banner
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0xFFFFF7ED),
@@ -1504,6 +1511,7 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
+                            // 7-Day Egg Laying Bar Visualizer
                             Text("7-DAY EGG PRODUCTION TRENDS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                             Spacer(modifier = Modifier.height(8.dp))
 
@@ -1716,6 +1724,7 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        // Flock Filter Chips
                         Text("FILTER BY FLOCK:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(modifier = Modifier.height(4.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1747,6 +1756,7 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
+                        // Grade Filter Chips
                         Text("FILTER BY GRADE:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(modifier = Modifier.height(4.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

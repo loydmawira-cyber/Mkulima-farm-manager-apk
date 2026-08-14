@@ -111,26 +111,64 @@ fun DashboardScreen(
     var selectedPriorityFilter by remember { mutableStateOf(AlertPriority.ALL) }
 
     // Real-time calculations
-    val cattleCount = units.filter {
-        it.type.equals("Cattle", ignoreCase = true) || it.name.contains("Cow", ignoreCase = true) || it.name.contains("Friesian", ignoreCase = true)
-    }.sumOf { it.headCount }.let { if (it > 0) it else 12 }
+    val cattleCount = remember(units) {
+        val count = units.filter {
+            it.type.equals("Cattle", ignoreCase = true) || it.name.contains("Cow", ignoreCase = true) || it.name.contains("Friesian", ignoreCase = true)
+        }.sumOf { it.headCount }
+        if (count > 0) count else 5 // Default active cattle in herd
+    }
 
-    val flockCount = units.filter {
-        it.type.contains("Poultry", ignoreCase = true) || it.name.contains("Flock", ignoreCase = true)
-    }.size.let { if (it > 0) it else 3 }
+    val flockCount = remember(units) {
+        units.filter {
+            it.type.contains("Poultry", ignoreCase = true) || it.name.contains("Flock", ignoreCase = true)
+        }.size
+    }
 
-    val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
+    val todayFormatted1 = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) }
+    val todayFormatted2 = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
+    val todayFormatted3 = remember { SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date()) }
 
-    val todayMilkLitres = milkLogs.filter {
-        it.date.contains(todayStr, ignoreCase = true) || it.date.contains("Today", ignoreCase = true) || it.loggedAt.contains("Today", ignoreCase = true)
-    }.sumOf { it.litres }.let { if (it > 0.0) it else 42.0 }
+    val todayMilkLitres = remember(milkLogs) {
+        val todayLogs = milkLogs.filter { log ->
+            log.date.contains(todayFormatted1, ignoreCase = true) ||
+            log.date.contains(todayFormatted2, ignoreCase = true) ||
+            log.date.contains(todayFormatted3, ignoreCase = true) ||
+            log.date.contains("Today", ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted1, ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted3, ignoreCase = true) ||
+            log.loggedAt.contains("Today", ignoreCase = true)
+        }
+        if (todayLogs.isNotEmpty()) {
+            todayLogs.sumOf { it.litres }
+        } else if (milkLogs.isNotEmpty()) {
+            milkLogs.sumOf { it.litres }
+        } else {
+            0.0
+        }
+    }
 
-    val todayEggsCount = eggLogs.filter {
-        it.loggedAt.contains(todayStr, ignoreCase = true) || it.loggedAt.contains("Today", ignoreCase = true)
-    }.sumOf { it.totalEggs }.let { if (it > 0) it else 156 }
+    val todayEggsCount = remember(eggLogs) {
+        val todayLogs = eggLogs.filter { log ->
+            log.loggedAt.contains(todayFormatted1, ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted2, ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted3, ignoreCase = true) ||
+            log.loggedAt.contains("Today", ignoreCase = true)
+        }
+        if (todayLogs.isNotEmpty()) {
+            todayLogs.sumOf { it.totalEggs }
+        } else if (eggLogs.isNotEmpty()) {
+            eggLogs.sumOf { it.totalEggs }
+        } else {
+            0
+        }
+    }
 
-    val totalIncome = financeRecords.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }.let { if (it > 0) it else 2400.0 }
-    val totalExpense = financeRecords.filter { it.type == FinanceType.EXPENSE }.sumOf { it.amount }.let { if (it > 0) it else 1100.0 }
+    val totalIncome = remember(financeRecords) {
+        financeRecords.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }
+    }
+    val totalExpense = remember(financeRecords) {
+        financeRecords.filter { it.type == FinanceType.EXPENSE }.sumOf { it.amount }
+    }
     val netRevenue = totalIncome - totalExpense
 
     // Build real-time Milk Production Alerts & Priority Notifications

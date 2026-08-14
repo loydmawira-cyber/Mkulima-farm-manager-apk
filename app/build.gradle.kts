@@ -46,8 +46,8 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    debug {
-  }}
+    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+  }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
@@ -134,6 +134,6 @@ dependencies {
   androidTestImplementation(libs.androidx.runner)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
-  ksp(libs.androidx.room.compiler)
-  ksp(libs.moshi.kotlin.codegen)
+  "ksp"(libs.androidx.room.compiler)
+  "ksp"(libs.moshi.kotlin.codegen)
 }

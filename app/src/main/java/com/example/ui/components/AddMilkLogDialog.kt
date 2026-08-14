@@ -289,13 +289,12 @@ fun AddMilkLogDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedTextField(
+                    AppDatePickerField(
                         value = dateText,
                         onValueChange = { dateText = it },
-                        label = { Text("Collection Date") },
+                        label = "Collection Date",
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
+                        testTag = "milk_log_date_picker"
                     )
 
                     OutlinedTextField(

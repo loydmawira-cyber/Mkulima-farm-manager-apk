@@ -217,13 +217,12 @@ fun AddCattleEventDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedTextField(
+                    AppDatePickerField(
                         value = dateText,
                         onValueChange = { dateText = it },
-                        label = { Text("Event Date") },
+                        label = "Event Date",
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
+                        testTag = "cattle_event_date_picker"
                     )
 
                     if (selectedCategory == "WEIGHT" || selectedCategory == "HEALTH" || selectedCategory == "INSEMINATION") {

@@ -5,6 +5,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import com.example.ui.components.AppDatePickerField
+import com.example.utils.PoultryAgeAndVaccinationUtils
+import com.example.utils.VaccineDueStatus
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -257,11 +260,12 @@ val mockAnimals = listOf(
         tagNumber = "Count: 450",
         breed = "Isa Brown Layers",
         category = "POULTRY",
-        status = "LAYING STAGE (18+ Wks)",
-        age = "24 Wks",
+        status = "Layer / Finisher Feed (8+ Weeks)",
+        age = "168 Days (24 Weeks)",
         weight = "1.8kg avg",
         lastMilk = "380 Eggs/Day",
         breedingStatus = "ACTIVE LAYING",
+        dateOfBirth = "25 Feb 2026",
         headCountInt = 450
     ),
     AnimalDetailData(
@@ -270,11 +274,12 @@ val mockAnimals = listOf(
         tagNumber = "Count: 300",
         breed = "Cobb 500 Broilers",
         category = "POULTRY",
-        status = "BROILER FINISHER (4-8 Wks)",
-        age = "5 Wks",
+        status = "Grower Feed (3 - 8 Weeks)",
+        age = "35 Days (5 Weeks)",
         weight = "2.1kg avg",
         lastMilk = "N/A (Meat)",
         breedingStatus = "FINISHER STAGE",
+        dateOfBirth = "10 Jul 2026",
         headCountInt = 300
     ),
     AnimalDetailData(
@@ -283,11 +288,12 @@ val mockAnimals = listOf(
         tagNumber = "Count: 200",
         breed = "Improved Kienyeji",
         category = "POULTRY",
-        status = "GROWER STAGE (8-18 Wks)",
-        age = "12 Wks",
+        status = "Starter Feed (0 - 3 Weeks)",
+        age = "20 Days (2 Wks, 6 Days)",
         weight = "1.2kg avg",
         lastMilk = "Pre-laying",
         breedingStatus = "GROWING FLOCK",
+        dateOfBirth = "25 Jul 2026",
         headCountInt = 200
     )
 )
@@ -404,14 +410,12 @@ fun DisposeAnimalDialog(
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text("Disposal Date:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
-                Spacer(modifier = Modifier.height(4.dp))
-                OutlinedTextField(
+                AppDatePickerField(
                     value = dateText,
                     onValueChange = { dateText = it },
+                    label = "Disposal Date",
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    singleLine = true
+                    testTag = "animal_disposal_date_picker"
                 )
 
                 if (errorMessage != null) {
@@ -608,14 +612,12 @@ fun DisposeFlockDialog(
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
-                Text("Date:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
-                Spacer(modifier = Modifier.height(4.dp))
-                OutlinedTextField(
+                AppDatePickerField(
                     value = dateText,
                     onValueChange = { dateText = it },
+                    label = "Disposal Date",
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    singleLine = true
+                    testTag = "flock_disposal_date_picker"
                 )
 
                 if (errorMessage != null) {
@@ -2089,12 +2091,54 @@ fun FlockDetailsView(
     var showEggSaleDialog by remember { mutableStateOf(false) }
     var showVaccineDialog by remember { mutableStateOf(false) }
     var showDisposeFlockDialog by remember { mutableStateOf(false) }
+    var showEditDateAddedDialog by remember { mutableStateOf(false) }
+
+    var flockDateAdded by remember(flock.id, flock.dateOfBirth) {
+        mutableStateOf(if (flock.dateOfBirth.isNotBlank()) flock.dateOfBirth else "01 Jul 2026")
+    }
 
     val initialHeadCount = remember(flock.tagNumber, flock.headCountInt) {
         val digits = flock.tagNumber.filter { it.isDigit() }
         if (flock.headCountInt > 1) flock.headCountInt else digits.toIntOrNull() ?: 450
     }
     var liveHeadCount by remember(flock.id) { mutableIntStateOf(initialHeadCount) }
+
+    // Dynamic Flock Age Calculation based on Date Added
+    val flockAgeInfo = remember(flockDateAdded) {
+        PoultryAgeAndVaccinationUtils.calculateFlockAge(flockDateAdded)
+    }
+
+    val completedVaccineRuleIds = remember(flock.id) {
+        mutableStateListOf<String>().apply {
+            // Pre-complete historical vaccines based on age for existing mock flocks
+            if (flockAgeInfo.totalDays >= 7) add("vac_day_0")
+            if (flockAgeInfo.totalDays >= 14) add("vac_day_7")
+            if (flockAgeInfo.totalDays >= 21) add("vac_day_14")
+            if (flockAgeInfo.totalDays >= 28) add("vac_day_21")
+            if (flockAgeInfo.totalDays >= 42) add("vac_day_28")
+            if (flockAgeInfo.totalDays >= 70) add("vac_day_42")
+            if (flockAgeInfo.totalDays >= 126) add("vac_day_56_70")
+        }
+    }
+
+    // Dynamic calculated vaccination schedule
+    val calculatedVaccineSchedule = remember(flockDateAdded, completedVaccineRuleIds.toList()) {
+        PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(flockDateAdded, completedVaccineRuleIds.toSet())
+    }
+
+    val overdueVaccineCount = remember(calculatedVaccineSchedule) {
+        calculatedVaccineSchedule.count { it.status == VaccineDueStatus.OVERDUE }
+    }
+    val dueTodayVaccineCount = remember(calculatedVaccineSchedule) {
+        calculatedVaccineSchedule.count { it.status == VaccineDueStatus.DUE_TODAY }
+    }
+    val dueSoonVaccineCount = remember(calculatedVaccineSchedule) {
+        calculatedVaccineSchedule.count { it.status == VaccineDueStatus.DUE_SOON }
+    }
+
+    val customVaccines = remember(flock.id) {
+        mutableStateListOf<PoultryVaccineItem>()
+    }
 
     val flockDisposalLogs = remember(flock.id) {
         mutableStateListOf(
@@ -2104,20 +2148,14 @@ fun FlockDetailsView(
         )
     }
 
-    var selectedStage by remember(flock.id) {
-        mutableStateOf(
-            when {
-                flock.breed.contains("Broiler", ignoreCase = true) -> "BROILER FINISHER (4-8 Wks)"
-                flock.breed.contains("Kienyeji", ignoreCase = true) -> "GROWER STAGE (8-18 Wks)"
-                else -> "LAYING STAGE (18+ Wks)"
-            }
-        )
+    var selectedStage by remember(flockAgeInfo.feedStage.stageName) {
+        mutableStateOf(flockAgeInfo.feedStage.stageName)
     }
 
     val feedLogs = remember(flock.id) {
         mutableStateListOf(
-            PoultryFeedLogItem("f1", "12 Aug 2026", "Layer Mash (16-18% CP + 3.8% Ca)", 50.0, 22.50, "Morning ration provided"),
-            PoultryFeedLogItem("f2", "10 Aug 2026", "Layer Mash (16-18% CP + 3.8% Ca)", 50.0, 22.50, "Full ration provided")
+            PoultryFeedLogItem("f1", "12 Aug 2026", flockAgeInfo.feedStage.feedType, 50.0, 22.50, "Morning ration provided"),
+            PoultryFeedLogItem("f2", "10 Aug 2026", flockAgeInfo.feedStage.feedType, 50.0, 22.50, "Full ration provided")
         )
     }
 
@@ -2132,18 +2170,6 @@ fun FlockDetailsView(
         mutableStateListOf(
             PoultryEggSaleItem("s1", "12 Aug 2026", 12, 4.50, 54.00, "City Mart Supermarket"),
             PoultryEggSaleItem("s2", "08 Aug 2026", 15, 4.50, 67.50, "Green Grocers Depot")
-        )
-    }
-
-    val vaccineSchedule = remember(flock.id) {
-        mutableStateListOf(
-            PoultryVaccineItem("v1", "Marek's Disease Vaccine", "Day 1 (Hatchery)", "Hatchery Date", "COMPLETED", "Administered at hatchery"),
-            PoultryVaccineItem("v2", "Newcastle (ND) + IB Eye Drop", "Week 1 (Day 7)", "07 May 2026", "COMPLETED", "Administered via eye drop"),
-            PoultryVaccineItem("v3", "Gumboro (IBD) Vaccine", "Week 2 (Day 14)", "14 May 2026", "COMPLETED", "Drinking water method"),
-            PoultryVaccineItem("v4", "Gumboro Booster", "Week 3 (Day 21)", "21 May 2026", "COMPLETED", "Drinking water method"),
-            PoultryVaccineItem("v5", "Newcastle (ND) Booster", "Week 4 (Day 28)", "28 May 2026", "COMPLETED", "LaSota strain"),
-            PoultryVaccineItem("v6", "Fowl Pox (Wing Web)", "Week 8", "16 Aug 2026 (In 3 days)", "DUE_SOON", "Wing web puncture"),
-            PoultryVaccineItem("v7", "Fowl Typhoid & Deworming", "Week 18", "15 Oct 2026", "UPCOMING", "Subcutaneous injection")
         )
     }
 
@@ -2187,6 +2213,47 @@ fun FlockDetailsView(
                 onDisposeFlock(quantity, reason, amount, notes, date)
             }
         )
+    }
+
+    // Dialog for changing Date Added using AppDatePicker
+    if (showEditDateAddedDialog) {
+        var tempDate by remember { mutableStateOf(flockDateAdded) }
+        Dialog(onDismissRequest = { showEditDateAddedDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth().padding(8.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text("📅 Edit Flock Date Added", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                    Text("The flock age, feed stage recommendations, and vaccination due dates will recalculate automatically.", fontSize = 12.sp, color = Color(0xFF64748B))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    AppDatePickerField(
+                        value = tempDate,
+                        onValueChange = { tempDate = it },
+                        label = "Date Added (Arrival on Farm)",
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "edit_flock_date_added_picker"
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        OutlinedButton(onClick = { showEditDateAddedDialog = false }) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                flockDateAdded = tempDate
+                                showEditDateAddedDialog = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                        ) {
+                            Text("Update Date")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color(0xFFF8FAFC))) {
@@ -2241,7 +2308,87 @@ fun FlockDetailsView(
                 }
             }
 
-            // 1. Flock Header Overview Card
+            // 0. Prominent Vaccination & Feed Transition Alert Banners
+            if (overdueVaccineCount > 0 || dueTodayVaccineCount > 0 || dueSoonVaccineCount > 0) {
+                item {
+                    val isUrgent = overdueVaccineCount > 0 || dueTodayVaccineCount > 0
+                    val bannerBg = if (isUrgent) Color(0xFFFEF2F2) else Color(0xFFFFFBEB)
+                    val bannerBorder = if (isUrgent) Color(0xFFFECACA) else Color(0xFFFDE68A)
+                    val bannerText = if (isUrgent) Color(0xFF991B1B) else Color(0xFF92400E)
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = bannerBg,
+                        border = BorderStroke(1.dp, bannerBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MedicalServices,
+                                contentDescription = null,
+                                tint = bannerText,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isUrgent) "🚨 VACCINATION ATTENTION REQUIRED" else "⚠️ UPCOMING VACCINATIONS",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = bannerText
+                                )
+                                Text(
+                                    text = buildString {
+                                        if (overdueVaccineCount > 0) append("$overdueVaccineCount overdue vaccine(s). ")
+                                        if (dueTodayVaccineCount > 0) append("$dueTodayVaccineCount vaccine due today! ")
+                                        if (dueSoonVaccineCount > 0) append("$dueSoonVaccineCount vaccine due within 2 days.")
+                                    },
+                                    fontSize = 12.sp,
+                                    color = bannerText
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (flockAgeInfo.feedStage.hasTransitionAlert && flockAgeInfo.feedStage.transitionAlertMessage != null) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🥣", fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "FEED STAGE TRANSITION NOTIFICATION",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E40AF)
+                                )
+                                Text(
+                                    text = flockAgeInfo.feedStage.transitionAlertMessage!!,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF1E3A8A),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1. Flock Header Overview Card (Date Added & Dynamic Age Tracking)
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -2279,6 +2426,7 @@ fun FlockDetailsView(
                                 }
                             }
 
+                            // Dynamic Calculated Age Badge
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color(0xFFEFF6FF),
@@ -2286,17 +2434,65 @@ fun FlockDetailsView(
                             ) {
                                 Column(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                    horizontalAlignment = Alignment.End
                                 ) {
-                                    Text("AGE / STAGE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E40AF))
-                                    Text(flock.age, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
+                                    Text("CURRENT FLOCK AGE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E40AF))
+                                    Text(
+                                        text = flockAgeInfo.formattedAge,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1D4ED8)
+                                    )
+                                    Text(
+                                        text = "Calculated Daily",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF60A5FA)
+                                    )
                                 }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Stage Pill Chip Selector
+                        // Date Added Info Box with Calendar Picker trigger
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth().clickable { showEditDateAddedDialog = true }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("📅", fontSize = 16.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text("DATE ADDED / ARRIVAL", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                                        Text(flockAgeInfo.dateAddedFormatted, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFE2E8F0)
+                                ) {
+                                    Text(
+                                        text = "Change Date ▾",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF334155)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Stage Pill Chip Selector (Starter 0-3w, Grower 3-8w, Layer/Finisher 8+w)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2305,12 +2501,11 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             listOf(
-                                "STARTER (0-8 Wks)",
-                                "GROWER (8-18 Wks)",
-                                "LAYING (18+ Wks)",
-                                "BROILER FINISHER"
+                                "Starter (0-3 Wks)",
+                                "Grower (3-8 Wks)",
+                                "Layer/Finisher (8+ Wks)"
                             ).forEach { stage ->
-                                val isSelected = selectedStage.contains(stage.take(6), ignoreCase = true)
+                                val isSelected = selectedStage.contains(stage.take(7), ignoreCase = true)
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = if (isSelected) ForestGreenPrimary else Color.Transparent,
@@ -2347,9 +2542,9 @@ fun FlockDetailsView(
                                 border = BorderStroke(1.dp, Color(0xFFBBF7D0))
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("LAYING RATE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
-                                    Text("86.2%", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
-                                    Text("380 eggs today", fontSize = 11.sp, color = Color(0xFF166534))
+                                    Text("FEED STAGE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
+                                    Text(flockAgeInfo.feedStage.stageName.split(" (").first(), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                                    Text(flockAgeInfo.shortAgeLabel, fontSize = 11.sp, color = Color(0xFF166534))
                                 }
                             }
 
@@ -2361,7 +2556,7 @@ fun FlockDetailsView(
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Text("MORTALITY RATE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
-                                    Text("$totalMortalityCount lost", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                                    Text("$totalMortalityCount lost", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
                                     Text("Rate: $mortalityPercentage", fontSize = 11.sp, color = Color(0xFF991B1B))
                                 }
                             }
@@ -2384,7 +2579,7 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("🥣 Stage Feeding Guide & Logs", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text("🥣 Feed Stage Formulation", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
 
                             Button(
                                 onClick = { showFeedDialog = true },
@@ -2398,25 +2593,10 @@ fun FlockDetailsView(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        val recFeed = when {
-                            selectedStage.contains("STARTER", ignoreCase = true) -> "Chick Starter Mash (20–22% CP)"
-                            selectedStage.contains("GROWER", ignoreCase = true) -> "Grower Mash / Pellets (15–17% CP)"
-                            selectedStage.contains("BROILER", ignoreCase = true) -> "Broiler Finisher Pellets (18–19% CP)"
-                            else -> "Layer Mash / Pellets (16–18% CP + 3.8% Ca)"
-                        }
-
-                        val purpose = when {
-                            selectedStage.contains("STARTER", ignoreCase = true) -> "Rapid skeletal & organ development for young chicks"
-                            selectedStage.contains("GROWER", ignoreCase = true) -> "Controlled uniform growth without pre-laying fat accumulation"
-                            selectedStage.contains("BROILER", ignoreCase = true) -> "High energy for rapid meat yield & weight gain before market"
-                            else -> "High calcium for strong eggshell formation & peak lay percentage"
-                        }
-
-                        val allowance = when {
-                            selectedStage.contains("STARTER", ignoreCase = true) -> "~20 - 45 grams / bird / day"
-                            selectedStage.contains("GROWER", ignoreCase = true) -> "~60 - 90 grams / bird / day"
-                            selectedStage.contains("BROILER", ignoreCase = true) -> "~120 - 160 grams / bird / day"
-                            else -> "~110 - 130 grams / bird / day (~52 kg/day for flock)"
+                        val stageFeedInfo = when {
+                            selectedStage.contains("Starter", ignoreCase = true) -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(10)
+                            selectedStage.contains("Grower", ignoreCase = true) -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(30)
+                            else -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(70)
                         }
 
                         Surface(
@@ -2426,11 +2606,12 @@ fun FlockDetailsView(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
-                                Text("RECOMMENDED FEED FORMULATION", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF92400E))
+                                Text("RECOMMENDED FEED FOR ${selectedStage.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF92400E))
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(recFeed, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F))
-                                Text("• Purpose: $purpose", fontSize = 12.sp, color = Color(0xFF92400E))
-                                Text("• Target Ration: $allowance", fontSize = 12.sp, color = Color(0xFF92400E))
+                                Text(stageFeedInfo.feedType, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F))
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("• Purpose: ${stageFeedInfo.purpose}", fontSize = 12.sp, color = Color(0xFF92400E))
+                                Text("• Daily Ration: ${stageFeedInfo.dailyRationPerBird}", fontSize = 12.sp, color = Color(0xFF92400E))
                             }
                         }
 
@@ -2456,7 +2637,7 @@ fun FlockDetailsView(
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text("${feed.quantityKg} kg", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ForestGreenPrimary)
-                                        Text("\$${feed.costAmount}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        Text("\${feed.costAmount}", fontSize = 12.sp, color = Color(0xFF64748B))
                                     }
                                 }
                             }
@@ -2465,7 +2646,151 @@ fun FlockDetailsView(
                 }
             }
 
-            // 3. Mortality & Health Log Card
+            // 3. Complete Standard Vaccination Schedule & Alerts Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("💉 Age Vaccination Schedule", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                Text("Standard protocol keyed from arrival date", fontSize = 12.sp, color = Color(0xFF64748B))
+                            }
+                            Button(
+                                onClick = { showVaccineDialog = true },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("+ VACCINE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        calculatedVaccineSchedule.forEach { vac ->
+                            val (bgColor, textColor) = when (vac.status) {
+                                VaccineDueStatus.COMPLETED -> Color(0xFFDCFCE7) to Color(0xFF15803D)
+                                VaccineDueStatus.OVERDUE -> Color(0xFFFEE2E2) to Color(0xFF991B1B)
+                                VaccineDueStatus.DUE_TODAY -> Color(0xFFFEF3C7) to Color(0xFFB45309)
+                                VaccineDueStatus.DUE_SOON -> Color(0xFFFFFBEB) to Color(0xFFD97706)
+                                VaccineDueStatus.UPCOMING -> Color(0xFFF1F5F9) to Color(0xFF475569)
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (vac.isCompleted) Color(0xFFF8FAFC) else if (vac.status == VaccineDueStatus.OVERDUE) Color(0xFFFFF1F2) else Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, if (vac.status == VaccineDueStatus.OVERDUE) Color(0xFFFECDD3) else Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = vac.vaccineName,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = if (vac.isCompleted) Color(0xFF64748B) else Color(0xFF1E293B)
+                                            )
+                                        }
+                                        Text(
+                                            text = "Stage: ${vac.targetStageLabel} • Due: ${vac.scheduledDueDateStr}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color(0xFF475569)
+                                        )
+                                        Text(
+                                            text = "Method: ${vac.administrationMethod} • ${vac.notes}",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = bgColor,
+                                        modifier = Modifier.clickable {
+                                            if (completedVaccineRuleIds.contains(vac.ruleId)) {
+                                                completedVaccineRuleIds.remove(vac.ruleId)
+                                            } else {
+                                                completedVaccineRuleIds.add(vac.ruleId)
+                                            }
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (vac.isCompleted) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = textColor,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                            }
+                                            Text(
+                                                text = vac.statusLabel,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = textColor
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Custom added vaccines
+                        customVaccines.forEach { customVac ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(customVac.vaccineName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1E293B))
+                                        Text("Target: ${customVac.targetStage} • Due: ${customVac.dueDate}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFDCFCE7)
+                                    ) {
+                                        Text(
+                                            text = customVac.status,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF15803D)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Mortality & Health Log Card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -2518,7 +2843,7 @@ fun FlockDetailsView(
                 }
             }
 
-            // 4.5 Flock Sales & Disposals History Card
+            // 5. Flock Sales & Disposals History Card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -2532,9 +2857,7 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("🏷️ Flock Sales & Disposals Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                            }
+                            Text("🏷️ Flock Sales & Disposals Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                             Button(
                                 onClick = { showDisposeFlockDialog = true },
                                 shape = RoundedCornerShape(10.dp),
@@ -2604,74 +2927,6 @@ fun FlockDetailsView(
                 }
             }
 
-            // 5. Vaccination Schedule Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("💉 Vaccination Schedule & Alerts", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                            Button(
-                                onClick = { showVaccineDialog = true },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text("+ VACCINE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        vaccineSchedule.forEach { vac ->
-                            val (bgColor, textColor, badgeText) = when (vac.status) {
-                                "COMPLETED" -> Triple(Color(0xFFDCFCE7), Color(0xFF15803D), "COMPLETED")
-                                "DUE_SOON" -> Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "DUE SOON")
-                                else -> Triple(Color(0xFFF1F5F9), Color(0xFF475569), "UPCOMING")
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFF8FAFC),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(vac.vaccineName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1E293B))
-                                        Text("Target: ${vac.targetStage} • Due: ${vac.dueDate}", fontSize = 12.sp, color = Color(0xFF64748B))
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = bgColor,
-                                        modifier = Modifier.clickable {
-                                            val newStatus = if (vac.status == "COMPLETED") "UPCOMING" else "COMPLETED"
-                                            val idx = vaccineSchedule.indexOf(vac)
-                                            if (idx >= 0) vaccineSchedule[idx] = vac.copy(status = newStatus)
-                                        }
-                                    ) {
-                                        Text(badgeText, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textColor)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             item {
                 Spacer(modifier = Modifier.height(60.dp))
             }
@@ -2681,7 +2936,7 @@ fun FlockDetailsView(
     // Dialog 1: Feed Consumption
     if (showFeedDialog) {
         Dialog(onDismissRequest = { showFeedDialog = false }) {
-            var feedType by remember { mutableStateOf("Layer Mash (16-18% CP + 3.8% Ca)") }
+            var feedType by remember { mutableStateOf(flockAgeInfo.feedStage.feedType) }
             var qtyText by remember { mutableStateOf("50") }
             var costText by remember { mutableStateOf("22.50") }
 
@@ -2798,12 +3053,12 @@ fun FlockDetailsView(
         }
     }
 
-    // Dialog 4: Vaccination Record
+    // Dialog 4: Custom Vaccination Record with AppDatePicker
     if (showVaccineDialog) {
         Dialog(onDismissRequest = { showVaccineDialog = false }) {
             var nameText by remember { mutableStateOf("Fowl Pox Vaccine") }
             var stageText by remember { mutableStateOf("Week 8") }
-            var dateText by remember { mutableStateOf("16 Aug 2026") }
+            var dateText by remember { mutableStateOf(PoultryAgeAndVaccinationUtils.formatDate(Date())) }
 
             Card(
                 modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -2811,20 +3066,26 @@ fun FlockDetailsView(
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("💉 Add Flock Vaccine Schedule", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("💉 Add Custom Vaccine Schedule", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(value = nameText, onValueChange = { nameText = it }, label = { Text("Vaccine Name") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(value = stageText, onValueChange = { stageText = it }, label = { Text("Growth Stage (e.g. Week 8)") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(value = dateText, onValueChange = { dateText = it }, label = { Text("Scheduled Date") }, modifier = Modifier.fillMaxWidth())
+                    AppDatePickerField(
+                        value = dateText,
+                        onValueChange = { dateText = it },
+                        label = "Scheduled Date",
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "custom_vaccine_date_picker"
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         OutlinedButton(onClick = { showVaccineDialog = false }) { Text("Cancel") }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
-                                vaccineSchedule.add(0, PoultryVaccineItem("v_${System.currentTimeMillis()}", nameText, stageText, dateText, "UPCOMING", "User scheduled"))
+                                customVaccines.add(0, PoultryVaccineItem("v_${System.currentTimeMillis()}", nameText, stageText, dateText, "UPCOMING", "User scheduled"))
                                 showVaccineDialog = false
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)

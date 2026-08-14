@@ -163,6 +163,7 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         tagNumber: String = "",
         breed: String = "",
         dob: String = "",
+        dateAdded: String = "",
         weightAtBirth: String = "",
         currentWeight: String = "",
         sire: String = "",
@@ -180,6 +181,7 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
                 tagNumber = tagNumber,
                 breed = breed,
                 dob = dob,
+                dateAdded = if (dateAdded.isNotBlank()) dateAdded else dob,
                 weightAtBirth = weightAtBirth,
                 currentWeight = currentWeight,
                 sire = sire,
@@ -192,6 +194,12 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
     fun updateUnit(unit: FarmUnit) {
         viewModelScope.launch {
             repository.updateUnit(unit)
+        }
+    }
+
+    fun deleteUnit(unitId: Long) {
+        viewModelScope.launch {
+            repository.deleteUnit(unitId)
         }
     }
 

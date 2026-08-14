@@ -47,6 +47,9 @@ import com.example.data.FarmUnit
 import com.example.data.TaskCategory
 import com.example.data.TaskPriority
 import com.example.ui.theme.FarmGreenPrimary
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,7 +70,10 @@ fun AddTaskDialog(
     var selectedCategory by remember { mutableStateOf(TaskCategory.LIVESTOCK) }
     var targetUnit by remember { mutableStateOf(availableUnits.firstOrNull()?.name ?: "Flock B - Layers") }
     var priority by remember { mutableStateOf(TaskPriority.HIGH) }
-    var scheduledTime by remember { mutableStateOf("Today at 03:00 PM") }
+    var scheduledDate by remember {
+        mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
+    }
+    var scheduledTimeText by remember { mutableStateOf("09:00 AM") }
     var instructions by remember { mutableStateOf("") }
     var assignedWorker by remember { mutableStateOf("Lead Farm Hand") }
 
@@ -252,18 +258,31 @@ fun AddTaskDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Scheduled Time
-                OutlinedTextField(
-                    value = scheduledTime,
-                    onValueChange = { scheduledTime = it },
-                    label = { Text("Scheduled Date & Time") },
-                    placeholder = { Text("e.g. Today at 02:30 PM") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("scheduled_time_input"),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
+                // Scheduled Date & Time Row with AppDatePickerField
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    AppDatePickerField(
+                        value = scheduledDate,
+                        onValueChange = { scheduledDate = it },
+                        label = "Scheduled Date",
+                        modifier = Modifier.weight(1.2f),
+                        testTag = "task_scheduled_date_picker"
+                    )
+
+                    OutlinedTextField(
+                        value = scheduledTimeText,
+                        onValueChange = { scheduledTimeText = it },
+                        label = { Text("Time") },
+                        placeholder = { Text("09:00 AM") },
+                        modifier = Modifier
+                            .weight(0.8f)
+                            .testTag("scheduled_time_input"),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -315,7 +334,7 @@ fun AddTaskDialog(
                                     selectedCategory,
                                     targetUnit,
                                     priority,
-                                    scheduledTime,
+                                    "$scheduledDate at $scheduledTimeText",
                                     instructions,
                                     assignedWorker
                                 )

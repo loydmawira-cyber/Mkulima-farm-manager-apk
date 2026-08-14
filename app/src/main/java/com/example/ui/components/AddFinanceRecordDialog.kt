@@ -33,6 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.FinanceType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun AddFinanceRecordDialog(
@@ -43,11 +46,12 @@ fun AddFinanceRecordDialog(
     var selectedCategory by remember { mutableStateOf("Milk Sale") }
     var amountText by remember { mutableStateOf("5000") }
     var descriptionText by remember { mutableStateOf("") }
+    var transactionDate by remember {
+        mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
+    }
 
     val incomeCategories = listOf("Milk Sale", "Egg Sale", "Crop Harvest Sale", "Cattle Sale", "Other Income")
     val expenseCategories = listOf("Feed Purchase", "Medication & Vet", "Salary Advance", "Equipment & Repairs", "Fuel & Transport", "Other Expense")
-
-    val activeCategories = if (selectedType == FinanceType.INCOME) incomeCategories else expenseCategories
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -77,6 +81,17 @@ fun AddFinanceRecordDialog(
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Date Picker Field
+                AppDatePickerField(
+                    value = transactionDate,
+                    onValueChange = { transactionDate = it },
+                    label = "Transaction Date",
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "finance_transaction_date_picker"
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Type Toggle
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -157,7 +172,8 @@ fun AddFinanceRecordDialog(
                     Button(
                         onClick = {
                             val amt = amountText.toDoubleOrNull() ?: 0.0
-                            onSaveRecord(selectedType, selectedCategory, amt, descriptionText)
+                            val finalDescription = if (descriptionText.isNotBlank()) "[$transactionDate] $descriptionText" else "[$transactionDate]"
+                            onSaveRecord(selectedType, selectedCategory, amt, finalDescription)
                         },
                         shape = RoundedCornerShape(100.dp),
                         colors = ButtonDefaults.buttonColors(

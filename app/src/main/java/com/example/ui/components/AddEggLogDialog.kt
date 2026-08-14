@@ -33,6 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.FarmUnit
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun AddEggLogDialog(
@@ -46,6 +49,9 @@ fun AddEggLogDialog(
     var damagedText by remember { mutableStateOf("2") }
     var selectedGrade by remember { mutableStateOf("Grade A") }
     var notesText by remember { mutableStateOf("") }
+    var collectionDate by remember {
+        mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -75,6 +81,16 @@ fun AddEggLogDialog(
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                AppDatePickerField(
+                    value = collectionDate,
+                    onValueChange = { collectionDate = it },
+                    label = "Collection Date",
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "egg_collection_date_picker"
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 OutlinedTextField(
                     value = selectedUnitName,
@@ -153,7 +169,8 @@ fun AddEggLogDialog(
                         onClick = {
                             val total = totalText.toIntOrNull() ?: 0
                             val damaged = damagedText.toIntOrNull() ?: 0
-                            onSaveEggLog(selectedUnitName, total, damaged, selectedGrade, notesText.ifBlank { null })
+                            val fullNote = if (notesText.isNotBlank()) "[$collectionDate] $notesText" else "[$collectionDate]"
+                            onSaveEggLog(selectedUnitName, total, damaged, selectedGrade, fullNote)
                         },
                         shape = RoundedCornerShape(100.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))

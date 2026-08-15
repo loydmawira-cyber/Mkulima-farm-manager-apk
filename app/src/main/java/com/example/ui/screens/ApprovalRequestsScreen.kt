@@ -59,6 +59,7 @@ import com.example.ui.theme.TagYieldText
 fun ApprovalRequestsScreen(
     requests: List<EmployeeRequest>,
     onUpdateRequestStatus: (EmployeeRequest, String) -> Unit,
+    currency: String,
     modifier: Modifier = Modifier
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -142,6 +143,7 @@ fun ApprovalRequestsScreen(
                 items(filteredRequests, key = { it.id }) { req ->
                     ApprovalRequestCard(
                         request = req,
+                        currency = currency,
                         onApprove = { onUpdateRequestStatus(req, "APPROVED") },
                         onReject = { onUpdateRequestStatus(req, "REJECTED") }
                     )
@@ -158,6 +160,7 @@ fun ApprovalRequestsScreen(
 @Composable
 fun ApprovalRequestCard(
     request: EmployeeRequest,
+    currency: String,
     onApprove: () -> Unit,
     onReject: () -> Unit
 ) {
@@ -237,7 +240,7 @@ fun ApprovalRequestCard(
 
             // Details based on request type
             Text(
-                text = if (request.amount > 0) "Amount Requested: KSh ${"%.2f".format(request.amount)}" else "Leave Period: ${request.startDate} to ${request.endDate}",
+                text = if (request.amount > 0) "Amount Requested: ${currency} ${"%.2f".format(request.amount)}" else "Leave Period: ${request.startDate} to ${request.endDate}",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0F172A)

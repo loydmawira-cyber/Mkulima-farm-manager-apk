@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.EggLog
 import com.example.data.EmployeeRequest
 import com.example.data.FarmRepository
+import com.example.data.FarmSettings
 import com.example.data.FarmTask
 import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -66,6 +68,20 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    val farmSettings: StateFlow<FarmSettings> = repository.farmSettings
+        .map { it ?: FarmSettings() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = FarmSettings()
+        )
+
+    fun updateSettings(settings: FarmSettings) {
+        viewModelScope.launch {
+            repository.updateSettings(settings)
+        }
+    }
 
     val rawTasks: StateFlow<List<FarmTask>> = repository.allTasks.stateIn(
         scope = viewModelScope,

@@ -69,6 +69,8 @@ import com.example.ui.components.AddTaskDialog
 import com.example.ui.components.AddUnitDialog
 import com.example.ui.components.ProofImageModal
 import com.example.ui.components.ProofUploadDialog
+import androidx.compose.material.icons.filled.Settings
+import com.example.ui.components.SettingsDialog
 import com.example.ui.screens.ApprovalRequestsScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.FinanceScreen
@@ -96,6 +98,7 @@ fun MkulimaApp(
     val eggLogs by viewModel.allEggLogs.collectAsState()
     val financeRecords by viewModel.allFinanceRecords.collectAsState()
     val employeeRequests by viewModel.allEmployeeRequests.collectAsState()
+    val farmSettings by viewModel.farmSettings.collectAsState()
 
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
@@ -110,6 +113,7 @@ fun MkulimaApp(
     var showAddEggLogDialog by remember { mutableStateOf(false) }
     var showAddFinanceDialog by remember { mutableStateOf(false) }
     var showAddEmployeeRequestDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -140,6 +144,13 @@ fun MkulimaApp(
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)
+                            )
+                        }
+                        IconButton(onClick = { showSettingsDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Settings",
+                                tint = Color(0xFF1E293B)
                             )
                         }
                     }
@@ -291,7 +302,8 @@ fun MkulimaApp(
                     onAddUnitClick = { showAddUnitDialog = true },
                     onAddMilkLogClick = { showAddMilkLogDialog = true },
                     onAddEggLogClick = { showAddEggLogDialog = true },
-                    userRole = userRole
+                    userRole = userRole,
+                    farmSettings = farmSettings
                 )
 
                 1 -> FlocksScreen(
@@ -320,7 +332,8 @@ fun MkulimaApp(
                     },
                     onDeleteUnit = { unitId ->
                         viewModel.deleteUnit(unitId)
-                    }
+                    },
+                    farmSettings = farmSettings
                 )
 
                 2 -> MilkLogScreen(
@@ -339,12 +352,14 @@ fun MkulimaApp(
                         viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, notes)
                     },
                     onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
-                    onDeleteEggLog = { viewModel.deleteEggLog(it) }
+                    onDeleteEggLog = { viewModel.deleteEggLog(it) },
+                    farmSettings = farmSettings
                 )
 
                 3 -> FinanceScreen(
                     records = financeRecords,
-                    onAddTransactionClick = { showAddFinanceDialog = true }
+                    onAddTransactionClick = { showAddFinanceDialog = true },
+                    currency = farmSettings.currency
                 )
 
                 4 -> ApprovalRequestsScreen(
@@ -356,7 +371,8 @@ fun MkulimaApp(
                             else -> RequestStatus.PENDING
                         }
                         viewModel.updateEmployeeRequestStatus(req, requestStatus)
-                    }
+                    },
+                    currency = farmSettings.currency
                 )
             }
         }
@@ -463,6 +479,17 @@ fun MkulimaApp(
             onSaveRequest = { name, type, amount, start, end, reason ->
                 viewModel.addEmployeeRequest(name, type, amount, start, end, reason)
                 showAddEmployeeRequestDialog = false
+            }
+        )
+    }
+
+    if (showSettingsDialog) {
+        SettingsDialog(
+            settings = farmSettings,
+            onDismiss = { showSettingsDialog = false },
+            onSaveSettings = { newSettings ->
+                viewModel.updateSettings(newSettings)
+                showSettingsDialog = false
             }
         )
     }

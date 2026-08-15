@@ -16,9 +16,10 @@ import kotlinx.coroutines.launch
         MilkLog::class,
         EggLog::class,
         FinanceRecord::class,
-        EmployeeRequest::class
+        EmployeeRequest::class,
+        FarmSettings::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -58,6 +59,8 @@ abstract class MkulimaDatabase : RoomDatabase() {
         }
 
         suspend fun populateInitialData(farmDao: FarmDao) {
+            farmDao.insertSettings(FarmSettings())
+
             if (farmDao.getTaskCount() == 0) {
                 val initialUnits = listOf(
                     FarmUnit(

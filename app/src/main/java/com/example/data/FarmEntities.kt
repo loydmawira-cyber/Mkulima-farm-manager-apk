@@ -97,6 +97,16 @@ enum class RequestStatus {
     REJECTED
 }
 
+@Entity(tableName = "farm_settings")
+data class FarmSettings(
+    @PrimaryKey val id: Int = 1,
+    val farmType: String = "Both", // "Cattle Only", "Poultry Only", "Both"
+    val currency: String = "KES",  // e.g. "KES", "USD", "EUR"
+    val weaningReminderDays: Int = 180, // e.g. 6 months
+    val pregnancyCheckReminderDays: Int = 30,
+    val dryingOffReminderDays: Int = 60
+)
+
 @Entity(tableName = "employee_requests")
 data class EmployeeRequest(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

@@ -712,7 +712,8 @@ fun FlocksScreen(
     onAddFinanceRecord: (type: FinanceType, category: String, amount: Double, description: String) -> Unit = { _, _, _, _ -> },
     onUpdateUnitHeadCount: (unitId: Long, newHeadCount: Int) -> Unit = { _, _ -> },
     onUpdateUnit: (FarmUnit) -> Unit = { _ -> },
-    onDeleteUnit: (Long) -> Unit = { _ -> },
+    onDeleteUnit: (Long) -> Unit,
+    farmSettings: com.example.data.FarmSettings,
     modifier: Modifier = Modifier
 ) {
     var selectedAnimal by remember { mutableStateOf<AnimalDetailData?>(null) }
@@ -1896,51 +1897,7 @@ fun AnimalDetailsView(
         }
     }
 
-    // Initialize sample events if empty
-    LaunchedEffect(animal.id) {
-        if (animalEvents.isEmpty() && isCattle) {
-            animalEvents.addAll(
-                listOf(
-                    CattleEventItem(
-                        id = "e1_${animal.id}",
-                        category = "HEAT",
-                        title = "Estrus (Heat Period) Observed",
-                        date = "02 Aug 2026",
-                        details = "Clear mucus discharge and standing heat recorded during morning check.",
-                        notes = "Observed by Worker John"
-                    ),
-                    CattleEventItem(
-                        id = "e2_${animal.id}",
-                        category = "INSEMINATION",
-                        title = "Artificial Insemination (AI)",
-                        date = "03 Aug 2026",
-                        details = "Inseminated with Friesian Bull Straw #FRIESIAN-88 (Sire: Thunder #045).",
-                        notes = "Technician: Dr. Otieno (Vet)",
-                        metricValue = "Straw #88"
-                    ),
-                    CattleEventItem(
-                        id = "e3_${animal.id}",
-                        category = "WEIGHT",
-                        title = "Routine Weight Measurement",
-                        date = "28 Jul 2026",
-                        details = "Gained +15kg over last 30 days. Good Body Condition Score (3.5/5).",
-                        notes = "Recorded by Tech",
-                        metricValue = animal.weight.ifBlank { "520 kg" }
-                    ),
-                    CattleEventItem(
-                        id = "e4_${animal.id}",
-                        category = "HEALTH",
-                        title = "Foot & Mouth Vaccination",
-                        date = "14 May 2026",
-                        details = "Administered 2ml FMD vaccine booster subcutaneously.",
-                        notes = "Batch #FMD-2026-X",
-                        metricValue = "2 ml"
-                    )
-                )
-            )
-        }
-    }
-
+    // Initialize events
     val cattleNotifications = remember(cattleEval, animalEvents.toList()) {
         val list = mutableListOf<UpcomingCattleNotification>()
         if (cattleEval != null) {

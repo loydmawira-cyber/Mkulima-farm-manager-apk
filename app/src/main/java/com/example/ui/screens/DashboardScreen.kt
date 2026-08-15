@@ -143,7 +143,8 @@ fun DashboardScreen(
     onAddUnitClick: () -> Unit = {},
     onAddMilkLogClick: () -> Unit = {},
     onAddEggLogClick: () -> Unit = {},
-    userRole: String = "Owner",
+    userRole: String,
+    farmSettings: com.example.data.FarmSettings,
     modifier: Modifier = Modifier
 ) {
     var selectedProdMetric by remember { mutableStateOf("Milk") }
@@ -176,23 +177,19 @@ fun DashboardScreen(
     }
 
     val totalCattle = remember(cattleUnits) {
-        val sum = cattleUnits.sumOf { it.headCount }
-        if (sum > 0) sum else 9 // Default herd representation
+        cattleUnits.sumOf { it.headCount }
     }
-
     val totalBirds = remember(poultryUnits) {
-        val sum = poultryUnits.sumOf { it.headCount }
-        if (sum > 0) sum else 550 // Default flock population
+        poultryUnits.sumOf { it.headCount }
     }
-
     val totalPoultryFlocks = remember(poultryUnits) {
-        if (poultryUnits.isNotEmpty()) poultryUnits.size else 2
+        poultryUnits.size
     }
 
     // Milk Production Calculations
-    val todayFormatted1 = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) }
-    val todayFormatted2 = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
-    val todayFormatted3 = remember { SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date()) }
+    val todayFormatted1 = remember { java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date()) }
+    val todayFormatted2 = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()) }
+    val todayFormatted3 = remember { java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()).format(java.util.Date()) }
 
     val todayMilkLitres = remember(milkLogs) {
         val todayLogs = milkLogs.filter { log ->
@@ -204,18 +201,10 @@ fun DashboardScreen(
             log.loggedAt.contains(todayFormatted3, ignoreCase = true) ||
             log.loggedAt.contains("Today", ignoreCase = true)
         }
-        if (todayLogs.isNotEmpty()) {
-            todayLogs.sumOf { it.litres }
-        } else if (milkLogs.isNotEmpty()) {
-            milkLogs.sumOf { it.litres }
-        } else {
-            38.0
-        }
+        todayLogs.sumOf { it.litres }
     }
-
-    val weeklyMilkLitres = remember(milkLogs, todayMilkLitres) {
-        val total = milkLogs.sumOf { it.litres }
-        if (total > todayMilkLitres) total else 246.0
+    val weeklyMilkLitres = remember(milkLogs) {
+        milkLogs.sumOf { it.litres }
     }
 
     // Egg Production Calculations
@@ -226,93 +215,77 @@ fun DashboardScreen(
             log.loggedAt.contains(todayFormatted3, ignoreCase = true) ||
             log.loggedAt.contains("Today", ignoreCase = true)
         }
-        if (todayLogs.isNotEmpty()) {
-            todayLogs.sumOf { it.totalEggs }
-        } else if (eggLogs.isNotEmpty()) {
-            eggLogs.sumOf { it.totalEggs }
-        } else {
-            312
-        }
+        todayLogs.sumOf { it.totalEggs }
     }
-
-    val weeklyEggsCount = remember(eggLogs, todayEggsCount) {
-        val sum = eggLogs.sumOf { it.totalEggs }
-        if (sum > todayEggsCount) sum else 2184
+    val weeklyEggsCount = remember(eggLogs) {
+        eggLogs.sumOf { it.totalEggs }
     }
 
     // Cattle Stage Breakdown Counts
     val cattleStages = remember(cattleUnits, milkLogs) {
-        // Evaluate stages from units or provide baseline
         val stageCounts = mutableMapOf(
-            "Milking" to 1,
-            "In-calf" to 1,
-            "Heifers" to 1,
-            "Calves" to 1,
-            "Bulls" to 1,
-            "Dry" to 2,
-            "Inseminated" to 1,
-            "Disposed" to 1
+            "Milking" to 0,
+            "In-calf" to 0,
+            "Heifers" to 0,
+            "Calves" to 0,
+            "Bulls" to 0,
+            "Dry" to 0,
+            "Inseminated" to 0,
+            "Disposed" to 0
         )
-        if (cattleUnits.size >= 4) {
-            val evaluated = cattleUnits.map { unit ->
-                val mockDetail = com.example.ui.screens.AnimalDetailData(
-                    id = "unit_${unit.id}",
-                    name = unit.name,
-                    tagNumber = "#${unit.id}",
-                    breed = unit.breed,
-                    category = "CATTLE",
-                    status = unit.healthStatus,
-                    age = unit.dob,
-                    weight = unit.currentWeight,
-                    lastMilk = "14L",
-                    breedingStatus = "ACTIVE",
-                    dateOfBirth = unit.dob,
-                    weightAtBirth = unit.weightAtBirth,
-                    sire = unit.sire,
-                    dam = unit.dam
-                )
-                CattleLifecycleEngine.evaluateCattleStage(mockDetail, emptyList(), milkLogs)
-            }
-            stageCounts["Milking"] = evaluated.count { it.stage == CattleStage.MILKING }.coerceAtLeast(1)
-            stageCounts["In-calf"] = evaluated.count { it.stage == CattleStage.INCALF || it.stage == CattleStage.INCALF_MILKING }.coerceAtLeast(1)
-            stageCounts["Heifers"] = evaluated.count { it.stage == CattleStage.HEIFER }.coerceAtLeast(1)
-            stageCounts["Calves"] = evaluated.count { it.stage == CattleStage.CALF }.coerceAtLeast(1)
-            stageCounts["Bulls"] = evaluated.count { it.stage == CattleStage.BULL }.coerceAtLeast(1)
-            stageCounts["Dry"] = evaluated.count { it.stage == CattleStage.DRY }.coerceAtLeast(1)
-            stageCounts["Inseminated"] = evaluated.count { it.stage == CattleStage.INSEMINATED }.coerceAtLeast(1)
-            stageCounts["Disposed"] = evaluated.count { it.stage == CattleStage.DISPOSED }.coerceAtLeast(1)
+        val evaluated = cattleUnits.map { unit ->
+            val mockDetail = com.example.ui.screens.AnimalDetailData(
+                id = "unit_${unit.id}",
+                name = unit.name,
+                tagNumber = "#${unit.id}",
+                breed = unit.breed,
+                category = "CATTLE",
+                status = unit.healthStatus,
+                age = unit.dob,
+                weight = unit.currentWeight,
+                lastMilk = "",
+                breedingStatus = "ACTIVE",
+                dateOfBirth = unit.dob,
+                weightAtBirth = unit.weightAtBirth,
+                sire = unit.sire,
+                dam = unit.dam
+            )
+            CattleLifecycleEngine.evaluateCattleStage(mockDetail, emptyList(), milkLogs)
         }
+        stageCounts["Milking"] = evaluated.count { it.stage == CattleStage.MILKING }
+        stageCounts["In-calf"] = evaluated.count { it.stage == CattleStage.INCALF || it.stage == CattleStage.INCALF_MILKING }
+        stageCounts["Heifers"] = evaluated.count { it.stage == CattleStage.HEIFER }
+        stageCounts["Calves"] = evaluated.count { it.stage == CattleStage.CALF }
+        stageCounts["Bulls"] = evaluated.count { it.stage == CattleStage.BULL }
+        stageCounts["Dry"] = evaluated.count { it.stage == CattleStage.DRY }
+        stageCounts["Inseminated"] = evaluated.count { it.stage == CattleStage.INSEMINATED }
+        stageCounts["Disposed"] = evaluated.count { it.stage == CattleStage.DISPOSED }
         stageCounts
     }
 
     // Finance Calculations
     val totalIncome = remember(financeRecords) {
-        val inc = financeRecords.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }
-        if (inc > 0) inc else 84200.0
+        financeRecords.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }
     }
     val milkIncome = remember(financeRecords) {
-        val inc = financeRecords.filter { it.type == FinanceType.INCOME && it.category.contains("Milk", ignoreCase = true) }.sumOf { it.amount }
-        if (inc > 0) inc else 52400.0
+        financeRecords.filter { it.type == FinanceType.INCOME && it.category.contains("Milk", ignoreCase = true) }.sumOf { it.amount }
     }
     val eggIncome = remember(financeRecords) {
-        val inc = financeRecords.filter { it.type == FinanceType.INCOME && it.category.contains("Egg", ignoreCase = true) }.sumOf { it.amount }
-        if (inc > 0) inc else 31800.0
+        financeRecords.filter { it.type == FinanceType.INCOME && it.category.contains("Egg", ignoreCase = true) }.sumOf { it.amount }
     }
     val feedExpense = remember(financeRecords) {
-        val exp = financeRecords.filter { it.type == FinanceType.EXPENSE && it.category.contains("Feed", ignoreCase = true) }.sumOf { it.amount }
-        if (exp > 0) exp else 24100.0
+        financeRecords.filter { it.type == FinanceType.EXPENSE && it.category.contains("Feed", ignoreCase = true) }.sumOf { it.amount }
     }
     val vetExpense = remember(financeRecords) {
-        val exp = financeRecords.filter { it.type == FinanceType.EXPENSE && (it.category.contains("Vet", ignoreCase = true) || it.category.contains("Vaccine", ignoreCase = true)) }.sumOf { it.amount }
-        if (exp > 0) exp else 7800.0
+        financeRecords.filter { it.type == FinanceType.EXPENSE && (it.category.contains("Vet", ignoreCase = true) || it.category.contains("Vaccine", ignoreCase = true)) }.sumOf { it.amount }
     }
-    val netRevenue = (milkIncome + eggIncome) - (feedExpense + vetExpense)
+    val netRevenue = totalIncome - (feedExpense + vetExpense) // Wait, totalIncome includes both milk and egg.
 
     // Attention / Urgent items
     val pendingRequests = remember(employeeRequests) {
         employeeRequests.filter { it.status == RequestStatus.PENDING }
     }
-    val urgentCount = 3 + pendingRequests.size
+    val urgentCount = pendingRequests.size
 
     Box(
         modifier = modifier
@@ -461,7 +434,7 @@ fun DashboardScreen(
                                     val req = pendingRequests.first()
                                     UrgentItemRow(
                                         title = "${req.employeeName} — ${req.requestType.lowercase()}",
-                                        subtitle = "Pending your approval (KES ${"%.0f".format(req.amount)})",
+                                        subtitle = "Pending your approval (${farmSettings.currency} ${"%.0f".format(req.amount)})",
                                         onClick = { onNavigateToTab(4) }
                                     )
                                 } else {
@@ -690,10 +663,10 @@ fun DashboardScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            ReceiptLineItem(label = "Milk sales", amount = "+ KES ${"%,.0f".format(milkIncome)}", isPositive = true)
-                            ReceiptLineItem(label = "Egg sales", amount = "+ KES ${"%,.0f".format(eggIncome)}", isPositive = true)
-                            ReceiptLineItem(label = "Feed & supplies", amount = "− KES ${"%,.0f".format(feedExpense)}", isPositive = false)
-                            ReceiptLineItem(label = "Vaccines & vet", amount = "− KES ${"%,.0f".format(vetExpense)}", isPositive = false)
+                            ReceiptLineItem(label = "Milk sales", amount = "+ ${farmSettings.currency} ${"%,.0f".format(milkIncome)}", isPositive = true)
+                            ReceiptLineItem(label = "Egg sales", amount = "+ ${farmSettings.currency} ${"%,.0f".format(eggIncome)}", isPositive = true)
+                            ReceiptLineItem(label = "Feed & supplies", amount = "− ${farmSettings.currency} ${"%,.0f".format(feedExpense)}", isPositive = false)
+                            ReceiptLineItem(label = "Vaccines & vet", amount = "− ${farmSettings.currency} ${"%,.0f".format(vetExpense)}", isPositive = false)
 
                             Spacer(modifier = Modifier.height(8.dp))
 
@@ -723,7 +696,7 @@ fun DashboardScreen(
                                     color = Straw
                                 )
                                 Text(
-                                    text = "+ KES ${"%,.0f".format(netRevenue)}",
+                                    text = "+ ${farmSettings.currency} ${"%,.0f".format(netRevenue)}",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFFA8C99A)

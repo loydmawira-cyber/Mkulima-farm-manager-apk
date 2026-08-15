@@ -13,6 +13,8 @@ class FarmRepository(private val farmDao: FarmDao) {
     val allFinanceRecords: Flow<List<FinanceRecord>> = farmDao.getAllFinanceRecords()
     val allEmployeeRequests: Flow<List<EmployeeRequest>> = farmDao.getAllEmployeeRequests()
 
+    val farmSettings: Flow<FarmSettings?> = farmDao.getSettings()
+
     suspend fun getTaskById(id: Long): FarmTask? = farmDao.getTaskById(id)
     suspend fun insertTask(task: FarmTask): Long = farmDao.insertTask(task)
     suspend fun updateTask(task: FarmTask) = farmDao.updateTask(task)
@@ -34,6 +36,8 @@ class FarmRepository(private val farmDao: FarmDao) {
     suspend fun insertEmployeeRequest(request: EmployeeRequest): Long = farmDao.insertEmployeeRequest(request)
     suspend fun updateEmployeeRequest(request: EmployeeRequest) = farmDao.updateEmployeeRequest(request)
     suspend fun deleteEmployeeRequest(id: Long) = farmDao.deleteEmployeeRequestById(id)
+
+    suspend fun updateSettings(settings: FarmSettings) = farmDao.insertSettings(settings)
 
     suspend fun ensureInitialData(database: MkulimaDatabase) {
         if (farmDao.getTaskCount() == 0) {

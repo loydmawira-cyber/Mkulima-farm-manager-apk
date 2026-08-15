@@ -108,4 +108,11 @@ interface FarmDao {
 
     @Query("DELETE FROM employee_requests WHERE id = :id")
     suspend fun deleteEmployeeRequestById(id: Long)
+
+    // Settings
+    @Query("SELECT * FROM farm_settings WHERE id = 1")
+    fun getSettings(): Flow<FarmSettings?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSettings(settings: FarmSettings)
 }

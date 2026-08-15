@@ -64,7 +64,7 @@ fun AddCattleEventDialog(
         nextReminderDate: String
     ) -> Unit
 ) {
-    var selectedCategory by remember { mutableStateOf(initialCategory) } // PD, INSEMINATION, CALVING, DRY_OFF, HEAT, WEIGHT, HEALTH
+    var selectedCategory by remember { mutableStateOf(initialCategory) } // PD, INSEMINATION, CALVING, DRY_OFF, HEAT, WEIGHT, HEALTH, OTHER
     var pdResult by remember { mutableStateOf("CONFIRMED_POSITIVE") } // CONFIRMED_POSITIVE, NEGATIVE
 
     val todayDate = remember {
@@ -72,19 +72,6 @@ fun AddCattleEventDialog(
     }
 
     var dateText by remember { mutableStateOf(todayDate) }
-    var titleText by remember(initialCategory) {
-        mutableStateOf(
-            when (initialCategory) {
-                "INSEMINATION" -> "Artificial Insemination (AI)"
-                "CALVING" -> "Calf Delivery (Calving)"
-                "DRY_OFF" -> "Dry Off (Cessation of Milking)"
-                "HEAT" -> "Estrus (Heat Period) Observed"
-                "WEIGHT" -> "Routine Weight Measurement"
-                "HEALTH" -> "Health Check / Vaccination"
-                else -> "Pregnancy Diagnosis (PD) - Confirmed Positive"
-            }
-        )
-    }
     var detailsText by remember(initialCategory) {
         mutableStateOf(
             when (initialCategory) {
@@ -94,6 +81,7 @@ fun AddCattleEventDialog(
                 "HEAT" -> "Observed standing heat, clear mucus discharge."
                 "WEIGHT" -> "Weighed on herd scale."
                 "HEALTH" -> "Routine treatment / vaccination administered."
+                "OTHER" -> "General management or observation event."
                 else -> "Pregnancy confirmed positive via rectal palpation / ultrasound. Gestation normal."
             }
         )
@@ -108,6 +96,7 @@ fun AddCattleEventDialog(
                 "HEAT" -> "Standing Heat"
                 "WEIGHT" -> "480 kg"
                 "HEALTH" -> "2 ml"
+                "OTHER" -> ""
                 else -> "Positive (In-Calf)"
             }
         )
@@ -121,6 +110,7 @@ fun AddCattleEventDialog(
                 "HEAT" -> "AI Insemination within 12-18 hours"
                 "WEIGHT" -> "Weight check in 30 days"
                 "HEALTH" -> "Booster shot in 6 months"
+                "OTHER" -> ""
                 else -> "Dry Off Alert in ~5 months"
             }
         )
@@ -131,12 +121,10 @@ fun AddCattleEventDialog(
         when (category) {
             "PD" -> {
                 if (pdResult == "CONFIRMED_POSITIVE") {
-                    titleText = "Pregnancy Diagnosis (PD) - Confirmed Positive"
                     detailsText = "Pregnancy confirmed positive via veterinary check. Cow is now In-Calf."
                     metricText = "Positive (In-Calf)"
                     reminderText = "Dry Off check 60 days before expected calving"
                 } else {
-                    titleText = "Pregnancy Diagnosis (PD) - Negative (Open)"
                     detailsText = "Pregnancy test negative. Cow is open and ready for next heat detection / re-insemination."
                     metricText = "Negative (Open)"
                     reminderText = "Heat check in 21 days"
@@ -144,46 +132,46 @@ fun AddCattleEventDialog(
                 notesText = "Technician: Dr. Otieno (Vet)"
             }
             "INSEMINATION" -> {
-                titleText = "Artificial Insemination (AI)"
                 detailsText = "Inseminated with Friesian Bull Straw #FRIESIAN-88 (Sire: Thunder #045)."
                 notesText = "Technician: Dr. Otieno (Vet)"
                 metricText = "Straw #88"
                 reminderText = "In 21 days (Repeat Heat / PD Check)"
             }
             "CALVING" -> {
-                titleText = "Calving & Calf Delivery"
                 detailsText = "Successfully gave birth to healthy calf. Mother transition to fresh lactation milking."
                 notesText = "Calf Tag: #132 (Heifer Calf)"
                 metricText = "Birth Wt: 34 kg"
                 reminderText = "Colostrum Feeding & Post-calving check in 24h"
             }
             "DRY_OFF" -> {
-                titleText = "Dry Off (Pre-Calving Rest)"
                 detailsText = "Lactation halted. Cow dried off 60 days prior to expected calving with dry cow antibiotic sealant."
                 notesText = "Administered Dry Cow Cloxacillin intramammary"
                 metricText = "Teats Sealed"
                 reminderText = "Close-up transitional feed in 4 weeks"
             }
             "HEAT" -> {
-                titleText = "Estrus (Heat Period) Observed"
                 detailsText = "Clear mucus discharge and standing heat recorded during morning herd inspection."
                 notesText = "Observed by Worker John"
                 metricText = "Standing Heat"
                 reminderText = "AI Service Due within 12-18 hours (AM/PM Rule)"
             }
             "WEIGHT" -> {
-                titleText = "Routine Weight Measurement"
                 detailsText = "Body Condition Score: 3.5/5. Healthy weight progression."
                 notesText = "Weighed on digital livestock scale"
                 metricText = "510 kg"
                 reminderText = "In 30 days (Monthly Weighing)"
             }
             "HEALTH" -> {
-                titleText = "Vaccination / Medical Treatment"
                 detailsText = "Foot & Mouth booster 2ml administered subcutaneously."
                 notesText = "Dosage: 2ml subcutaneously (Batch #FMD-2026-X)"
                 metricText = "2 ml"
                 reminderText = "In 6 months (Booster Due)"
+            }
+            "OTHER" -> {
+                detailsText = "General observation or other farm management activity."
+                notesText = "Recorded by: Staff"
+                metricText = ""
+                reminderText = ""
             }
         }
     }
@@ -276,16 +264,17 @@ fun AddCattleEventDialog(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 val eventTypesRow1 = listOf(
-                    "PD" to "🧪 PD (Pregnancy)",
+                    "PD" to "🧪 PD",
                     "INSEMINATION" to "🧬 AI / Service",
-                    "CALVING" to "🍼 Calving"
+                    "CALVING" to "🍼 Calving",
+                    "DRY_OFF" to "🍂 Dry Off"
                 )
 
                 val eventTypesRow2 = listOf(
-                    "DRY_OFF" to "🍂 Dry Off",
                     "HEAT" to "🔥 Heat",
                     "WEIGHT" to "⚖️ Weight",
-                    "HEALTH" to "🩺 Health"
+                    "HEALTH" to "🩺 Health",
+                    "OTHER" to "📌 Other"
                 )
 
                 Row(
@@ -366,7 +355,6 @@ fun AddCattleEventDialog(
                                 .weight(1f)
                                 .clickable {
                                     pdResult = "CONFIRMED_POSITIVE"
-                                    titleText = "Pregnancy Diagnosis (PD) - Confirmed Positive"
                                     detailsText = "Pregnancy confirmed positive. Cow is now in-calf."
                                     metricText = "Positive (In-Calf)"
                                 }
@@ -391,7 +379,6 @@ fun AddCattleEventDialog(
                                 .weight(1f)
                                 .clickable {
                                     pdResult = "NEGATIVE"
-                                    titleText = "Pregnancy Diagnosis (PD) - Negative (Open)"
                                     detailsText = "Pregnancy test negative. Cow is open."
                                     metricText = "Negative (Open)"
                                 }
@@ -408,18 +395,6 @@ fun AddCattleEventDialog(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-
-                // Title Input
-                OutlinedTextField(
-                    value = titleText,
-                    onValueChange = { titleText = it },
-                    label = { Text("Event Title") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
 
                 // Date & Metric Input Row
                 Row(
@@ -446,11 +421,19 @@ fun AddCattleEventDialog(
                                     "DRY_OFF" -> "Treatment"
                                     "WEIGHT" -> "Weight (kg)"
                                     "HEALTH" -> "Dosage"
+                                    else -> "Details / Metric"
+                                }
+                            )
+                        },
+                        placeholder = {
+                            Text(
+                                when (selectedCategory) {
+                                    "WEIGHT" -> "480 kg"
+                                    "OTHER" -> "e.g. Hoof trim"
                                     else -> "Details"
                                 }
                             )
                         },
-                        placeholder = { Text(if (selectedCategory == "WEIGHT") "480 kg" else "Details") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true
@@ -514,17 +497,26 @@ fun AddCattleEventDialog(
 
                     Button(
                         onClick = {
-                            if (titleText.isNotBlank()) {
-                                onSaveEvent(
-                                    selectedCategory,
-                                    titleText,
-                                    dateText,
-                                    detailsText,
-                                    notesText,
-                                    metricText,
-                                    reminderText
-                                )
+                            val computedTitle = when (selectedCategory) {
+                                "PD" -> if (pdResult == "CONFIRMED_POSITIVE") "Pregnancy Diagnosis (PD) - Positive" else "Pregnancy Diagnosis (PD) - Negative"
+                                "INSEMINATION" -> "Artificial Insemination (AI)"
+                                "CALVING" -> "Calving & Calf Delivery"
+                                "DRY_OFF" -> "Dry Off"
+                                "HEAT" -> "Estrus (Heat Period) Observed"
+                                "WEIGHT" -> "Weight Measurement"
+                                "HEALTH" -> "Health & Treatment"
+                                "OTHER" -> "Other Cattle Event"
+                                else -> selectedCategory.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
                             }
+                            onSaveEvent(
+                                selectedCategory,
+                                computedTitle,
+                                dateText,
+                                detailsText,
+                                notesText,
+                                metricText,
+                                reminderText
+                            )
                         },
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)

@@ -341,6 +341,7 @@ fun EditAnimalDialog(
                             "HEIFER" to "🌾 Heifer",
                             "CALF" to "🍼 Calf",
                             "DRY" to "🍂 Dry",
+                            "INSEMINATED" to "💉 Inseminated",
                             "BULL" to "🐂 Bull"
                         ).forEach { (stgKey, label) ->
                             val isStg = status.equals(stgKey, ignoreCase = true) || status.equals(label, ignoreCase = true)
@@ -381,7 +382,13 @@ fun EditAnimalDialog(
                     ) {
                         AppDatePickerField(
                             value = dob,
-                            onValueChange = { dob = it },
+                            onValueChange = { 
+                                dob = it
+                                if (it.isNotBlank()) {
+                                    val calcAge = com.example.util.CattleLifecycleEngine.calculateAgeFromDob(it)
+                                    if (calcAge != "N/A") ageText = calcAge
+                                }
+                            },
                             label = "Date of Birth",
                             placeholder = "Select DOB",
                             modifier = Modifier.weight(1f),

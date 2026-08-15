@@ -161,36 +161,189 @@ abstract class MkulimaDatabase : RoomDatabase() {
                 )
                 farmDao.insertTasks(initialTasks)
 
-                // Seed Milk Logs
+                // Seed Milk Logs with diverse historical, multi-session, and monthly records
                 val initialMilk = listOf(
+                    // Current Month (August 2026) - Daisy daily logs with morning, afternoon & evening
                     MilkLog(
                         cowName = "Daisy (Friesian)",
                         unitName = "Dairy Herd - Friesians",
                         litres = 18.5,
                         session = "Morning",
                         fatPercentage = 3.9,
-                        date = "12 Aug 2026",
-                        loggedAt = "12 Aug, 06:30 AM",
+                        date = "15 Aug 2026",
+                        loggedAt = "15 Aug, 06:30 AM",
                         notes = "Chilled to 4°C immediately. Delivered to Brookside Dairy Co-op."
                     ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 12.0,
+                        session = "Afternoon",
+                        fatPercentage = 3.8,
+                        date = "15 Aug 2026",
+                        loggedAt = "15 Aug, 01:15 PM",
+                        notes = "Mid-day milking."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 14.5,
+                        session = "Evening",
+                        fatPercentage = 4.1,
+                        date = "15 Aug 2026",
+                        loggedAt = "15 Aug, 05:45 PM",
+                        notes = "Evening milking completed without issues."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 19.0,
+                        session = "Morning",
+                        fatPercentage = 4.0,
+                        date = "12 Aug 2026",
+                        loggedAt = "12 Aug, 06:30 AM",
+                        notes = "Morning milking."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 11.5,
+                        session = "Afternoon",
+                        fatPercentage = 3.8,
+                        date = "12 Aug 2026",
+                        loggedAt = "12 Aug, 01:30 PM",
+                        notes = "Afternoon milking."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 13.5,
+                        session = "Evening",
+                        fatPercentage = 4.0,
+                        date = "12 Aug 2026",
+                        loggedAt = "12 Aug, 06:00 PM",
+                        notes = "Evening session."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 20.0,
+                        session = "Morning",
+                        fatPercentage = 4.0,
+                        date = "08 Aug 2026",
+                        loggedAt = "08 Aug, 06:30 AM",
+                        notes = "Peak morning production."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 13.0,
+                        session = "Afternoon",
+                        fatPercentage = 3.9,
+                        date = "08 Aug 2026",
+                        loggedAt = "08 Aug, 01:20 PM",
+                        notes = "Afternoon yield."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 15.0,
+                        session = "Evening",
+                        fatPercentage = 4.2,
+                        date = "08 Aug 2026",
+                        loggedAt = "08 Aug, 05:50 PM",
+                        notes = "Evening session."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 17.5,
+                        session = "Morning",
+                        fatPercentage = 3.9,
+                        date = "02 Aug 2026",
+                        loggedAt = "02 Aug, 06:30 AM",
+                        notes = "Early month yield."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 11.0,
+                        session = "Afternoon",
+                        fatPercentage = 3.7,
+                        date = "02 Aug 2026",
+                        loggedAt = "02 Aug, 01:30 PM",
+                        notes = "Mid-day yield."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 13.0,
+                        session = "Evening",
+                        fatPercentage = 4.0,
+                        date = "02 Aug 2026",
+                        loggedAt = "02 Aug, 05:45 PM",
+                        notes = "Evening collection."
+                    ),
+                    // Bella (Ayrshire) August Logs
                     MilkLog(
                         cowName = "Bella (Ayrshire)",
                         unitName = "Dairy Herd - Friesians",
                         litres = 16.0,
                         session = "Morning",
                         fatPercentage = 4.1,
-                        date = "12 Aug 2026",
-                        loggedAt = "12 Aug, 06:45 AM",
+                        date = "15 Aug 2026",
+                        loggedAt = "15 Aug, 06:45 AM",
                         notes = "High cream yield."
                     ),
+                    MilkLog(
+                        cowName = "Bella (Ayrshire)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 10.5,
+                        session = "Afternoon",
+                        fatPercentage = 4.0,
+                        date = "15 Aug 2026",
+                        loggedAt = "15 Aug, 01:15 PM",
+                        notes = "Mid-day yield."
+                    ),
+                    MilkLog(
+                        cowName = "Bella (Ayrshire)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 12.5,
+                        session = "Evening",
+                        fatPercentage = 4.2,
+                        date = "15 Aug 2026",
+                        loggedAt = "15 Aug, 05:30 PM",
+                        notes = "Evening session."
+                    ),
+                    MilkLog(
+                        cowName = "Bella (Ayrshire)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 15.5,
+                        session = "Morning",
+                        fatPercentage = 4.0,
+                        date = "09 Aug 2026",
+                        loggedAt = "09 Aug, 06:45 AM",
+                        notes = "Morning collection."
+                    ),
+                    MilkLog(
+                        cowName = "Bella (Ayrshire)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 11.0,
+                        session = "Evening",
+                        fatPercentage = 4.1,
+                        date = "09 Aug 2026",
+                        loggedAt = "09 Aug, 05:30 PM",
+                        notes = "Evening collection."
+                    ),
+                    // Bossy & Buttercup Logs
                     MilkLog(
                         cowName = "Bossy (Guernsey)",
                         unitName = "Dairy Herd - Friesians",
                         litres = 14.2,
                         session = "Afternoon",
                         fatPercentage = 3.8,
-                        date = "12 Aug 2026",
-                        loggedAt = "12 Aug, 01:30 PM",
+                        date = "15 Aug 2026",
+                        loggedAt = "15 Aug, 01:30 PM",
                         notes = "Mid-day session."
                     ),
                     MilkLog(
@@ -199,9 +352,141 @@ abstract class MkulimaDatabase : RoomDatabase() {
                         litres = 15.5,
                         session = "Evening",
                         fatPercentage = 4.2,
-                        date = "11 Aug 2026",
-                        loggedAt = "11 Aug, 05:45 PM",
+                        date = "15 Aug 2026",
+                        loggedAt = "15 Aug, 05:45 PM",
                         notes = "Evening milking completed without issues."
+                    ),
+                    // Previous Month (July 2026) - Daisy
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 20.5,
+                        session = "Morning",
+                        fatPercentage = 3.9,
+                        date = "28 Jul 2026",
+                        loggedAt = "28 Jul, 06:30 AM",
+                        notes = "Week 4 July morning collection."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 13.0,
+                        session = "Afternoon",
+                        fatPercentage = 3.8,
+                        date = "28 Jul 2026",
+                        loggedAt = "28 Jul, 01:30 PM",
+                        notes = "Week 4 July afternoon collection."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 14.0,
+                        session = "Evening",
+                        fatPercentage = 4.0,
+                        date = "28 Jul 2026",
+                        loggedAt = "28 Jul, 05:45 PM",
+                        notes = "Week 4 July evening collection."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 19.5,
+                        session = "Morning",
+                        fatPercentage = 3.9,
+                        date = "15 Jul 2026",
+                        loggedAt = "15 Jul, 06:30 AM",
+                        notes = "Mid-month morning."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 12.5,
+                        session = "Afternoon",
+                        fatPercentage = 3.8,
+                        date = "15 Jul 2026",
+                        loggedAt = "15 Jul, 01:30 PM",
+                        notes = "Mid-month afternoon."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 14.0,
+                        session = "Evening",
+                        fatPercentage = 4.1,
+                        date = "15 Jul 2026",
+                        loggedAt = "15 Jul, 05:45 PM",
+                        notes = "Mid-month evening."
+                    ),
+                    MilkLog(
+                        cowName = "Bella (Ayrshire)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 19.0,
+                        session = "Morning",
+                        fatPercentage = 4.2,
+                        date = "18 Jul 2026",
+                        loggedAt = "18 Jul, 06:30 AM",
+                        notes = "Week 3 July yield."
+                    ),
+                    MilkLog(
+                        cowName = "Bossy (Guernsey)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 15.5,
+                        session = "Afternoon",
+                        fatPercentage = 4.0,
+                        date = "11 Jul 2026",
+                        loggedAt = "11 Jul, 01:30 PM",
+                        notes = "Week 2 July yield."
+                    ),
+                    MilkLog(
+                        cowName = "Buttercup (Jersey)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 16.0,
+                        session = "Morning",
+                        fatPercentage = 4.3,
+                        date = "04 Jul 2026",
+                        loggedAt = "04 Jul, 06:30 AM",
+                        notes = "Week 1 July yield."
+                    ),
+                    // Historical records for 6-month and annual stats
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 120.0,
+                        session = "Morning",
+                        fatPercentage = 3.9,
+                        date = "15 Jun 2026",
+                        loggedAt = "15 Jun, 06:30 AM",
+                        notes = "June monthly total aggregate."
+                    ),
+                    MilkLog(
+                        cowName = "Bella (Ayrshire)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 115.0,
+                        session = "Morning",
+                        fatPercentage = 4.0,
+                        date = "15 May 2026",
+                        loggedAt = "15 May, 06:30 AM",
+                        notes = "May monthly total aggregate."
+                    ),
+                    MilkLog(
+                        cowName = "Daisy (Friesian)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 105.0,
+                        session = "Morning",
+                        fatPercentage = 3.9,
+                        date = "15 Apr 2026",
+                        loggedAt = "15 Apr, 06:30 AM",
+                        notes = "April monthly total aggregate."
+                    ),
+                    MilkLog(
+                        cowName = "Bossy (Guernsey)",
+                        unitName = "Dairy Herd - Friesians",
+                        litres = 98.0,
+                        session = "Morning",
+                        fatPercentage = 3.8,
+                        date = "15 Mar 2026",
+                        loggedAt = "15 Mar, 06:30 AM",
+                        notes = "March monthly total aggregate."
                     )
                 )
                 farmDao.insertMilkLogs(initialMilk)

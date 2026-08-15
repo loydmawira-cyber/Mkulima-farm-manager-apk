@@ -142,36 +142,6 @@ fun MkulimaApp(
                                 color = Color(0xFF1E293B)
                             )
                         }
-
-                        // Role Toggle Badge Pill (Owner / Worker)
-                        Surface(
-                            shape = RoundedCornerShape(100.dp),
-                            color = if (userRole == "Owner") ForestGreenPrimary else Color(0xFFF1F5F9),
-                            modifier = Modifier
-                                .clickable {
-                                    userRole = if (userRole == "Owner") "Worker" else "Owner"
-                                }
-                                .testTag("role_toggle_pill")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (userRole == "Worker") {
-                                    Text(
-                                        text = "Toggle Owner View  •  ",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF64748B)
-                                    )
-                                }
-                                Text(
-                                    text = userRole,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (userRole == "Owner") Color.White else Color(0xFF1E293B)
-                                )
-                            }
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -304,6 +274,7 @@ fun MkulimaApp(
                     eggLogs = eggLogs,
                     units = allUnits,
                     financeRecords = financeRecords,
+                    employeeRequests = employeeRequests,
                     searchQuery = searchQuery,
                     onSearchQueryChange = { viewModel.searchQuery.value = it },
                     selectedCategory = selectedCategoryFilter,
@@ -315,7 +286,12 @@ fun MkulimaApp(
                     onViewProofClick = { proofModalTaskTarget = it },
                     onDeleteTaskClick = { viewModel.deleteTask(it.id) },
                     onAddTaskClick = { showAddTaskDialog = true },
-                    onRestockClick = { showAddFinanceDialog = true }
+                    onRestockClick = { showAddFinanceDialog = true },
+                    onNavigateToTab = { selectedTab = it },
+                    onAddUnitClick = { showAddUnitDialog = true },
+                    onAddMilkLogClick = { showAddMilkLogDialog = true },
+                    onAddEggLogClick = { showAddEggLogDialog = true },
+                    userRole = userRole
                 )
 
                 1 -> FlocksScreen(

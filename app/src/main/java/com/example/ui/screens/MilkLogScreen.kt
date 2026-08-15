@@ -58,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import com.example.ui.components.AppDatePickerField
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -110,6 +111,20 @@ data class CowYieldAnalysis(
     val eveningCount: Int
 )
 
+data class CowDayMilkBreakdown(
+    val dateKey: String,
+    val displayDate: String,
+    val dayOfWeek: String,
+    val dayOfMonth: Int,
+    val morningYield: Double,
+    val morningCount: Int,
+    val afternoonYield: Double,
+    val afternoonCount: Int,
+    val eveningYield: Double,
+    val eveningCount: Int,
+    val dailyTotal: Double
+)
+
 fun isLogForCow(log: MilkLog, cow: AnimalCowItem): Boolean {
     val cleanLogName = log.cowName.lowercase()
     val cleanCowName = cow.name.lowercase()
@@ -119,6 +134,33 @@ fun isLogForCow(log: MilkLog, cow: AnimalCowItem): Boolean {
             cleanCowName.contains(cleanLogName) ||
             (cowBase.isNotEmpty() && cleanLogName.contains(cowBase)) ||
             (tag.isNotEmpty() && cleanLogName.contains(tag))
+}
+
+fun parseMilkLogCalendar(dateStr: String): java.util.Calendar? {
+    val clean = dateStr.trim()
+    val formats = arrayOf(
+        "dd MMM yyyy",
+        "d MMM yyyy",
+        "yyyy-MM-dd",
+        "dd/MM/yyyy",
+        "dd-MM-yyyy",
+        "dd MMM, hh:mm a",
+        "dd MMM"
+    )
+    for (fmt in formats) {
+        try {
+            val sdf = SimpleDateFormat(fmt, Locale.getDefault())
+            val parsed = sdf.parse(clean)
+            if (parsed != null) {
+                val cal = java.util.Calendar.getInstance().apply { time = parsed }
+                if (cal.get(java.util.Calendar.YEAR) < 2000) {
+                    cal.set(java.util.Calendar.YEAR, java.util.Calendar.getInstance().get(java.util.Calendar.YEAR))
+                }
+                return cal
+            }
+        } catch (_: Exception) {}
+    }
+    return null
 }
 
 /**
@@ -387,7 +429,23 @@ fun MilkLogScreen(
 
     // --- PER COW ANALYTICS STATE ---
     var perCowSelectedCow by remember { mutableStateOf<AnimalCowItem>(cowsList.firstOrNull() ?: AnimalCowItem("#102", "Bessie (#102)", "Friesian", 120)) }
-    var perCowTimeframe by remember { mutableStateOf("TODAY") } // TODAY, WEEKLY, MONTHLY, LACTATION
+    val currentCal = remember { java.util.Calendar.getInstance() }
+    val defaultMonthName = remember { SimpleDateFormat("MMMM", Locale.getDefault()).format(currentCal.time) } // e.g. "August"
+    val defaultYearName = remember { SimpleDateFormat("yyyy", Locale.getDefault()).format(currentCal.time) } // e.g. "2026"
+    val monthsList = remember {
+        listOf(
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        )
+    }
+    val currentYearNum = remember { currentCal.get(java.util.Calendar.YEAR) }
+    val yearsList = remember { ((currentYearNum - 5)..(currentYearNum + 2)).map { it.toString() } } // 8 years (e.g. 2021..2028)
+
+    var perCowTimeframe by remember { mutableStateOf("TODAY") } // TODAY, MONTH, YEAR
+    var selectedPerCowMonth by remember { mutableStateOf(defaultMonthName) }
+    var selectedPerCowYear by remember { mutableStateOf(defaultYearName) }
+    var isMonthMenuExpanded by remember { mutableStateOf(false) }
+    var isYearMenuExpanded by remember { mutableStateOf(false) }
 
     // --- OVERALL TOTALS & CHART STATE ---
     var overallTimeframe by remember { mutableStateOf("CURRENT_MONTH") } // DAILY, CURRENT_MONTH, PREV_MONTH, SIX_MONTHS, YEAR
@@ -652,14 +710,27 @@ fun MilkLogScreen(
                                     listOf("No Data")
                                 )
                             } else {
+                                val nowCal = java.util.Calendar.getInstance()
+                                val cMonth = nowCal.get(java.util.Calendar.MONTH)
+                                val cYear = nowCal.get(java.util.Calendar.YEAR)
+                                val cDayOfYear = nowCal.get(java.util.Calendar.DAY_OF_YEAR)
+
                                 when (overallTimeframe) {
                                     "DAILY" -> {
-                                        val todayLogs = milkLogs.filter { it.date == todayDateStr || it.date.contains("Today", ignoreCase = true) }
-                                        val targetLogs = if (todayLogs.isNotEmpty()) todayLogs else milkLogs
+                                        val todayLogs = milkLogs.filter { log ->
+                                            val c = parseMilkLogCalendar(log.date)
+                                            (c != null && c.get(java.util.Calendar.YEAR) == cYear && c.get(java.util.Calendar.DAY_OF_YEAR) == cDayOfYear) ||
+                                                    log.date.equals(todayDateStr, ignoreCase = true) ||
+                                                    log.date.contains("Today", ignoreCase = true)
+                                        }
+                                        val targetLogs = if (todayLogs.isNotEmpty()) todayLogs else {
+                                            val latestDate = milkLogs.firstOrNull()?.date ?: todayDateStr
+                                            milkLogs.filter { it.date == latestDate }
+                                        }
 
-                                        val morningLogs = targetLogs.filter { it.session.equals("Morning", ignoreCase = true) || it.session.contains("AM", ignoreCase = true) }
-                                        val afternoonLogs = targetLogs.filter { it.session.equals("Afternoon", ignoreCase = true) || it.session.equals("Midday", ignoreCase = true) }
-                                        val eveningLogs = targetLogs.filter { it.session.equals("Evening", ignoreCase = true) || it.session.equals("Night", ignoreCase = true) || (it.session.contains("PM", ignoreCase = true) && !it.session.equals("Afternoon", ignoreCase = true)) }
+                                        val morningLogs = targetLogs.filter { it.session.contains("Morning", ignoreCase = true) || it.session.contains("AM", ignoreCase = true) }
+                                        val afternoonLogs = targetLogs.filter { it.session.contains("Afternoon", ignoreCase = true) || it.session.contains("Midday", ignoreCase = true) || it.session.contains("Noon", ignoreCase = true) }
+                                        val eveningLogs = targetLogs.filter { it.session.contains("Evening", ignoreCase = true) || it.session.contains("Night", ignoreCase = true) || (it.session.contains("PM", ignoreCase = true) && !it.session.contains("Afternoon", ignoreCase = true)) }
 
                                         val morningL = morningLogs.sumOf { it.litres }.toFloat()
                                         val afternoonL = afternoonLogs.sumOf { it.litres }.toFloat()
@@ -679,35 +750,178 @@ fun MilkLogScreen(
                                             listOf("Morning (AM)", "Midday (Noon)", "Evening (PM)")
                                         )
                                     }
-                                    else -> {
-                                        // 7-day trend from the last 7 calendar days
-                                        val sdf = SimpleDateFormat("dd MMM", Locale.getDefault())
-                                        val last7Days = (6 downTo 0).map { dayOffset ->
-                                            val c = java.util.Calendar.getInstance()
-                                            c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
-                                            val fullDate = dateFormat.format(c.time)
-                                            val shortLabel = sdf.format(c.time)
-                                            Triple(fullDate, shortLabel, c.time)
+                                    "CURRENT_MONTH" -> {
+                                        val shortMonth = SimpleDateFormat("MMM", Locale.getDefault()).format(nowCal.time)
+                                        val fullMonth = SimpleDateFormat("MMMM", Locale.getDefault()).format(nowCal.time)
+                                        val monthLogs = milkLogs.filter { log ->
+                                            val c = parseMilkLogCalendar(log.date)
+                                            if (c != null) {
+                                                c.get(java.util.Calendar.MONTH) == cMonth && c.get(java.util.Calendar.YEAR) == cYear
+                                            } else {
+                                                log.date.contains(shortMonth, ignoreCase = true) || log.date.contains(fullMonth, ignoreCase = true)
+                                            }
                                         }
 
-                                        val points = last7Days.map { (fullDate, _, _) ->
-                                            val matchingLogs = milkLogs.filter { it.date.equals(fullDate, ignoreCase = true) }
-                                            matchingLogs.sumOf { it.litres }.toFloat()
-                                        }
+                                        val w1Logs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 1) in 1..7 }
+                                        val w2Logs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 8) in 8..14 }
+                                        val w3Logs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 15) in 15..21 }
+                                        val w4Logs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 22) >= 22 }
 
-                                        val labels = last7Days.map { it.second }
-                                        val totalL = milkLogs.sumOf { it.litres }
-                                        val distinctDaysCount = milkLogs.map { it.date }.distinct().size.coerceAtLeast(1)
-                                        val dailyAvg = totalL / distinctDaysCount
-                                        val topCowName = milkLogs.groupBy { it.cowName }.maxByOrNull { entry -> entry.value.sumOf { it.litres } }?.let { "${it.key} (${"%.1f".format(it.value.sumOf { it.litres })}L)" } ?: "Herd"
+                                        val w1 = w1Logs.sumOf { it.litres }.toFloat()
+                                        val w2 = w2Logs.sumOf { it.litres }.toFloat()
+                                        val w3 = w3Logs.sumOf { it.litres }.toFloat()
+                                        val w4 = w4Logs.sumOf { it.litres }.toFloat()
+
+                                        val totalL = monthLogs.sumOf { it.litres }
+                                        val distinctDays = monthLogs.map { it.date }.distinct().size.coerceAtLeast(1)
+                                        val dailyAvg = if (monthLogs.isNotEmpty()) totalL / distinctDays.toDouble() else 0.0
+                                        val topCowName = monthLogs.groupBy { it.cowName }.maxByOrNull { it.value.sumOf { it.litres } }?.let { "${it.key} (${"%.1f".format(it.value.sumOf { it.litres })}L)" } ?: "Herd"
 
                                         Triple(
                                             MilkTotalsSummary(
                                                 totalLitres = "%.1f L".format(totalL),
                                                 avgPerDay = "%.1f L/day".format(dailyAvg),
                                                 topCow = topCowName,
-                                                trendStr = "${milkLogs.size} logs across $distinctDaysCount days"
+                                                trendStr = "$fullMonth: ${monthLogs.size} logs across $distinctDays days"
                                             ),
+                                            listOf(w1, w2, w3, w4),
+                                            listOf("1-7 $shortMonth", "8-14 $shortMonth", "15-21 $shortMonth", "22+ $shortMonth")
+                                        )
+                                    }
+                                    "PREV_MONTH" -> {
+                                        val prevCal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.MONTH, -1) }
+                                        val pMonth = prevCal.get(java.util.Calendar.MONTH)
+                                        val pYear = prevCal.get(java.util.Calendar.YEAR)
+                                        val pShortMonth = SimpleDateFormat("MMM", Locale.getDefault()).format(prevCal.time)
+                                        val pFullMonth = SimpleDateFormat("MMMM", Locale.getDefault()).format(prevCal.time)
+
+                                        val prevMonthLogs = milkLogs.filter { log ->
+                                            val c = parseMilkLogCalendar(log.date)
+                                            if (c != null) {
+                                                c.get(java.util.Calendar.MONTH) == pMonth && c.get(java.util.Calendar.YEAR) == pYear
+                                            } else {
+                                                log.date.contains(pShortMonth, ignoreCase = true) || log.date.contains(pFullMonth, ignoreCase = true)
+                                            }
+                                        }
+
+                                        val w1Logs = prevMonthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 1) in 1..7 }
+                                        val w2Logs = prevMonthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 8) in 8..14 }
+                                        val w3Logs = prevMonthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 15) in 15..21 }
+                                        val w4Logs = prevMonthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 22) >= 22 }
+
+                                        val w1 = w1Logs.sumOf { it.litres }.toFloat()
+                                        val w2 = w2Logs.sumOf { it.litres }.toFloat()
+                                        val w3 = w3Logs.sumOf { it.litres }.toFloat()
+                                        val w4 = w4Logs.sumOf { it.litres }.toFloat()
+
+                                        val totalL = prevMonthLogs.sumOf { it.litres }
+                                        val distinctDays = prevMonthLogs.map { it.date }.distinct().size.coerceAtLeast(1)
+                                        val dailyAvg = if (prevMonthLogs.isNotEmpty()) totalL / distinctDays.toDouble() else 0.0
+                                        val topCowName = prevMonthLogs.groupBy { it.cowName }.maxByOrNull { it.value.sumOf { it.litres } }?.let { "${it.key} (${"%.1f".format(it.value.sumOf { it.litres })}L)" } ?: "None"
+
+                                        Triple(
+                                            MilkTotalsSummary(
+                                                totalLitres = "%.1f L".format(totalL),
+                                                avgPerDay = "%.1f L/day".format(dailyAvg),
+                                                topCow = topCowName,
+                                                trendStr = "$pFullMonth: ${prevMonthLogs.size} logs across $distinctDays days"
+                                            ),
+                                            listOf(w1, w2, w3, w4),
+                                            listOf("1-7 $pShortMonth", "8-14 $pShortMonth", "15-21 $pShortMonth", "22+ $pShortMonth")
+                                        )
+                                    }
+                                    "SIX_MONTHS" -> {
+                                        val sixMonthsData = (5 downTo 0).map { offset ->
+                                            val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.MONTH, -offset) }
+                                            val targetMonth = cal.get(java.util.Calendar.MONTH)
+                                            val targetYear = cal.get(java.util.Calendar.YEAR)
+                                            val monthLabel = SimpleDateFormat("MMM", Locale.getDefault()).format(cal.time)
+
+                                            val logsForMonth = milkLogs.filter { log ->
+                                                val c = parseMilkLogCalendar(log.date)
+                                                if (c != null) {
+                                                    c.get(java.util.Calendar.MONTH) == targetMonth && c.get(java.util.Calendar.YEAR) == targetYear
+                                                } else {
+                                                    log.date.contains(monthLabel, ignoreCase = true)
+                                                }
+                                            }
+                                            val sumL = logsForMonth.sumOf { it.litres }.toFloat()
+                                            Triple(monthLabel, sumL, logsForMonth)
+                                        }
+
+                                        val labels = sixMonthsData.map { it.first }
+                                        val points = sixMonthsData.map { it.second }
+                                        val all6mLogs = sixMonthsData.flatMap { it.third }
+
+                                        val totalL = all6mLogs.sumOf { it.litres }
+                                        val distinctDays = all6mLogs.map { it.date }.distinct().size.coerceAtLeast(1)
+                                        val dailyAvg = if (all6mLogs.isNotEmpty()) totalL / distinctDays.toDouble() else 0.0
+                                        val topCowName = all6mLogs.groupBy { it.cowName }.maxByOrNull { it.value.sumOf { it.litres } }?.let { "${it.key} (${"%.1f".format(it.value.sumOf { it.litres })}L)" } ?: "Herd"
+
+                                        Triple(
+                                            MilkTotalsSummary(
+                                                totalLitres = "%.1f L".format(totalL),
+                                                avgPerDay = "%.1f L/day".format(dailyAvg),
+                                                topCow = topCowName,
+                                                trendStr = "6-Month Trend (${labels.first()} – ${labels.last()})"
+                                            ),
+                                            points,
+                                            labels
+                                        )
+                                    }
+                                    "YEAR" -> {
+                                        val yearLogs = milkLogs.filter { log ->
+                                            val c = parseMilkLogCalendar(log.date)
+                                            if (c != null) {
+                                                c.get(java.util.Calendar.YEAR) == cYear
+                                            } else {
+                                                log.date.contains(cYear.toString())
+                                            }
+                                        }
+
+                                        val allMonthsData = (0..11).map { mIdx ->
+                                            val cal = java.util.Calendar.getInstance().apply {
+                                                set(java.util.Calendar.YEAR, cYear)
+                                                set(java.util.Calendar.MONTH, mIdx)
+                                            }
+                                            val monthLabel = SimpleDateFormat("MMM", Locale.getDefault()).format(cal.time)
+                                            val logsForMonth = yearLogs.filter { log ->
+                                                val c = parseMilkLogCalendar(log.date)
+                                                if (c != null) {
+                                                    c.get(java.util.Calendar.MONTH) == mIdx && c.get(java.util.Calendar.YEAR) == cYear
+                                                } else {
+                                                    log.date.contains(monthLabel, ignoreCase = true)
+                                                }
+                                            }
+                                            val sumL = logsForMonth.sumOf { it.litres }.toFloat()
+                                            monthLabel to sumL
+                                        }
+
+                                        val labels = allMonthsData.map { it.first }
+                                        val points = allMonthsData.map { it.second }
+
+                                        val totalL = yearLogs.sumOf { it.litres }
+                                        val distinctDays = yearLogs.map { it.date }.distinct().size.coerceAtLeast(1)
+                                        val dailyAvg = if (yearLogs.isNotEmpty()) totalL / distinctDays.toDouble() else 0.0
+                                        val topCowName = yearLogs.groupBy { it.cowName }.maxByOrNull { it.value.sumOf { it.litres } }?.let { "${it.key} (${"%.1f".format(it.value.sumOf { it.litres })}L)" } ?: "Herd"
+
+                                        Triple(
+                                            MilkTotalsSummary(
+                                                totalLitres = "%.1f L".format(totalL),
+                                                avgPerDay = "%.1f L/day".format(dailyAvg),
+                                                topCow = topCowName,
+                                                trendStr = "Annual Total $cYear: ${yearLogs.size} logs across $distinctDays days"
+                                            ),
+                                            points,
+                                            labels
+                                        )
+                                    }
+                                    else -> {
+                                        val points = milkLogs.take(7).map { it.litres.toFloat() }
+                                        val labels = milkLogs.take(7).map { it.date }
+                                        val totalL = milkLogs.sumOf { it.litres }
+                                        Triple(
+                                            MilkTotalsSummary("%.1f L".format(totalL), "%.1f L/day".format(totalL / 7), "Herd", "Overview"),
                                             points,
                                             labels
                                         )
@@ -1004,14 +1218,12 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        OutlinedTextField(
+                        AppDatePickerField(
                             value = selectedLogDate,
                             onValueChange = { selectedLogDate = it },
-                            label = { Text("Log Date (e.g., 12 Aug 2026)") },
-                            leadingIcon = { Icon(Icons.Filled.CalendarToday, contentDescription = null, tint = ForestGreenPrimary) },
+                            label = "Log Date",
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
+                            testTag = "milk_quick_log_date_picker"
                         )
 
                         Spacer(modifier = Modifier.height(14.dp))
@@ -1152,91 +1364,312 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Timeframe Chips for Per Cow View: TODAY, WEEKLY, MONTHLY, ENTIRE LACTATION
+                        // Timeframe Tabs for Per Cow View: Today, Month, Year
                         Text("TIME PERIOD", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            listOf(
-                                "TODAY" to "Today",
-                                "WEEKLY" to "Weekly",
-                                "MONTHLY" to "Monthly",
-                                "LACTATION" to "Entire Lactation"
-                            ).forEach { (tfKey, tfLabel) ->
-                                val isSel = perCowTimeframe == tfKey
-                                FilterChip(
-                                    selected = isSel,
-                                    onClick = { perCowTimeframe = tfKey },
-                                    label = { Text(tfLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ForestGreenPrimary,
-                                        selectedLabelColor = Color.White,
-                                        containerColor = Color(0xFFF1F5F9),
-                                        labelColor = Color(0xFF475569)
-                                    ),
-                                    modifier = Modifier.weight(1f)
-                                )
+                            // 1. TODAY TAB
+                            val isTodaySelected = perCowTimeframe == "TODAY"
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isTodaySelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                border = if (isTodaySelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        perCowTimeframe = "TODAY"
+                                    }
+                                    .testTag("per_cow_today_tab")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Today",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isTodaySelected) Color.White else Color(0xFF334155)
+                                    )
+                                }
+                            }
+
+                            // 2. MONTH TAB (defaults to current month e.g. "August", clickable with 12 months dropdown)
+                            val isMonthSelected = perCowTimeframe == "MONTH"
+                            Box(modifier = Modifier.weight(1.3f)) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isMonthSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    border = if (isMonthSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            perCowTimeframe = "MONTH"
+                                            isMonthMenuExpanded = true
+                                        }
+                                        .testTag("per_cow_month_tab")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = selectedPerCowMonth,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isMonthSelected) Color.White else Color(0xFF334155),
+                                            maxLines = 1
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowDropDown,
+                                            contentDescription = "Select Month",
+                                            tint = if (isMonthSelected) Color.White else Color(0xFF64748B),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = isMonthMenuExpanded,
+                                    onDismissRequest = { isMonthMenuExpanded = false },
+                                    modifier = Modifier.background(Color.White)
+                                ) {
+                                    monthsList.forEach { month ->
+                                        val isCurrent = month.equals(selectedPerCowMonth, ignoreCase = true)
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = month,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                    )
+                                                    if (isCurrent) {
+                                                        Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedPerCowMonth = month
+                                                perCowTimeframe = "MONTH"
+                                                isMonthMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 3. YEAR TAB (defaults to current year e.g. "2026", clickable with 8 years dropdown)
+                            val isYearSelected = perCowTimeframe == "YEAR"
+                            Box(modifier = Modifier.weight(1.1f)) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isYearSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    border = if (isYearSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            perCowTimeframe = "YEAR"
+                                            isYearMenuExpanded = true
+                                        }
+                                        .testTag("per_cow_year_tab")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = selectedPerCowYear,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isYearSelected) Color.White else Color(0xFF334155),
+                                            maxLines = 1
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowDropDown,
+                                            contentDescription = "Select Year",
+                                            tint = if (isYearSelected) Color.White else Color(0xFF64748B),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = isYearMenuExpanded,
+                                    onDismissRequest = { isYearMenuExpanded = false },
+                                    modifier = Modifier.background(Color.White)
+                                ) {
+                                    yearsList.forEach { yr ->
+                                        val isCurrent = yr == selectedPerCowYear
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = yr,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                    )
+                                                    if (isCurrent) {
+                                                        Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedPerCowYear = yr
+                                                perCowTimeframe = "YEAR"
+                                                isYearMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Dynamic Selected Cow Stats Summary from milkLogs across all 3 milking sessions
+                        // Filtered logs for selected cow and chosen time period (Month, Year, or Today)
                         val cowAllLogs = remember(milkLogs, perCowSelectedCow) {
                             milkLogs.filter { isLogForCow(it, perCowSelectedCow) }
                         }
 
-                        val cowYield = remember(cowAllLogs, perCowTimeframe, perCowSelectedCow) {
-                            val filteredLogs = when (perCowTimeframe) {
+                        val targetMonthIdx = remember(selectedPerCowMonth) {
+                            monthsList.indexOfFirst { it.equals(selectedPerCowMonth, ignoreCase = true) }
+                        }
+                        val targetYearInt = remember(selectedPerCowYear) {
+                            selectedPerCowYear.toIntOrNull() ?: 2026
+                        }
+                        val shortMonthLabel = remember(targetMonthIdx, selectedPerCowMonth) {
+                            if (targetMonthIdx >= 0) {
+                                val cal = java.util.Calendar.getInstance().apply { set(java.util.Calendar.MONTH, targetMonthIdx) }
+                                SimpleDateFormat("MMM", Locale.getDefault()).format(cal.time)
+                            } else selectedPerCowMonth.take(3)
+                        }
+
+                        val periodFilteredLogs = remember(cowAllLogs, perCowTimeframe, selectedPerCowMonth, selectedPerCowYear, targetMonthIdx, targetYearInt) {
+                            when (perCowTimeframe) {
                                 "TODAY" -> {
-                                    val todayLogs = cowAllLogs.filter { it.date == todayDateStr || it.date.contains("Today", ignoreCase = true) }
-                                    if (todayLogs.isNotEmpty()) todayLogs else cowAllLogs.take(3)
+                                    val nowCal = java.util.Calendar.getInstance()
+                                    val tYear = nowCal.get(java.util.Calendar.YEAR)
+                                    val tDayOfYear = nowCal.get(java.util.Calendar.DAY_OF_YEAR)
+                                    cowAllLogs.filter { log ->
+                                        val c = parseMilkLogCalendar(log.date)
+                                        (c != null && c.get(java.util.Calendar.YEAR) == tYear && c.get(java.util.Calendar.DAY_OF_YEAR) == tDayOfYear) ||
+                                                log.date.equals(todayDateStr, ignoreCase = true) ||
+                                                log.date.contains("Today", ignoreCase = true)
+                                    }
                                 }
-                                "WEEKLY" -> {
-                                    cowAllLogs.take(21)
+                                "MONTH" -> {
+                                    cowAllLogs.filter { log ->
+                                        val c = parseMilkLogCalendar(log.date)
+                                        if (c != null) {
+                                            c.get(java.util.Calendar.MONTH) == targetMonthIdx && c.get(java.util.Calendar.YEAR) == targetYearInt
+                                        } else {
+                                            (log.date.contains(selectedPerCowMonth, ignoreCase = true) || log.date.contains(shortMonthLabel, ignoreCase = true)) &&
+                                                    (log.date.contains(targetYearInt.toString()) || log.loggedAt.contains(targetYearInt.toString()))
+                                        }
+                                    }
                                 }
-                                "MONTHLY" -> {
-                                    cowAllLogs.take(90)
+                                "YEAR" -> {
+                                    cowAllLogs.filter { log ->
+                                        val c = parseMilkLogCalendar(log.date)
+                                        if (c != null) {
+                                            c.get(java.util.Calendar.YEAR) == targetYearInt
+                                        } else {
+                                            log.date.contains(targetYearInt.toString()) || log.loggedAt.contains(targetYearInt.toString())
+                                        }
+                                    }
                                 }
                                 else -> cowAllLogs
                             }
-
-                            val mLogs = filteredLogs.filter { it.session.equals("Morning", ignoreCase = true) || it.session.contains("AM", ignoreCase = true) }
-                            val midLogs = filteredLogs.filter { it.session.equals("Afternoon", ignoreCase = true) || it.session.equals("Midday", ignoreCase = true) }
-                            val eLogs = filteredLogs.filter { it.session.equals("Evening", ignoreCase = true) || it.session.equals("Night", ignoreCase = true) || (it.session.contains("PM", ignoreCase = true) && !it.session.equals("Afternoon", ignoreCase = true)) }
-
-                            val mSum = mLogs.sumOf { it.litres }
-                            val midSum = midLogs.sumOf { it.litres }
-                            val eSum = eLogs.sumOf { it.litres }
-                            val totalSum = filteredLogs.sumOf { it.litres }
-
-                            val dailyAvg = when (perCowTimeframe) {
-                                "TODAY" -> totalSum
-                                "WEEKLY" -> totalSum / 7.0
-                                "MONTHLY" -> totalSum / 30.0
-                                else -> totalSum / perCowSelectedCow.lactationDay.coerceAtLeast(1).toDouble()
-                            }
-
-                            val sessionStr = "AM: ${"%.1f".format(mSum)}L | Midday: ${"%.1f".format(midSum)}L | PM: ${"%.1f".format(eSum)}L"
-
-                            CowYieldAnalysis(
-                                cowLitres = "%.1f L".format(totalSum),
-                                cowAvg = "%.1f L/day".format(dailyAvg),
-                                cowSessions = sessionStr,
-                                morningYield = mSum,
-                                middayYield = midSum,
-                                eveningYield = eSum,
-                                morningCount = mLogs.size,
-                                middayCount = midLogs.size,
-                                eveningCount = eLogs.size
-                            )
                         }
 
+                        // Group the period logs by date/day to analyze morning, afternoon, evening and daily subtotals
+                        val dailyBreakdowns = remember(periodFilteredLogs) {
+                            val grouped = periodFilteredLogs.groupBy { log ->
+                                val cal = parseMilkLogCalendar(log.date)
+                                if (cal != null) {
+                                    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
+                                } else {
+                                    log.date
+                                }
+                            }
+
+                            grouped.map { (dateKey, logsForDay) ->
+                                val cal = logsForDay.mapNotNull { parseMilkLogCalendar(it.date) }.firstOrNull()
+                                val displayDate = if (cal != null) {
+                                    SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(cal.time)
+                                } else {
+                                    logsForDay.firstOrNull()?.date ?: dateKey
+                                }
+                                val dayOfWeek = if (cal != null) {
+                                    SimpleDateFormat("EEE", Locale.getDefault()).format(cal.time)
+                                } else ""
+                                val dayOfMonth = cal?.get(java.util.Calendar.DAY_OF_MONTH) ?: 1
+
+                                val mLogs = logsForDay.filter { it.session.contains("Morning", ignoreCase = true) || it.session.contains("AM", ignoreCase = true) }
+                                val aLogs = logsForDay.filter { it.session.contains("Afternoon", ignoreCase = true) || it.session.contains("Midday", ignoreCase = true) || it.session.contains("Noon", ignoreCase = true) }
+                                val eLogs = logsForDay.filter { it.session.contains("Evening", ignoreCase = true) || it.session.contains("Night", ignoreCase = true) || (it.session.contains("PM", ignoreCase = true) && !it.session.contains("Afternoon", ignoreCase = true)) }
+
+                                val mSum = mLogs.sumOf { it.litres }
+                                val aSum = aLogs.sumOf { it.litres }
+                                val eSum = eLogs.sumOf { it.litres }
+                                val dayTotal = mSum + aSum + eSum
+
+                                CowDayMilkBreakdown(
+                                    dateKey = dateKey,
+                                    displayDate = displayDate,
+                                    dayOfWeek = dayOfWeek,
+                                    dayOfMonth = dayOfMonth,
+                                    morningYield = mSum,
+                                    morningCount = mLogs.size,
+                                    afternoonYield = aSum,
+                                    afternoonCount = aLogs.size,
+                                    eveningYield = eSum,
+                                    eveningCount = eLogs.size,
+                                    dailyTotal = dayTotal
+                                )
+                            }.sortedByDescending { it.dateKey }
+                        }
+
+                        // Period Totals and Subtotals
+                        val periodTotalLitres = remember(dailyBreakdowns) { dailyBreakdowns.sumOf { it.dailyTotal } }
+                        val periodMorningLitres = remember(dailyBreakdowns) { dailyBreakdowns.sumOf { it.morningYield } }
+                        val periodAfternoonLitres = remember(dailyBreakdowns) { dailyBreakdowns.sumOf { it.afternoonYield } }
+                        val periodEveningLitres = remember(dailyBreakdowns) { dailyBreakdowns.sumOf { it.eveningYield } }
+                        val periodActiveDays = remember(dailyBreakdowns) { dailyBreakdowns.size }
+                        val periodDailyAvg = remember(periodTotalLitres, periodActiveDays) {
+                            if (periodActiveDays > 0) periodTotalLitres / periodActiveDays else 0.0
+                        }
+
+                        val periodLabel = when (perCowTimeframe) {
+                            "TODAY" -> "Today ($todayDateStr)"
+                            "MONTH" -> "$selectedPerCowMonth $selectedPerCowYear"
+                            "YEAR" -> "Year $selectedPerCowYear"
+                            else -> "All Time"
+                        }
+
+                        // Cow Period Overview Card
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = Color(0xFFF8FAFC),
                             border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                             modifier = Modifier.fillMaxWidth()
@@ -1255,21 +1688,22 @@ fun MilkLogScreen(
                                             color = Color(0xFF1E293B)
                                         )
                                         Text(
-                                            text = "${perCowSelectedCow.breed} • Lactation Day ${perCowSelectedCow.lactationDay}",
+                                            text = "${perCowSelectedCow.breed} • $periodLabel",
                                             fontSize = 12.sp,
-                                            color = Color(0xFF64748B)
+                                            color = ForestGreenPrimary,
+                                            fontWeight = FontWeight.SemiBold
                                         )
                                     }
 
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text(
-                                            text = cowYield.cowLitres,
+                                            text = "%.1f L".format(periodTotalLitres),
                                             fontSize = 20.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = ForestGreenPrimary
                                         )
                                         Text(
-                                            text = cowYield.cowAvg,
+                                            text = "Avg: %.1f L/day".format(periodDailyAvg),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = Color(0xFF475569)
@@ -1279,9 +1713,9 @@ fun MilkLogScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // 3 Milking Sessions Breakdown Display
+                                // 3 Milking Sessions Subtotals for the Entire Period
                                 Text(
-                                    text = "3-SESSION BREAKDOWN:",
+                                    text = "PERIOD SUB-TOTALS ($periodLabel):",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF64748B)
@@ -1299,8 +1733,8 @@ fun MilkLogScreen(
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text("🌅 Morning", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF92400E))
-                                            Text("%.1f L".format(cowYield.morningYield), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
-                                            Text("${cowYield.morningCount} logs", fontSize = 10.sp, color = Color(0xFF78350F))
+                                            Text("%.1f L".format(periodMorningLitres), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                            Text("${dailyBreakdowns.sumOf { it.morningCount }} logs", fontSize = 10.sp, color = Color(0xFF78350F))
                                         }
                                     }
 
@@ -1310,9 +1744,9 @@ fun MilkLogScreen(
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("☀️ Midday", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0369A1))
-                                            Text("%.1f L".format(cowYield.middayYield), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
-                                            Text("${cowYield.middayCount} logs", fontSize = 10.sp, color = Color(0xFF075985))
+                                            Text("☀️ Afternoon", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0369A1))
+                                            Text("%.1f L".format(periodAfternoonLitres), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                                            Text("${dailyBreakdowns.sumOf { it.afternoonCount }} logs", fontSize = 10.sp, color = Color(0xFF075985))
                                         }
                                     }
 
@@ -1323,8 +1757,290 @@ fun MilkLogScreen(
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text("🌙 Evening", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
-                                            Text("%.1f L".format(cowYield.eveningYield), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text("${cowYield.eveningCount} logs", fontSize = 10.sp, color = Color(0xFF64748B))
+                                            Text("%.1f L".format(periodEveningLitres), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text("${dailyBreakdowns.sumOf { it.eveningCount }} logs", fontSize = 10.sp, color = Color(0xFF64748B))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // --- DETAILED DAILY SESSIONS & DAILY SUB-TOTALS BREAKDOWN TABLE ---
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Filled.CalendarToday,
+                                            contentDescription = null,
+                                            tint = ForestGreenPrimary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Daily Milk Breakdown",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF1E293B)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = ForestGreenPrimary.copy(alpha = 0.1f)
+                                    ) {
+                                        Text(
+                                            text = "$periodActiveDays day${if (periodActiveDays == 1) "" else "s"} recorded",
+                                            color = ForestGreenPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                if (dailyBreakdowns.isEmpty()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(20.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.WaterDrop,
+                                                contentDescription = null,
+                                                tint = Color(0xFF94A3B8),
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "No milk records for ${perCowSelectedCow.name} in $periodLabel",
+                                                color = Color(0xFF64748B),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Use '+ Quick Milk Entry' above to add records",
+                                                color = Color(0xFF94A3B8),
+                                                fontSize = 11.sp,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    // Table Column Headers
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFF1F5F9),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "DATE / DAY",
+                                                modifier = Modifier.weight(1.3f),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF475569)
+                                            )
+                                            Text(
+                                                text = "🌅 AM",
+                                                modifier = Modifier.weight(0.9f),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF92400E),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "☀️ NOON",
+                                                modifier = Modifier.weight(0.9f),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF0369A1),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "🌙 PM",
+                                                modifier = Modifier.weight(0.9f),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF334155),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "SUBTOTAL",
+                                                modifier = Modifier.weight(1.1f),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ForestGreenPrimary,
+                                                textAlign = TextAlign.End
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    // List of Milk Days for that specific cow with Analyzed Data & Daily Subtotals
+                                    dailyBreakdowns.forEachIndexed { idx, dayStat ->
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (idx % 2 == 0) Color(0xFFFAFAFA) else Color.White,
+                                            border = BorderStroke(0.5.dp, Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 2.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Date & Day of Week
+                                                Column(modifier = Modifier.weight(1.3f)) {
+                                                    Text(
+                                                        text = dayStat.displayDate.substringBefore(" ${targetYearInt}").ifBlank { dayStat.displayDate },
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF1E293B)
+                                                    )
+                                                    if (dayStat.dayOfWeek.isNotBlank()) {
+                                                        Text(
+                                                            text = dayStat.dayOfWeek,
+                                                            fontSize = 10.sp,
+                                                            color = Color(0xFF64748B),
+                                                            fontWeight = FontWeight.Medium
+                                                        )
+                                                    }
+                                                }
+
+                                                // Morning yield
+                                                Text(
+                                                    text = if (dayStat.morningYield > 0) "%.1fL".format(dayStat.morningYield) else "—",
+                                                    modifier = Modifier.weight(0.9f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (dayStat.morningYield > 0) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (dayStat.morningYield > 0) Color(0xFFB45309) else Color(0xFF94A3B8),
+                                                    textAlign = TextAlign.Center
+                                                )
+
+                                                // Afternoon yield
+                                                Text(
+                                                    text = if (dayStat.afternoonYield > 0) "%.1fL".format(dayStat.afternoonYield) else "—",
+                                                    modifier = Modifier.weight(0.9f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (dayStat.afternoonYield > 0) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (dayStat.afternoonYield > 0) Color(0xFF0284C7) else Color(0xFF94A3B8),
+                                                    textAlign = TextAlign.Center
+                                                )
+
+                                                // Evening yield
+                                                Text(
+                                                    text = if (dayStat.eveningYield > 0) "%.1fL".format(dayStat.eveningYield) else "—",
+                                                    modifier = Modifier.weight(0.9f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (dayStat.eveningYield > 0) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (dayStat.eveningYield > 0) Color(0xFF475569) else Color(0xFF94A3B8),
+                                                    textAlign = TextAlign.Center
+                                                )
+
+                                                // Daily Subtotal (AM + Afternoon + PM)
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = Color(0xFFDCFCE7),
+                                                    modifier = Modifier.weight(1.1f)
+                                                ) {
+                                                    Text(
+                                                        text = "%.1f L".format(dayStat.dailyTotal),
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = ForestGreenPrimary,
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Grand Subtotals Footer for the Entire Selected Period
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = ForestGreenPrimary.copy(alpha = 0.08f),
+                                        border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.3f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "PERIOD TOTAL",
+                                                modifier = Modifier.weight(1.3f),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ForestGreenPrimary
+                                            )
+                                            Text(
+                                                text = "%.1fL".format(periodMorningLitres),
+                                                modifier = Modifier.weight(0.9f),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFB45309),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "%.1fL".format(periodAfternoonLitres),
+                                                modifier = Modifier.weight(0.9f),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF0284C7),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "%.1fL".format(periodEveningLitres),
+                                                modifier = Modifier.weight(0.9f),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF475569),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "%.1f L".format(periodTotalLitres),
+                                                modifier = Modifier.weight(1.1f),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ForestGreenPrimary,
+                                                textAlign = TextAlign.End
+                                            )
                                         }
                                     }
                                 }
@@ -1891,6 +2607,16 @@ fun MilkLogScreen(
                                     )
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            AppDatePickerField(
+                                value = selectedEggLogDate,
+                                onValueChange = { selectedEggLogDate = it },
+                                label = "Collection Date",
+                                modifier = Modifier.fillMaxWidth(),
+                                testTag = "egg_quick_log_date_picker"
+                            )
 
                             Spacer(modifier = Modifier.height(12.dp))
 

@@ -51,6 +51,13 @@ enum class CattleStage(
         emoji = "🥛",
         description = "Adult female cow currently in active lactation after calving, open/not in-calf."
     ),
+    INSEMINATED(
+        key = "INSEMINATED",
+        displayName = "Inseminated",
+        tagLabel = "💉 INSEMINATED",
+        emoji = "💉",
+        description = "Recently inseminated/served, pending pregnancy diagnosis."
+    ),
     DRY(
         key = "DRY",
         displayName = "Dry",
@@ -135,6 +142,45 @@ object CattleLifecycleEngine {
         c.time = d
         c.add(Calendar.DAY_OF_YEAR, -60) // standard dry-off is 60 days before calving
         return SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(c.time)
+    }
+
+    fun calculateAgeFromDob(dobStr: String): String {
+        if (dobStr.isBlank() || dobStr.equals("N/A", ignoreCase = true)) return "N/A"
+        val d = parseDateOrNull(dobStr) ?: return dobStr
+        val birthCal = Calendar.getInstance().apply { time = d }
+        val nowCal = Calendar.getInstance()
+
+        if (birthCal.after(nowCal)) return "Newborn"
+
+        var years = nowCal.get(Calendar.YEAR) - birthCal.get(Calendar.YEAR)
+        var months = nowCal.get(Calendar.MONTH) - birthCal.get(Calendar.MONTH)
+        val days = nowCal.get(Calendar.DAY_OF_MONTH) - birthCal.get(Calendar.DAY_OF_MONTH)
+
+        if (days < 0) {
+            months -= 1
+        }
+        if (months < 0) {
+            years -= 1
+            months += 12
+        }
+
+        return when {
+            years >= 1 -> {
+                if (months > 0) "${years}y ${months}m" else "${years}y"
+            }
+            months >= 1 -> {
+                "${months} months"
+            }
+            else -> {
+                val diffMs = nowCal.timeInMillis - birthCal.timeInMillis
+                val diffDays = (diffMs / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+                if (diffDays >= 7) {
+                    "${diffDays / 7} weeks"
+                } else {
+                    "${diffDays} days"
+                }
+            }
+        }
     }
 
     fun evaluateCattleStage(
@@ -384,6 +430,23 @@ object CattleLifecycleEngine {
                 badgeBgColor = Color(0xFFE0F2FE),
                 badgeTextColor = Color(0xFF0369A1),
                 lastEventSummary = lastAi?.title ?: (calvingEvents.firstOrNull()?.title ?: "Active Daily Milking"),
+                lastInseminationDate = lastInseminationDate
+            )
+        }
+
+        if (animal.status.equals("INSEMINATED", ignoreCase = true) || (aiEvents.isNotEmpty() && !isInCalf && isDriedOff)) {
+            val lastAi = aiEvents.firstOrNull()
+            return CattleStageEvaluation(
+                stage = CattleStage.INSEMINATED,
+                stageKey = CattleStage.INSEMINATED.key,
+                label = "Inseminated",
+                summaryReason = "Served/Inseminated on ${lastAi?.date ?: "recent date"} • Pending Pregnancy Diagnosis (PD).",
+                breedingStatusText = "SERVED AI (Pending PD)",
+                isInCalf = false,
+                isMilking = false,
+                badgeBgColor = Color(0xFFEDE9FE),
+                badgeTextColor = Color(0xFF6D28D9),
+                lastEventSummary = lastAi?.title ?: "Artificial Insemination Logged",
                 lastInseminationDate = lastInseminationDate
             )
         }

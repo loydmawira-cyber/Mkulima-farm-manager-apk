@@ -119,20 +119,20 @@ fun AddEmployeeRequestDialog(
                         shape = RoundedCornerShape(12.dp)
                     )
                 } else {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        AppDatePickerField(
                             value = startDateText,
                             onValueChange = { startDateText = it },
-                            label = { Text("Start Date") },
+                            label = "Start Date",
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
+                            testTag = "leave_start_date_picker"
                         )
-                        OutlinedTextField(
+                        AppDatePickerField(
                             value = endDateText,
                             onValueChange = { endDateText = it },
-                            label = { Text("End Date") },
+                            label = "End Date",
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
+                            testTag = "leave_end_date_picker"
                         )
                     }
                 }

@@ -48,7 +48,9 @@ import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddUnitDialog(
     onDismiss: () -> Unit,
@@ -300,60 +302,35 @@ fun AddUnitDialog(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         val cattleStages = listOf(
-                            "MILKING" to "🐄 Milking",
-                            "PREGNANT" to "🤰 Pregnant",
-                            "CALF" to "🍼 Calf",
+                            "MILKING" to "🥛 Milking",
+                            "INCALF" to "🤰 In-calf",
                             "HEIFER" to "🌾 Heifer",
+                            "CALF" to "🍼 Calf",
                             "BULL" to "🐂 Bull",
+                            "DRY" to "🍂 Dry",
+                            "INSEMINATED" to "💉 Inseminated",
                             "DISPOSED" to "🚫 Disposed"
                         )
 
-                        Row(
+                        androidx.compose.foundation.layout.FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            cattleStages.take(3).forEach { (stageKey, stageLabel) ->
+                            cattleStages.forEach { (stageKey, stageLabel) ->
                                 val isSelected = status.equals(stageKey, ignoreCase = true)
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { status = stageKey }
+                                    border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFCBD5E1)),
+                                    modifier = Modifier.clickable { status = stageKey }
                                 ) {
                                     Text(
                                         text = stageLabel,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isSelected) Color.White else Color(0xFF334155),
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            cattleStages.drop(3).forEach { (stageKey, stageLabel) ->
-                                val isSelected = status.equals(stageKey, ignoreCase = true)
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { status = stageKey }
-                                ) {
-                                    Text(
-                                        text = stageLabel,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.White else Color(0xFF334155),
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
+                                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 10.dp),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                     )
                                 }

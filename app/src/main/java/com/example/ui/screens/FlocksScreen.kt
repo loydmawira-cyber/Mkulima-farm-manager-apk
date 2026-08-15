@@ -720,13 +720,32 @@ fun FlocksScreen(
     var animalToEdit by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToDelete by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToDispose by remember { mutableStateOf<AnimalDetailData?>(null) }
-    var selectedFilterCategory by remember { mutableStateOf("ALL") }
-    var selectedCattleStage by remember { mutableStateOf("ALL") } // "ALL", "MILKING", "PREGNANT", "CALF", "HEIFER", "BULL", "DISPOSED"
+    var selectedFilterCategory by remember { mutableStateOf("CATTLE") }
+    var selectedCattleStage by remember { mutableStateOf("ALL") }
     var showCategoryGuideDialog by remember { mutableStateOf(false) }
 
-    val roomAnimals = remember(units) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val deletedPrefs = remember { context.getSharedPreferences("mkulima_deleted_animals", android.content.Context.MODE_PRIVATE) }
+    var deletedSet by remember {
+        mutableStateOf(deletedPrefs.getStringSet("deleted_ids", emptySet()) ?: emptySet())
+    }
+
+    val roomAnimals = remember(units, milkLogs) {
         units.map { unit ->
             val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true)
+            val cowLogs = milkLogs.filter { it.cowName.equals(unit.name, ignoreCase = true) }
+            val lastMilkStr = if (isPoultry) {
+                "${unit.headCount} Birds"
+            } else if (cowLogs.isNotEmpty()) {
+                "${"%.1f".format(cowLogs.first().litres)}L"
+            } else {
+                "No data yet"
+            }
+            val calculatedAge = if (unit.dob.isNotBlank()) {
+                CattleLifecycleEngine.calculateAgeFromDob(unit.dob)
+            } else {
+                "1y"
+            }
             AnimalDetailData(
                 id = "unit_${unit.id}",
                 name = unit.name,
@@ -734,9 +753,9 @@ fun FlocksScreen(
                 breed = unit.breed.ifBlank { if (isPoultry) "Poultry Flock" else "Local Breed" },
                 category = if (isPoultry) "POULTRY" else "CATTLE",
                 status = unit.healthStatus.ifBlank { "ACTIVE" },
-                age = "1y",
+                age = calculatedAge,
                 weight = unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
-                lastMilk = if (isPoultry) "${unit.headCount} Birds" else "14.0L",
+                lastMilk = lastMilkStr,
                 breedingStatus = if (isPoultry) "ACTIVE LAYING" else "HEALTHY",
                 dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },
                 weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
@@ -747,8 +766,10 @@ fun FlocksScreen(
         }
     }
 
-    val initialAnimals = remember(units) {
-        (roomAnimals + mockAnimals).distinctBy { it.name }
+    val initialAnimals = remember(units, milkLogs, deletedSet) {
+        (roomAnimals + mockAnimals)
+            .filter { !deletedSet.contains(it.id) && !deletedSet.contains(it.name.lowercase()) }
+            .distinctBy { it.name }
     }
 
     val mutableAnimals = remember { mutableStateListOf<AnimalDetailData>().apply { addAll(initialAnimals) } }
@@ -801,10 +822,10 @@ fun FlocksScreen(
         }
     }
 
-    LaunchedEffect(units) {
-        val existingNames = mutableAnimals.map { it.name }.toSet()
+    LaunchedEffect(units, deletedSet) {
+        val existingNames = mutableAnimals.map { it.name.lowercase() }.toSet()
         initialAnimals.forEach { initItem ->
-            if (!existingNames.contains(initItem.name)) {
+            if (!existingNames.contains(initItem.name.lowercase()) && !deletedSet.contains(initItem.id) && !deletedSet.contains(initItem.name.lowercase())) {
                 mutableAnimals.add(initItem)
             }
         }
@@ -898,8 +919,11 @@ fun FlocksScreen(
     }
 
     fun handleDeleteAnimalCompletely(animal: AnimalDetailData) {
-        mutableAnimals.removeAll { it.id == animal.id }
-        if (selectedAnimal?.id == animal.id) {
+        val newDeleted = deletedSet + animal.id + animal.name.lowercase() + (if (animal.id.startsWith("unit_")) animal.id.removePrefix("unit_") else "")
+        deletedSet = newDeleted
+        deletedPrefs.edit().putStringSet("deleted_ids", newDeleted).apply()
+        mutableAnimals.removeAll { it.id == animal.id || it.name.equals(animal.name, ignoreCase = true) }
+        if (selectedAnimal?.id == animal.id || selectedAnimal?.name.equals(animal.name, ignoreCase = true)) {
             selectedAnimal = null
         }
         if (animal.id.startsWith("unit_")) {
@@ -1003,6 +1027,9 @@ fun FlocksScreen(
     val cattleList = remember(mutableAnimals.toList()) {
         mutableAnimals.filter { it.category.equals("CATTLE", ignoreCase = true) }
     }
+    val poultryList = remember(mutableAnimals.toList()) {
+        mutableAnimals.filter { it.category.equals("POULTRY", ignoreCase = true) || it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true) }
+    }
 
     val evaluatedCattleMap = remember(cattleList, allAnimalEventsMap.toMap(), milkLogs) {
         cattleList.associate { animal ->
@@ -1013,12 +1040,18 @@ fun FlocksScreen(
 
     val inCalfMilkingCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF_MILKING } }
     val inCalfCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF } }
+    val totalInCalfCount = remember(evaluatedCattleMap) { inCalfMilkingCount + inCalfCount }
     val milkingCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.MILKING } }
     val heiferCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.HEIFER } }
     val calfCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.CALF } }
     val dryCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.DRY } }
+    val inseminatedCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.INSEMINATED } }
     val bullCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.BULL } }
     val disposedCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.DISPOSED } }
+
+    val poultryFlocksCount = remember(poultryList) { poultryList.size }
+    val poultryLayingCount = remember(poultryList) { poultryList.count { it.status.contains("Laying", ignoreCase = true) || it.breedingStatus.contains("Laying", ignoreCase = true) || it.status.equals("ACTIVE", ignoreCase = true) } }
+    val poultryTotalBirds = remember(poultryList) { poultryList.sumOf { it.headCountInt } }
 
     if (showCategoryGuideDialog) {
         Dialog(onDismissRequest = { showCategoryGuideDialog = false }) {
@@ -1243,9 +1276,9 @@ fun FlocksScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Category Filter Chips [ ALL ] [ CATTLE ] [ POULTRY ]
+                    // Category Filter Chips [ CATTLE ] [ POULTRY ] (No 'ALL' option)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        listOf("ALL", "CATTLE", "POULTRY").forEach { cat ->
+                        listOf("CATTLE", "POULTRY").forEach { cat ->
                             val isSelected = selectedFilterCategory == cat
                             FilterChip(
                                 selected = isSelected,
@@ -1270,8 +1303,8 @@ fun FlocksScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Cattle Herd Breakdown Panel (Visible for ALL or CATTLE filter)
-                    if (selectedFilterCategory == "ALL" || selectedFilterCategory == "CATTLE") {
+                    // Cattle Herd Breakdown Panel (Visible for CATTLE filter)
+                    if (selectedFilterCategory == "CATTLE") {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
@@ -1310,21 +1343,20 @@ fun FlocksScreen(
 
                                 val stageItems = listOf(
                                     Triple("ALL", "All Herd", "${cattleList.size}"),
-                                    Triple("INCALF_MILKING", "🥛🤰 In-Calf/Milk", "$inCalfMilkingCount"),
-                                    Triple("INCALF", "🤰 In-Calf", "$inCalfCount"),
                                     Triple("MILKING", "🥛 Milking", "$milkingCount"),
+                                    Triple("INCALF", "🤰 In-Calf", "$totalInCalfCount"),
                                     Triple("HEIFER", "🌾 Heifers", "$heiferCount"),
                                     Triple("CALF", "🍼 Calves", "$calfCount"),
-                                    Triple("DRY", "🍂 Dry", "$dryCount"),
                                     Triple("BULL", "🐂 Bulls", "$bullCount"),
-                                    Triple("DISPOSED", "🚫 Disposed", "$disposedCount")
+                                    Triple("DRY", "🍂 Dry", "$dryCount"),
+                                    Triple("INSEMINATED", "💉 Inseminated", "$inseminatedCount")
                                 )
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    stageItems.take(5).forEach { (stageKey, label, count) ->
+                                    stageItems.take(4).forEach { (stageKey, label, count) ->
                                         val isSelected = selectedCattleStage == stageKey
                                         Surface(
                                             shape = RoundedCornerShape(10.dp),
@@ -1351,7 +1383,7 @@ fun FlocksScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    stageItems.drop(5).forEach { (stageKey, label, count) ->
+                                    stageItems.drop(4).forEach { (stageKey, label, count) ->
                                         val isSelected = selectedCattleStage == stageKey
                                         Surface(
                                             shape = RoundedCornerShape(10.dp),
@@ -1373,24 +1405,82 @@ fun FlocksScreen(
                                 }
                             }
                         }
+                    } else if (selectedFilterCategory == "POULTRY") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.Egg, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Poultry Flock Summary", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color.White,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("$poultryFlocksCount", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                            Text("Total Flocks", fontSize = 11.sp, color = Color(0xFF64748B))
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFFEF3C7),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("$poultryLayingCount", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                            Text("Currently Laying", fontSize = 11.sp, color = Color(0xFF92400E))
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFDCFCE7),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("$poultryTotalBirds", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                            Text("Total Birds", fontSize = 11.sp, color = ForestGreenPrimary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
                 val filteredList = mutableAnimals.filter { animal ->
-                    val matchesCategory = if (selectedFilterCategory == "ALL") true else animal.category.equals(selectedFilterCategory, ignoreCase = true)
+                    val matchesCategory = animal.category.equals(selectedFilterCategory, ignoreCase = true)
                     if (!matchesCategory) return@filter false
                     if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
 
                     val eval = evaluatedCattleMap[animal.id] ?: CattleLifecycleEngine.evaluateCattleStage(animal, allAnimalEventsMap[animal.id] ?: emptyList(), milkLogs)
                     when (selectedCattleStage) {
-                        "INCALF_MILKING" -> eval.stage == CattleStage.INCALF_MILKING
-                        "INCALF" -> eval.stage == CattleStage.INCALF
                         "MILKING" -> eval.stage == CattleStage.MILKING
+                        "INCALF" -> eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
                         "HEIFER" -> eval.stage == CattleStage.HEIFER
                         "CALF" -> eval.stage == CattleStage.CALF
                         "DRY" -> eval.stage == CattleStage.DRY
+                        "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED
                         "BULL" -> eval.stage == CattleStage.BULL
                         "DISPOSED" -> eval.stage == CattleStage.DISPOSED
                         else -> true

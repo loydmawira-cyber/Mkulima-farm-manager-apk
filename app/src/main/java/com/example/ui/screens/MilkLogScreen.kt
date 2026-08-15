@@ -65,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -97,95 +98,200 @@ data class AnimalCowItem(
     val lactationDay: Int
 )
 
+data class CowYieldAnalysis(
+    val cowLitres: String,
+    val cowAvg: String,
+    val cowSessions: String,
+    val morningYield: Double,
+    val middayYield: Double,
+    val eveningYield: Double,
+    val morningCount: Int,
+    val middayCount: Int,
+    val eveningCount: Int
+)
+
+fun isLogForCow(log: MilkLog, cow: AnimalCowItem): Boolean {
+    val cleanLogName = log.cowName.lowercase()
+    val cleanCowName = cow.name.lowercase()
+    val cowBase = cow.name.substringBefore(" (").trim().lowercase()
+    val tag = cow.tagId.lowercase().replace("#", "").trim()
+    return cleanLogName.contains(cleanCowName) ||
+            cleanCowName.contains(cleanLogName) ||
+            (cowBase.isNotEmpty() && cleanLogName.contains(cowBase)) ||
+            (tag.isNotEmpty() && cleanLogName.contains(tag))
+}
+
 /**
- * Custom Compose Canvas Line Chart for Milk Production Trends
+ * Custom Compose Canvas Line Chart for Milk Production Trends with Dynamic Data and Numerical Labels
  */
 @Composable
 fun MilkProductionLineChart(
     dataPoints: List<Float>,
     xLabels: List<String>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    unitSuffix: String = "L"
 ) {
-    if (dataPoints.isEmpty()) return
+    if (dataPoints.isEmpty() || dataPoints.all { it == 0f }) {
+        Surface(
+            modifier = modifier,
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFFF8FAFC),
+            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Filled.WaterDrop,
+                    contentDescription = null,
+                    tint = ForestGreenPrimary.copy(alpha = 0.5f),
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "No milk records logged for this timeframe",
+                    color = Color(0xFF64748B),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "Add entries using '+ Quick Milk Entry' below",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp
+                )
+            }
+        }
+        return
+    }
 
-    val minVal = dataPoints.minOrNull() ?: 0f
-    val maxVal = dataPoints.maxOrNull() ?: 100f
-    val range = if (maxVal == minVal) 1f else (maxVal - minVal)
+    val maxVal = (dataPoints.maxOrNull() ?: 10f).coerceAtLeast(1f)
+    val minVal = (dataPoints.minOrNull() ?: 0f).coerceAtLeast(0f)
+    val displayMax = if (maxVal == minVal) maxVal * 1.3f else maxVal * 1.2f
+    val displayMin = 0f
+    val range = (displayMax - displayMin).coerceAtLeast(1f)
 
     val lineColor = ForestGreenPrimary
-    val gradientColor = ForestGreenPrimary.copy(alpha = 0.15f)
+    val gradientColor = ForestGreenPrimary.copy(alpha = 0.22f)
+
+    val valueTextPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#15803D")
+            textSize = 28f
+            isFakeBoldText = true
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+    val gridTextPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#94A3B8")
+            textSize = 22f
+            textAlign = android.graphics.Paint.Align.LEFT
+            isAntiAlias = true
+        }
+    }
 
     Column(modifier = modifier) {
-        Canvas(modifier = Modifier
-            .fillMaxWidth()
-            .weight(1f)) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
             val width = size.width
             val height = size.height
+            val paddingLeft = 38.dp.toPx()
+            val paddingRight = 16.dp.toPx()
+            val usableWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1f)
 
-            // Calculate coordinates
-            val spacingX = width / (dataPoints.size - 1)
+            // Horizontal Grid Lines with Y-Axis reference numbers
+            val gridSteps = 3
+            for (i in 0..gridSteps) {
+                val y = height * (i.toFloat() / gridSteps)
+                drawLine(
+                    color = Color(0xFFE2E8F0),
+                    start = Offset(paddingLeft, y),
+                    end = Offset(width - paddingRight, y),
+                    strokeWidth = 1.dp.toPx()
+                )
+                val gridVal = displayMax - (i.toFloat() / gridSteps) * range
+                drawContext.canvas.nativeCanvas.drawText(
+                    "%.0f%s".format(gridVal, unitSuffix),
+                    4.dp.toPx(),
+                    (y + 4.dp.toPx()).coerceAtMost(height - 2.dp.toPx()),
+                    gridTextPaint
+                )
+            }
+
+            // Calculate point coordinates
+            val pointCount = dataPoints.size
+            val spacingX = if (pointCount > 1) usableWidth / (pointCount - 1) else usableWidth / 2
             val points = dataPoints.mapIndexed { idx, value ->
-                val x = idx * spacingX
-                val normalizedY = (value - minVal) / range
-                val y = height - (normalizedY * (height * 0.75f) + height * 0.1f)
+                val x = paddingLeft + (if (pointCount > 1) idx * spacingX else usableWidth / 2)
+                val normalizedY = (value - displayMin) / range
+                val y = height - (normalizedY * (height * 0.72f) + height * 0.12f)
                 Offset(x, y)
             }
 
-            // Grid Lines (Horizontal)
-            val gridStep = height / 3
-            for (i in 1..3) {
-                drawLine(
-                    color = Color(0xFFE2E8F0),
-                    start = Offset(0f, i * gridStep),
-                    end = Offset(width, i * gridStep),
-                    strokeWidth = 1.dp.toPx()
-                )
-            }
-
-            // Build Curved Path
-            val strokePath = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                for (i in 0 until points.size - 1) {
-                    val p1 = points[i]
-                    val p2 = points[i + 1]
-                    val controlX = (p1.x + p2.x) / 2
-                    cubicTo(controlX, p1.y, controlX, p2.y, p2.x, p2.y)
+            if (points.size > 1) {
+                // Build Smooth Curved Path
+                val strokePath = Path().apply {
+                    moveTo(points.first().x, points.first().y)
+                    for (i in 0 until points.size - 1) {
+                        val p1 = points[i]
+                        val p2 = points[i + 1]
+                        val controlX = (p1.x + p2.x) / 2
+                        cubicTo(controlX, p1.y, controlX, p2.y, p2.x, p2.y)
+                    }
                 }
-            }
 
-            // Fill Path (Gradient)
-            val fillPath = Path().apply {
-                addPath(strokePath)
-                lineTo(points.last().x, height)
-                lineTo(points.first().x, height)
-                close()
-            }
+                // Fill Path (Gradient)
+                val fillPath = Path().apply {
+                    addPath(strokePath)
+                    lineTo(points.last().x, height)
+                    lineTo(points.first().x, height)
+                    close()
+                }
 
-            drawPath(
-                path = fillPath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(gradientColor, Color.Transparent)
+                drawPath(
+                    path = fillPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(gradientColor, Color.Transparent)
+                    )
                 )
-            )
 
-            // Draw Line
-            drawPath(
-                path = strokePath,
-                color = lineColor,
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-            )
+                // Draw Smooth Line
+                drawPath(
+                    path = strokePath,
+                    color = lineColor,
+                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
 
-            // Draw Dots
-            points.forEach { point ->
+            // Draw Dots and Values
+            points.forEachIndexed { idx, point ->
+                val valAmt = dataPoints[idx]
                 drawCircle(
                     color = Color.White,
-                    radius = 5.dp.toPx(),
+                    radius = 6.dp.toPx(),
                     center = point
                 )
                 drawCircle(
                     color = lineColor,
-                    radius = 3.dp.toPx(),
+                    radius = 4.dp.toPx(),
                     center = point
+                )
+
+                // Numeric Value Label above dot
+                val formattedVal = if (valAmt % 1.0f == 0f) "%.0f%s".format(valAmt, unitSuffix) else "%.1f%s".format(valAmt, unitSuffix)
+                drawContext.canvas.nativeCanvas.drawText(
+                    formattedVal,
+                    point.x,
+                    (point.y - 8.dp.toPx()).coerceAtLeast(18.dp.toPx()),
+                    valueTextPaint
                 )
             }
         }
@@ -194,7 +300,7 @@ fun MilkProductionLineChart(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp),
+                .padding(start = 32.dp, end = 12.dp, top = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             xLabels.forEach { label ->
@@ -202,7 +308,8 @@ fun MilkProductionLineChart(
                     text = label,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF64748B)
+                    color = Color(0xFF64748B),
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -536,14 +643,79 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Totals Calculation based on overallTimeframe
-                        val summary = when (overallTimeframe) {
-                            "DAILY" -> MilkTotalsSummary("245.8 L", "245.8 L/day", "Bessie (#102) - 28.0L", "+4.2% vs yesterday")
-                            "PREV_MONTH" -> MilkTotalsSummary("6,950 L", "231.6 L/day", "Mimi (#115) - 820L", "+2.8% MoM")
-                            "SIX_MONTHS" -> MilkTotalsSummary("42,800 L", "237.7 L/day", "Bella (#112) - 4,800L", "+12.4% YoY")
-                            "YEAR" -> MilkTotalsSummary("88,400 L", "242.2 L/day", "Bessie (#102) - 9,600L", "Peak Herd Record")
-                            else -> MilkTotalsSummary("7,450 L", "248.3 L/day", "Bessie (#102) - 860L", "+7.1% vs prev month")
+                        // Dynamic Totals and Line Chart Calculation based on overallTimeframe and real milkLogs
+                        val (summary, chartData, xLabels) = remember(milkLogs, overallTimeframe) {
+                            if (milkLogs.isEmpty()) {
+                                Triple(
+                                    MilkTotalsSummary("0.0 L", "0.0 L/day", "No records", "0 logs recorded"),
+                                    emptyList<Float>(),
+                                    listOf("No Data")
+                                )
+                            } else {
+                                when (overallTimeframe) {
+                                    "DAILY" -> {
+                                        val todayLogs = milkLogs.filter { it.date == todayDateStr || it.date.contains("Today", ignoreCase = true) }
+                                        val targetLogs = if (todayLogs.isNotEmpty()) todayLogs else milkLogs
+
+                                        val morningLogs = targetLogs.filter { it.session.equals("Morning", ignoreCase = true) || it.session.contains("AM", ignoreCase = true) }
+                                        val afternoonLogs = targetLogs.filter { it.session.equals("Afternoon", ignoreCase = true) || it.session.equals("Midday", ignoreCase = true) }
+                                        val eveningLogs = targetLogs.filter { it.session.equals("Evening", ignoreCase = true) || it.session.equals("Night", ignoreCase = true) || (it.session.contains("PM", ignoreCase = true) && !it.session.equals("Afternoon", ignoreCase = true)) }
+
+                                        val morningL = morningLogs.sumOf { it.litres }.toFloat()
+                                        val afternoonL = afternoonLogs.sumOf { it.litres }.toFloat()
+                                        val eveningL = eveningLogs.sumOf { it.litres }.toFloat()
+                                        val totalL = targetLogs.sumOf { it.litres }
+
+                                        val topCowName = targetLogs.groupBy { it.cowName }.maxByOrNull { entry -> entry.value.sumOf { it.litres } }?.let { "${it.key} (${"%.1f".format(it.value.sumOf { it.litres })}L)" } ?: "Herd"
+
+                                        Triple(
+                                            MilkTotalsSummary(
+                                                totalLitres = "%.1f L".format(totalL),
+                                                avgPerDay = "%.1f L/day".format(totalL),
+                                                topCow = topCowName,
+                                                trendStr = "AM: %.1fL • Mid: %.1fL • PM: %.1fL".format(morningL, afternoonL, eveningL)
+                                            ),
+                                            listOf(morningL, afternoonL, eveningL),
+                                            listOf("Morning (AM)", "Midday (Noon)", "Evening (PM)")
+                                        )
+                                    }
+                                    else -> {
+                                        // 7-day trend from the last 7 calendar days
+                                        val sdf = SimpleDateFormat("dd MMM", Locale.getDefault())
+                                        val last7Days = (6 downTo 0).map { dayOffset ->
+                                            val c = java.util.Calendar.getInstance()
+                                            c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
+                                            val fullDate = dateFormat.format(c.time)
+                                            val shortLabel = sdf.format(c.time)
+                                            Triple(fullDate, shortLabel, c.time)
+                                        }
+
+                                        val points = last7Days.map { (fullDate, _, _) ->
+                                            val matchingLogs = milkLogs.filter { it.date.equals(fullDate, ignoreCase = true) }
+                                            matchingLogs.sumOf { it.litres }.toFloat()
+                                        }
+
+                                        val labels = last7Days.map { it.second }
+                                        val totalL = milkLogs.sumOf { it.litres }
+                                        val distinctDaysCount = milkLogs.map { it.date }.distinct().size.coerceAtLeast(1)
+                                        val dailyAvg = totalL / distinctDaysCount
+                                        val topCowName = milkLogs.groupBy { it.cowName }.maxByOrNull { entry -> entry.value.sumOf { it.litres } }?.let { "${it.key} (${"%.1f".format(it.value.sumOf { it.litres })}L)" } ?: "Herd"
+
+                                        Triple(
+                                            MilkTotalsSummary(
+                                                totalLitres = "%.1f L".format(totalL),
+                                                avgPerDay = "%.1f L/day".format(dailyAvg),
+                                                topCow = topCowName,
+                                                trendStr = "${milkLogs.size} logs across $distinctDaysCount days"
+                                            ),
+                                            points,
+                                            labels
+                                        )
+                                    }
+                                }
+                            }
                         }
+
                         val totalLitres = summary.totalLitres
                         val avgPerDay = summary.avgPerDay
                         val topCow = summary.topCow
@@ -587,22 +759,6 @@ fun MilkLogScreen(
                             color = Color(0xFF64748B)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-
-                        // Line Chart Component
-                        val chartData = when (overallTimeframe) {
-                            "DAILY" -> listOf(30f, 45f, 60f, 85f, 70f, 95f, 110f, 125f)
-                            "PREV_MONTH" -> listOf(210f, 220f, 215f, 230f, 240f, 225f, 235f, 245f)
-                            "SIX_MONTHS" -> listOf(6200f, 6800f, 7100f, 6900f, 7300f, 7450f)
-                            "YEAR" -> listOf(7000f, 7200f, 7100f, 7300f, 7500f, 7400f, 7600f, 7800f, 7900f, 7700f, 8000f, 8200f)
-                            else -> listOf(220f, 235f, 228f, 242f, 250f, 245f, 258f, 260f)
-                        }
-
-                        val xLabels = when (overallTimeframe) {
-                            "DAILY" -> listOf("6am", "8am", "10am", "12pm", "2pm", "4pm", "6pm", "8pm")
-                            "SIX_MONTHS" -> listOf("Mar", "Apr", "May", "Jun", "Jul", "Aug")
-                            "YEAR" -> listOf("Jan", "Mar", "May", "Jul", "Sep", "Nov")
-                            else -> listOf("1st", "5th", "10th", "15th", "20th", "25th", "30th")
-                        }
 
                         MilkProductionLineChart(
                             dataPoints = chartData,
@@ -1028,12 +1184,55 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Selected Cow Stats Summary
-                        val (cowLitres, cowAvg, cowSessions) = when (perCowTimeframe) {
-                            "TODAY" -> Triple("28.0 L", "28.0 L/day", "AM: 14.0L | PM: 14.0L")
-                            "WEEKLY" -> Triple("192.5 L", "27.5 L/day", "7 Days Logged")
-                            "MONTHLY" -> Triple("825.0 L", "27.5 L/day", "30 Days Logged")
-                            else -> Triple("3,360.0 L", "28.0 L/day", "Lactation Day ${perCowSelectedCow.lactationDay}")
+                        // Dynamic Selected Cow Stats Summary from milkLogs across all 3 milking sessions
+                        val cowAllLogs = remember(milkLogs, perCowSelectedCow) {
+                            milkLogs.filter { isLogForCow(it, perCowSelectedCow) }
+                        }
+
+                        val cowYield = remember(cowAllLogs, perCowTimeframe, perCowSelectedCow) {
+                            val filteredLogs = when (perCowTimeframe) {
+                                "TODAY" -> {
+                                    val todayLogs = cowAllLogs.filter { it.date == todayDateStr || it.date.contains("Today", ignoreCase = true) }
+                                    if (todayLogs.isNotEmpty()) todayLogs else cowAllLogs.take(3)
+                                }
+                                "WEEKLY" -> {
+                                    cowAllLogs.take(21)
+                                }
+                                "MONTHLY" -> {
+                                    cowAllLogs.take(90)
+                                }
+                                else -> cowAllLogs
+                            }
+
+                            val mLogs = filteredLogs.filter { it.session.equals("Morning", ignoreCase = true) || it.session.contains("AM", ignoreCase = true) }
+                            val midLogs = filteredLogs.filter { it.session.equals("Afternoon", ignoreCase = true) || it.session.equals("Midday", ignoreCase = true) }
+                            val eLogs = filteredLogs.filter { it.session.equals("Evening", ignoreCase = true) || it.session.equals("Night", ignoreCase = true) || (it.session.contains("PM", ignoreCase = true) && !it.session.equals("Afternoon", ignoreCase = true)) }
+
+                            val mSum = mLogs.sumOf { it.litres }
+                            val midSum = midLogs.sumOf { it.litres }
+                            val eSum = eLogs.sumOf { it.litres }
+                            val totalSum = filteredLogs.sumOf { it.litres }
+
+                            val dailyAvg = when (perCowTimeframe) {
+                                "TODAY" -> totalSum
+                                "WEEKLY" -> totalSum / 7.0
+                                "MONTHLY" -> totalSum / 30.0
+                                else -> totalSum / perCowSelectedCow.lactationDay.coerceAtLeast(1).toDouble()
+                            }
+
+                            val sessionStr = "AM: ${"%.1f".format(mSum)}L | Midday: ${"%.1f".format(midSum)}L | PM: ${"%.1f".format(eSum)}L"
+
+                            CowYieldAnalysis(
+                                cowLitres = "%.1f L".format(totalSum),
+                                cowAvg = "%.1f L/day".format(dailyAvg),
+                                cowSessions = sessionStr,
+                                morningYield = mSum,
+                                middayYield = midSum,
+                                eveningYield = eSum,
+                                morningCount = mLogs.size,
+                                middayCount = midLogs.size,
+                                eveningCount = eLogs.size
+                            )
                         }
 
                         Surface(
@@ -1064,13 +1263,13 @@ fun MilkLogScreen(
 
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text(
-                                            text = cowLitres,
+                                            text = cowYield.cowLitres,
                                             fontSize = 20.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = ForestGreenPrimary
                                         )
                                         Text(
-                                            text = cowAvg,
+                                            text = cowYield.cowAvg,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = Color(0xFF475569)
@@ -1078,19 +1277,56 @@ fun MilkLogScreen(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
 
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFFDCFCE7)
+                                // 3 Milking Sessions Breakdown Display
+                                Text(
+                                    text = "3-SESSION BREAKDOWN:",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF64748B)
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = cowSessions,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ForestGreenPrimary
-                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFFEF3C7),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("🌅 Morning", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF92400E))
+                                            Text("%.1f L".format(cowYield.morningYield), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                            Text("${cowYield.morningCount} logs", fontSize = 10.sp, color = Color(0xFF78350F))
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFE0F2FE),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("☀️ Midday", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0369A1))
+                                            Text("%.1f L".format(cowYield.middayYield), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                                            Text("${cowYield.middayCount} logs", fontSize = 10.sp, color = Color(0xFF075985))
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFF1F5F9),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("🌙 Evening", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                            Text("%.1f L".format(cowYield.eveningYield), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text("${cowYield.eveningCount} logs", fontSize = 10.sp, color = Color(0xFF64748B))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1511,13 +1747,25 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // 7-Day Egg Laying Bar Visualizer
+                            // Dynamic 7-Day Egg Laying Bar Visualizer
                             Text("7-DAY EGG PRODUCTION TRENDS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            val daysList = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-                            val dayValues = listOf(380f, 410f, 395f, 420f, 388f, 405f, 390f)
-                            val maxVal = dayValues.maxOrNull() ?: 450f
+                            val eggTrendDays = remember(selectedFlockLogs) {
+                                val shortDayFormat = SimpleDateFormat("EEE", Locale.getDefault())
+                                (6 downTo 0).map { dayOffset ->
+                                    val c = java.util.Calendar.getInstance()
+                                    c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
+                                    val fullDate = dateFormat.format(c.time)
+                                    val dayName = shortDayFormat.format(c.time)
+                                    val dayEggs = selectedFlockLogs.filter { it.loggedAt.contains(fullDate, ignoreCase = true) || it.loggedAt.contains(dayName, ignoreCase = true) }.sumOf { it.totalEggs }
+                                    Pair(dayName, dayEggs.toFloat())
+                                }
+                            }
+
+                            val daysList = eggTrendDays.map { it.first }
+                            val dayValues = eggTrendDays.map { it.second }
+                            val maxVal = (dayValues.maxOrNull() ?: 100f).coerceAtLeast(50f)
 
                             Row(
                                 modifier = Modifier
@@ -1527,7 +1775,7 @@ fun MilkLogScreen(
                                 verticalAlignment = Alignment.Bottom
                             ) {
                                 dayValues.forEachIndexed { idx, valAmt ->
-                                    val pct = valAmt / maxVal
+                                    val pct = (valAmt / maxVal).coerceIn(0.08f, 1f)
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier.weight(1f)
@@ -1539,7 +1787,7 @@ fun MilkLogScreen(
                                                 .width(18.dp)
                                                 .fillMaxHeight(pct * 0.75f)
                                                 .background(
-                                                    color = if (idx == 3) Color(0xFFD97706) else Color(0xFFFBBF24),
+                                                    color = if (idx == 6) Color(0xFFD97706) else Color(0xFFFBBF24),
                                                     shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
                                                 )
                                         )

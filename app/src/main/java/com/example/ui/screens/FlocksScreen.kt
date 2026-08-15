@@ -2,10 +2,15 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import com.example.ui.components.AppDatePickerField
+import com.example.ui.components.EditAnimalDialog
+import com.example.ui.components.AnimalOptionsDialog
+import com.example.ui.components.DeleteAnimalConfirmDialog
 import com.example.utils.PoultryAgeAndVaccinationUtils
 import com.example.utils.VaccineDueStatus
 import androidx.compose.foundation.layout.Arrangement
@@ -29,9 +34,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Egg
 import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.SentimentSatisfied
 import androidx.compose.material.icons.filled.WaterDrop
@@ -52,9 +59,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.material3.LinearProgressIndicator
+import com.example.util.CattleLifecycleEngine
+import com.example.util.CattleStage
+import com.example.util.CattleStageEvaluation
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -252,6 +265,23 @@ val mockAnimals = listOf(
         disposalAmount = 145000.0,
         disposalDate = "02 Jun 2026",
         disposalNotes = "Sold to Nakuru Meat Processors",
+        headCountInt = 1
+    ),
+    AnimalDetailData(
+        id = "6b",
+        name = "Bella",
+        tagNumber = "#115",
+        breed = "Friesian Cow",
+        category = "CATTLE",
+        status = "DRY",
+        age = "5y 1m",
+        weight = "560kg",
+        lastMilk = "0.0L",
+        breedingStatus = "DRY OFF (Pre-Calving Rest)",
+        dateOfBirth = "14 Mar 2021",
+        weightAtBirth = "35 kg",
+        sire = "Thunder #045",
+        dam = "Bella #010",
         headCountInt = 1
     ),
     AnimalDetailData(
@@ -681,9 +711,15 @@ fun FlocksScreen(
     onUpdateRequestStatus: (EmployeeRequest, RequestStatus) -> Unit,
     onAddFinanceRecord: (type: FinanceType, category: String, amount: Double, description: String) -> Unit = { _, _, _, _ -> },
     onUpdateUnitHeadCount: (unitId: Long, newHeadCount: Int) -> Unit = { _, _ -> },
+    onUpdateUnit: (FarmUnit) -> Unit = { _ -> },
+    onDeleteUnit: (Long) -> Unit = { _ -> },
     modifier: Modifier = Modifier
 ) {
     var selectedAnimal by remember { mutableStateOf<AnimalDetailData?>(null) }
+    var animalForOptions by remember { mutableStateOf<AnimalDetailData?>(null) }
+    var animalToEdit by remember { mutableStateOf<AnimalDetailData?>(null) }
+    var animalToDelete by remember { mutableStateOf<AnimalDetailData?>(null) }
+    var animalToDispose by remember { mutableStateOf<AnimalDetailData?>(null) }
     var selectedFilterCategory by remember { mutableStateOf("ALL") }
     var selectedCattleStage by remember { mutableStateOf("ALL") } // "ALL", "MILKING", "PREGNANT", "CALF", "HEIFER", "BULL", "DISPOSED"
     var showCategoryGuideDialog by remember { mutableStateOf(false) }
@@ -717,11 +753,164 @@ fun FlocksScreen(
 
     val mutableAnimals = remember { mutableStateListOf<AnimalDetailData>().apply { addAll(initialAnimals) } }
 
+    val allAnimalEventsMap = remember {
+        mutableStateMapOf<String, SnapshotStateList<CattleEventItem>>().apply {
+            put(
+                "1",
+                mutableStateListOf(
+                    CattleEventItem("e1_1", "INSEMINATION", "Artificial Insemination (AI)", "12 Sep 2023", "Inseminated with Friesian Bull Straw #FRIESIAN-88 (Sire: Thunder #045).", "Technician: Dr. Otieno (Vet)", "Straw #88"),
+                    CattleEventItem("e1_2", "CALVING", "Calving Event - Delivered Healthy Calf", "14 Jun 2024", "Delivered healthy male calf (Calf #130). Clean delivery, placenta expelled.", "Calf Tag: #130"),
+                    CattleEventItem("e1_3", "HEAT", "Estrus (Heat Period) Observed", "02 Aug 2026", "Standing heat and clear mucus discharge observed.", "Observed by Worker John"),
+                    CattleEventItem("e1_4", "INSEMINATION", "Artificial Insemination (AI)", "03 Aug 2026", "Inseminated with Friesian Straw #92 (Sire: Thunder #045).", "Technician: Dr. Otieno (Vet)", "Straw #92")
+                )
+            )
+            put(
+                "2",
+                mutableStateListOf(
+                    CattleEventItem("e2_1", "INSEMINATION", "Artificial Insemination (AI)", "10 Jan 2026", "Inseminated with Jersey Bull Straw #JERSEY-12.", "Technician: Dr. Otieno (Vet)", "Straw #12"),
+                    CattleEventItem("e2_2", "PD", "Pregnancy Diagnosis (PD) - Confirmed Positive", "15 Mar 2026", "Rectal palpation confirmed pregnancy ~65 days. Gestation progressing well.", "Technician: Dr. Otieno (Vet)", "Positive (In-Calf)")
+                )
+            )
+            put(
+                "3",
+                mutableStateListOf(
+                    CattleEventItem("e3_1", "HEAT", "First Estrus Observed", "10 Jun 2026", "Heifer showed standing heat for 12 hours.", "Recorded by Tech"),
+                    CattleEventItem("e3_2", "WEIGHT", "Weight Check (Heifer Target)", "15 Jul 2026", "Current weight 380kg. Reached breeding target weight.", "Tech: Peter", "380 kg")
+                )
+            )
+            put(
+                "4",
+                mutableStateListOf(
+                    CattleEventItem("e4_1", "CALVING", "Birth Record", "12 May 2026", "Born to Bessie #102. Birth weight 33kg. Colostrum administered.", "Dam: Bessie #102", "33 kg"),
+                    CattleEventItem("e4_2", "HEALTH", "Dehorning & Blackquarter Vaccine", "20 Jun 2026", "Disbudded with electric cautery. BQ vaccine administered.", "Vet Clinic")
+                )
+            )
+            put(
+                "5",
+                mutableStateListOf(
+                    CattleEventItem("e5_1", "WEIGHT", "Breeding Bull Weight Assessment", "01 Jul 2026", "Weighed 680kg. Excellent body conformation.", "Record: Tech", "680 kg")
+                )
+            )
+            put(
+                "6b",
+                mutableStateListOf(
+                    CattleEventItem("e6b_1", "PD", "Pregnancy Diagnosis (PD) - Confirmed Positive", "10 Apr 2026", "Confirmed pregnant ~120 days. Expected calving Sep 2026.", "Technician: Dr. Otieno (Vet)", "Positive (In-Calf)"),
+                    CattleEventItem("e6b_2", "DRY_OFF", "Dry Off (Milking Cessation)", "15 Jul 2026", "Milking halted for 60-day dry period. Dry cow intramammary therapy applied.", "Vet: Dr. Otieno", "Dry Period")
+                )
+            )
+        }
+    }
+
     LaunchedEffect(units) {
         val existingNames = mutableAnimals.map { it.name }.toSet()
         initialAnimals.forEach { initItem ->
             if (!existingNames.contains(initItem.name)) {
                 mutableAnimals.add(initItem)
+            }
+        }
+    }
+
+    fun handleModifyAnimal(
+        animalId: String,
+        name: String,
+        tagNumber: String,
+        breed: String,
+        category: String,
+        status: String,
+        breedingStatus: String,
+        age: String,
+        dob: String,
+        weightAtBirth: String,
+        currentWeight: String,
+        sire: String,
+        dam: String,
+        headCount: Int
+    ) {
+        val existing = mutableAnimals.find { it.id == animalId } ?: return
+        val updated = existing.copy(
+            name = name,
+            tagNumber = tagNumber,
+            breed = breed,
+            category = category,
+            status = status,
+            breedingStatus = breedingStatus,
+            age = age,
+            dateOfBirth = dob,
+            weightAtBirth = weightAtBirth,
+            weight = currentWeight,
+            sire = sire,
+            dam = dam,
+            headCountInt = headCount,
+            lastMilk = if (category.equals("POULTRY", ignoreCase = true)) "$headCount Birds" else existing.lastMilk
+        )
+        val idx = mutableAnimals.indexOfFirst { it.id == animalId }
+        if (idx >= 0) {
+            mutableAnimals[idx] = updated
+        }
+        if (selectedAnimal?.id == animalId) {
+            selectedAnimal = updated
+        }
+
+        if (animalId.startsWith("unit_")) {
+            val uId = animalId.removePrefix("unit_").toLongOrNull()
+            if (uId != null) {
+                val matching = units.find { it.id == uId }
+                if (matching != null) {
+                    val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                    val updatedUnit = matching.copy(
+                        name = name,
+                        type = if (category.equals("POULTRY", ignoreCase = true)) "Poultry" else "Cattle",
+                        headCount = headCount,
+                        healthStatus = status,
+                        lastUpdated = nowFormatted,
+                        tagNumber = tagNumber,
+                        breed = breed,
+                        dob = dob,
+                        weightAtBirth = weightAtBirth,
+                        currentWeight = currentWeight,
+                        sire = sire,
+                        dam = dam
+                    )
+                    onUpdateUnit(updatedUnit)
+                }
+            }
+        } else {
+            val matching = units.find { it.name.equals(existing.name, ignoreCase = true) }
+            if (matching != null) {
+                val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                val updatedUnit = matching.copy(
+                    name = name,
+                    type = if (category.equals("POULTRY", ignoreCase = true)) "Poultry" else "Cattle",
+                    headCount = headCount,
+                    healthStatus = status,
+                    lastUpdated = nowFormatted,
+                    tagNumber = tagNumber,
+                    breed = breed,
+                    dob = dob,
+                    weightAtBirth = weightAtBirth,
+                    currentWeight = currentWeight,
+                    sire = sire,
+                    dam = dam
+                )
+                onUpdateUnit(updatedUnit)
+            }
+        }
+    }
+
+    fun handleDeleteAnimalCompletely(animal: AnimalDetailData) {
+        mutableAnimals.removeAll { it.id == animal.id }
+        if (selectedAnimal?.id == animal.id) {
+            selectedAnimal = null
+        }
+        if (animal.id.startsWith("unit_")) {
+            val uId = animal.id.removePrefix("unit_").toLongOrNull()
+            if (uId != null) {
+                onDeleteUnit(uId)
+            }
+        } else {
+            val matching = units.find { it.name.equals(animal.name, ignoreCase = true) }
+            if (matching != null) {
+                onDeleteUnit(matching.id)
             }
         }
     }
@@ -749,6 +938,28 @@ fun FlocksScreen(
                 amount,
                 "Sold ${animal.name} (${animal.tagNumber}) - ${notes.ifBlank { "Individual animal disposal by sale" }}"
             )
+        }
+    }
+
+    fun handleUpdateAnimalStage(animalId: String, newStatus: String, newBreedingStatus: String) {
+        val idx = mutableAnimals.indexOfFirst { it.id == animalId }
+        if (idx >= 0) {
+            val existing = mutableAnimals[idx]
+            val updated = existing.copy(
+                status = newStatus,
+                breedingStatus = newBreedingStatus
+            )
+            mutableAnimals[idx] = updated
+            if (selectedAnimal?.id == animalId) {
+                selectedAnimal = updated
+            }
+        }
+        val unitId = animalId.removePrefix("unit_").toLongOrNull()
+        if (unitId != null) {
+            val u = units.find { it.id == unitId }
+            if (u != null) {
+                onUpdateUnit(u.copy(healthStatus = newStatus))
+            }
         }
     }
 
@@ -788,34 +999,26 @@ fun FlocksScreen(
         }
     }
 
-    // Cattle category stage breakdown calculations
+    // Cattle category stage breakdown calculations using automatic CattleLifecycleEngine
     val cattleList = remember(mutableAnimals.toList()) {
         mutableAnimals.filter { it.category.equals("CATTLE", ignoreCase = true) }
     }
 
-    val milkingCount = remember(cattleList) {
-        cattleList.count { it.status.equals("MILKING", ignoreCase = true) || it.breedingStatus.contains("MILKING", ignoreCase = true) }
+    val evaluatedCattleMap = remember(cattleList, allAnimalEventsMap.toMap(), milkLogs) {
+        cattleList.associate { animal ->
+            val evs = allAnimalEventsMap[animal.id] ?: emptyList()
+            animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, evs, milkLogs)
+        }
     }
 
-    val pregnantCount = remember(cattleList) {
-        cattleList.count { it.status.equals("PREGNANT", ignoreCase = true) || it.breedingStatus.contains("PREGNANT", ignoreCase = true) }
-    }
-
-    val calfCount = remember(cattleList) {
-        cattleList.count { it.status.equals("CALF", ignoreCase = true) || it.breed.contains("Calf", ignoreCase = true) || it.age.contains("month", ignoreCase = true) }
-    }
-
-    val heiferCount = remember(cattleList) {
-        cattleList.count { it.status.equals("HEIFER", ignoreCase = true) || it.breedingStatus.contains("HEIFER", ignoreCase = true) }
-    }
-
-    val bullCount = remember(cattleList) {
-        cattleList.count { it.status.equals("BULL", ignoreCase = true) || it.breed.contains("Bull", ignoreCase = true) || it.breedingStatus.contains("BULL", ignoreCase = true) }
-    }
-
-    val disposedCount = remember(cattleList) {
-        cattleList.count { it.status.contains("DISPOSED", ignoreCase = true) || it.breedingStatus.contains("CULLED", ignoreCase = true) || it.breedingStatus.contains("SOLD", ignoreCase = true) }
-    }
+    val inCalfMilkingCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF_MILKING } }
+    val inCalfCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF } }
+    val milkingCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.MILKING } }
+    val heiferCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.HEIFER } }
+    val calfCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.CALF } }
+    val dryCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.DRY } }
+    val bullCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.BULL } }
+    val disposedCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.DISPOSED } }
 
     if (showCategoryGuideDialog) {
         Dialog(onDismissRequest = { showCategoryGuideDialog = false }) {
@@ -839,7 +1042,7 @@ fun FlocksScreen(
                             Icon(Icons.Filled.Info, contentDescription = null, tint = ForestGreenPrimary)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "Cattle Stage Definitions",
+                                "Automatic Cattle Stages",
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0F172A)
@@ -852,7 +1055,7 @@ fun FlocksScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Understanding each stage helps optimize feeding, breeding, milk production, and herd management:",
+                        "Cattle stage and production status are calculated automatically from breeding records & log events:",
                         fontSize = 12.sp,
                         color = Color(0xFF64748B)
                     )
@@ -860,12 +1063,14 @@ fun FlocksScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     listOf(
-                        Triple("🐄 MILKING", "Active Lactating Cows", "Adult female cows currently producing daily milk after calving. Requires high-energy ration and daily milk yield tracking."),
-                        Triple("🤰 PREGNANT", "Gestating Females", "Cows or heifers confirmed pregnant (~283-day gestation). Monitored for dry period close-up feeding and expected calving date alerts."),
-                        Triple("🍼 CALVES", "Young Stock (< 1 Year)", "Newborn to weaning young stock (0-12 months). Focus is on colostrum intake, calf starter, dehorning, and vaccination schedules."),
-                        Triple("🌾 HEIFERS", "Young Breeding Females", "Post-weaning young female cattle that have reached maturity but have not yet given birth to their first calf. Monitored for AI insemination."),
-                        Triple("🐂 BULLS", "Breeding Males / Studs", "Mature male cattle kept for herd sire breeding, artificial insemination semen production, or beef fattening."),
-                        Triple("🚫 DISPOSED", "Culled / Sold / Removed", "Cattle removed from the active productive herd due to age, culling, sale, or mortality. Kept for historical & accounting audits.")
+                        Triple("🍼 CALF", "Young Stock (< 12 Months)", "Newborn to weaning young stock. Automatically determined by birth date or young age (< 12 months)."),
+                        Triple("🌾 HEIFER", "Mature Maiden (> 12 Months)", "Young female (> 12 months) that has not yet given birth to her first calf. Automatically transitions upon aging."),
+                        Triple("🤰 IN-CALF", "Confirmed Pregnant (Dry / Heifer)", "Confirmed pregnant through a positive Pregnancy Diagnosis (PD) log event, resting or not actively producing milk."),
+                        Triple("🥛🤰 IN-CALF / MILKING", "Pregnant & Active Lactation", "Confirmed pregnant via positive PD log event and concurrently active in daily milk production."),
+                        Triple("🥛 MILKING", "Active Lactating Cow (Open)", "Adult cow in daily milk production following calving, awaiting or between inseminations."),
+                        Triple("🍂 DRY", "Dry Period (Resting)", "Mature cow that has completed lactation and ceased milking (via Dry Off log event or 0 milk logs)."),
+                        Triple("🐂 BULL", "Breeding Male / Stud", "Mature male kept for herd breeding or artificial insemination semen production."),
+                        Triple("🚫 DISPOSED", "Culled / Sold / Removed", "Cattle disposed from active herd. All historical milk and breeding records remain safely stored.")
                     ).forEach { (title, subtitle, desc) ->
                         Card(
                             modifier = Modifier
@@ -903,6 +1108,84 @@ fun FlocksScreen(
         }
     }
 
+    if (animalForOptions != null) {
+        val target = animalForOptions!!
+        AnimalOptionsDialog(
+            animal = target,
+            onDismiss = { animalForOptions = null },
+            onEditClick = {
+                animalForOptions = null
+                animalToEdit = target
+            },
+            onDeleteClick = {
+                animalForOptions = null
+                animalToDelete = target
+            },
+            onDisposeClick = {
+                animalForOptions = null
+                val isPoultry = target.category.equals("POULTRY", ignoreCase = true) || target.breed.contains("Layer", ignoreCase = true) || target.breed.contains("Flock", ignoreCase = true)
+                if (isPoultry) {
+                    selectedAnimal = target
+                } else {
+                    animalToDispose = target
+                }
+            },
+            onViewDetailsClick = {
+                animalForOptions = null
+                selectedAnimal = target
+            }
+        )
+    }
+
+    if (animalToEdit != null) {
+        EditAnimalDialog(
+            animal = animalToEdit!!,
+            onDismiss = { animalToEdit = null },
+            onSaveAnimal = { name, tagNumber, breed, category, status, breedingStatus, age, dob, weightAtBirth, currentWeight, sire, dam, headCount ->
+                handleModifyAnimal(
+                    animalId = animalToEdit!!.id,
+                    name = name,
+                    tagNumber = tagNumber,
+                    breed = breed,
+                    category = category,
+                    status = status,
+                    breedingStatus = breedingStatus,
+                    age = age,
+                    dob = dob,
+                    weightAtBirth = weightAtBirth,
+                    currentWeight = currentWeight,
+                    sire = sire,
+                    dam = dam,
+                    headCount = headCount
+                )
+                animalToEdit = null
+            }
+        )
+    }
+
+    if (animalToDelete != null) {
+        DeleteAnimalConfirmDialog(
+            animal = animalToDelete!!,
+            onDismiss = { animalToDelete = null },
+            onConfirmDelete = {
+                handleDeleteAnimalCompletely(animalToDelete!!)
+                animalToDelete = null
+            }
+        )
+    }
+
+    if (animalToDispose != null) {
+        DisposeAnimalDialog(
+            animalName = animalToDispose!!.name,
+            tagNumber = animalToDispose!!.tagNumber,
+            onDismiss = { animalToDispose = null },
+            onConfirmDispose = { reason, amount, notes, date ->
+                handleDisposeAnimal(animalToDispose!!, reason, amount, notes, date)
+                animalToDispose = null
+            }
+        )
+    }
+
     if (selectedAnimal != null) {
         val isPoultry = selectedAnimal!!.category.equals("POULTRY", ignoreCase = true) || selectedAnimal!!.category.equals("FLOCK", ignoreCase = true)
         if (isPoultry) {
@@ -916,15 +1199,28 @@ fun FlocksScreen(
                 onDisposeFlock = { qty, reason, amount, notes, date ->
                     handleDisposeFlock(selectedAnimal!!, qty, reason, amount, notes, date)
                 },
+                onEditFlock = { animalToEdit = selectedAnimal },
+                onDeleteFlock = { animalToDelete = selectedAnimal },
                 modifier = modifier
             )
         } else {
+            val currentEvents = allAnimalEventsMap.getOrPut(selectedAnimal!!.id) {
+                mutableStateListOf<CattleEventItem>()
+            }
             AnimalDetailsView(
                 animal = selectedAnimal!!,
+                milkLogs = milkLogs,
+                eggLogs = eggLogs,
+                animalEvents = currentEvents,
+                onUpdateAnimalStage = { newStatus, newBreedingStatus ->
+                    handleUpdateAnimalStage(selectedAnimal!!.id, newStatus, newBreedingStatus)
+                },
                 onBackClick = { selectedAnimal = null },
                 onDisposeAnimal = { reason, amount, notes, date ->
                     handleDisposeAnimal(selectedAnimal!!, reason, amount, notes, date)
                 },
+                onEditAnimal = { animalToEdit = selectedAnimal },
+                onDeleteAnimal = { animalToDelete = selectedAnimal },
                 modifier = modifier
             )
         }
@@ -1014,10 +1310,12 @@ fun FlocksScreen(
 
                                 val stageItems = listOf(
                                     Triple("ALL", "All Herd", "${cattleList.size}"),
-                                    Triple("MILKING", "🐄 Milking", "$milkingCount"),
-                                    Triple("PREGNANT", "🤰 Pregnant", "$pregnantCount"),
-                                    Triple("CALF", "🍼 Calves", "$calfCount"),
+                                    Triple("INCALF_MILKING", "🥛🤰 In-Calf/Milk", "$inCalfMilkingCount"),
+                                    Triple("INCALF", "🤰 In-Calf", "$inCalfCount"),
+                                    Triple("MILKING", "🥛 Milking", "$milkingCount"),
                                     Triple("HEIFER", "🌾 Heifers", "$heiferCount"),
+                                    Triple("CALF", "🍼 Calves", "$calfCount"),
+                                    Triple("DRY", "🍂 Dry", "$dryCount"),
                                     Triple("BULL", "🐂 Bulls", "$bullCount"),
                                     Triple("DISPOSED", "🚫 Disposed", "$disposedCount")
                                 )
@@ -1026,7 +1324,7 @@ fun FlocksScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    stageItems.take(4).forEach { (stageKey, label, count) ->
+                                    stageItems.take(5).forEach { (stageKey, label, count) ->
                                         val isSelected = selectedCattleStage == stageKey
                                         Surface(
                                             shape = RoundedCornerShape(10.dp),
@@ -1037,11 +1335,11 @@ fun FlocksScreen(
                                                 .clickable { selectedCattleStage = stageKey }
                                         ) {
                                             Column(
-                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
-                                                Text(count, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (isSelected) Color.White else Color(0xFF0F172A))
-                                                Text(label, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color(0xFF64748B))
+                                                Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (isSelected) Color.White else Color(0xFF0F172A))
+                                                Text(label, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color(0xFF64748B), maxLines = 1)
                                             }
                                         }
                                     }
@@ -1053,7 +1351,7 @@ fun FlocksScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    stageItems.drop(4).forEach { (stageKey, label, count) ->
+                                    stageItems.drop(5).forEach { (stageKey, label, count) ->
                                         val isSelected = selectedCattleStage == stageKey
                                         Surface(
                                             shape = RoundedCornerShape(10.dp),
@@ -1064,11 +1362,11 @@ fun FlocksScreen(
                                                 .clickable { selectedCattleStage = stageKey }
                                         ) {
                                             Column(
-                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
-                                                Text(count, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (isSelected) Color.White else Color(0xFF0F172A))
-                                                Text(label, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color(0xFF64748B))
+                                                Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (isSelected) Color.White else Color(0xFF0F172A))
+                                                Text(label, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color(0xFF64748B), maxLines = 1)
                                             }
                                         }
                                     }
@@ -1082,25 +1380,36 @@ fun FlocksScreen(
 
                 val filteredList = mutableAnimals.filter { animal ->
                     val matchesCategory = if (selectedFilterCategory == "ALL") true else animal.category.equals(selectedFilterCategory, ignoreCase = true)
+                    if (!matchesCategory) return@filter false
+                    if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
 
-                    val matchesStage = when (selectedCattleStage) {
-                        "MILKING" -> (animal.status.equals("MILKING", ignoreCase = true) || animal.breedingStatus.contains("MILKING", ignoreCase = true)) && !animal.status.contains("DISPOSED", ignoreCase = true)
-                        "PREGNANT" -> (animal.status.equals("PREGNANT", ignoreCase = true) || animal.breedingStatus.contains("PREGNANT", ignoreCase = true)) && !animal.status.contains("DISPOSED", ignoreCase = true)
-                        "CALF" -> (animal.status.equals("CALF", ignoreCase = true) || animal.breed.contains("Calf", ignoreCase = true) || animal.age.contains("month", ignoreCase = true)) && !animal.status.contains("DISPOSED", ignoreCase = true)
-                        "HEIFER" -> (animal.status.equals("HEIFER", ignoreCase = true) || animal.breedingStatus.contains("HEIFER", ignoreCase = true)) && !animal.status.contains("DISPOSED", ignoreCase = true)
-                        "BULL" -> (animal.status.equals("BULL", ignoreCase = true) || animal.breed.contains("Bull", ignoreCase = true) || animal.breedingStatus.contains("BULL", ignoreCase = true)) && !animal.status.contains("DISPOSED", ignoreCase = true)
-                        "DISPOSED" -> animal.status.contains("DISPOSED", ignoreCase = true) || animal.breedingStatus.contains("CULLED", ignoreCase = true) || animal.breedingStatus.contains("SOLD", ignoreCase = true)
+                    val eval = evaluatedCattleMap[animal.id] ?: CattleLifecycleEngine.evaluateCattleStage(animal, allAnimalEventsMap[animal.id] ?: emptyList(), milkLogs)
+                    when (selectedCattleStage) {
+                        "INCALF_MILKING" -> eval.stage == CattleStage.INCALF_MILKING
+                        "INCALF" -> eval.stage == CattleStage.INCALF
+                        "MILKING" -> eval.stage == CattleStage.MILKING
+                        "HEIFER" -> eval.stage == CattleStage.HEIFER
+                        "CALF" -> eval.stage == CattleStage.CALF
+                        "DRY" -> eval.stage == CattleStage.DRY
+                        "BULL" -> eval.stage == CattleStage.BULL
+                        "DISPOSED" -> eval.stage == CattleStage.DISPOSED
                         else -> true
                     }
-
-                    matchesCategory && (if (animal.category.equals("CATTLE", ignoreCase = true)) matchesStage else true)
                 }
 
                 items(filteredList, key = { it.id }) { animal ->
+                    val isCattleItem = animal.category.equals("CATTLE", ignoreCase = true)
+                    val cattleEval = if (isCattleItem) evaluatedCattleMap[animal.id] ?: CattleLifecycleEngine.evaluateCattleStage(animal, allAnimalEventsMap[animal.id] ?: emptyList(), milkLogs) else null
+
+                    @OptIn(ExperimentalFoundationApi::class)
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { selectedAnimal = animal }
+                            .clip(RoundedCornerShape(16.dp))
+                            .combinedClickable(
+                                onClick = { selectedAnimal = animal },
+                                onLongClick = { animalForOptions = animal }
+                            )
                             .testTag("animal_card_${animal.id}"),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1108,12 +1417,15 @@ fun FlocksScreen(
                     ) {
                         Row(
                             modifier = Modifier
-                                .padding(16.dp)
+                                .padding(14.dp)
                                 .fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Surface(
                                     shape = CircleShape,
                                     color = Color(0xFFF1F5F9),
@@ -1129,34 +1441,67 @@ fun FlocksScreen(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.width(14.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
 
                                 Column {
                                     Text(
                                         text = animal.name,
-                                        fontSize = 18.sp,
+                                        fontSize = 17.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF1E293B)
                                     )
                                     Text(
-                                        text = "Breed: ${animal.breed}   ${animal.tagNumber}",
-                                        fontSize = 13.sp,
+                                        text = if (cattleEval != null) "${cattleEval.stage.emoji} ${animal.breed}   ${animal.tagNumber}" else "Breed: ${animal.breed}   ${animal.tagNumber}",
+                                        fontSize = 12.sp,
                                         color = Color(0xFF64748B)
                                     )
+                                    if (cattleEval != null) {
+                                        Text(
+                                            text = cattleEval.breedingStatusText,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = cattleEval.badgeTextColor
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "💡 Long press to Edit / Delete",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
                                 }
                             }
 
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (animal.status == "MILKING" || animal.status == "ACTIVE") TagLivestockBg else TagYieldBg
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text(
-                                    text = animal.status,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (animal.status == "MILKING" || animal.status == "ACTIVE") TagLivestockText else TagYieldText
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = cattleEval?.badgeBgColor ?: if (animal.status == "MILKING" || animal.status == "ACTIVE" || animal.status == "Active Laying") TagLivestockBg else TagYieldBg
+                                ) {
+                                    Text(
+                                        text = cattleEval?.stage?.displayName ?: animal.status,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = cattleEval?.badgeTextColor ?: if (animal.status == "MILKING" || animal.status == "ACTIVE" || animal.status == "Active Laying") TagLivestockText else TagYieldText
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { animalForOptions = animal },
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .testTag("more_options_${animal.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.MoreVert,
+                                        contentDescription = "Animal options",
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1191,6 +1536,12 @@ fun AnimalDetailsView(
     animal: AnimalDetailData,
     onBackClick: () -> Unit,
     onDisposeAnimal: (reason: String, amount: Double, notes: String, date: String) -> Unit = { _, _, _, _ -> },
+    onEditAnimal: () -> Unit = {},
+    onDeleteAnimal: () -> Unit = {},
+    milkLogs: List<MilkLog> = emptyList(),
+    eggLogs: List<EggLog> = emptyList(),
+    animalEvents: SnapshotStateList<CattleEventItem> = remember { mutableStateListOf() },
+    onUpdateAnimalStage: (newStatus: String, newBreedingStatus: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var showAddCattleEventDialog by remember { mutableStateOf(false) }
@@ -1198,9 +1549,25 @@ fun AnimalDetailsView(
     var currentStatus by remember(animal.id, animal.status) { mutableStateOf(animal.status) }
     var showUpdateStageDialog by remember { mutableStateOf(false) }
     var showDisposeDialog by remember { mutableStateOf(false) }
+    var showStageInfoDialog by remember { mutableStateOf(false) }
 
     val isCattle = animal.category.equals("CATTLE", ignoreCase = true)
     val isPoultry = animal.category.contains("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Poultry", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
+
+    // Evaluate dynamic cattle stage using CattleLifecycleEngine
+    val cattleEval = remember(animal, animalEvents.toList(), milkLogs) {
+        if (isCattle) {
+            CattleLifecycleEngine.evaluateCattleStage(animal, animalEvents.toList(), milkLogs)
+        } else null
+    }
+
+    // Keep animal status in sync with calculated stage if cattle
+    LaunchedEffect(cattleEval) {
+        if (cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true)) {
+            currentStatus = cattleEval.stage.displayName
+            onUpdateAnimalStage(cattleEval.stage.displayName, cattleEval.breedingStatusText)
+        }
+    }
 
     if (showDisposeDialog) {
         DisposeAnimalDialog(
@@ -1213,6 +1580,131 @@ fun AnimalDetailsView(
                 onDisposeAnimal(reason, amount, notes, date)
             }
         )
+    }
+
+    if (showStageInfoDialog && cattleEval != null) {
+        Dialog(onDismissRequest = { showStageInfoDialog = false }) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .clip(RoundedCornerShape(20.dp)),
+                color = Color.White
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(18.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = cattleEval.badgeBgColor
+                            ) {
+                                Text(
+                                    text = cattleEval.stage.displayName,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = cattleEval.badgeTextColor
+                                )
+                            }
+                        }
+                        IconButton(onClick = { showStageInfoDialog = false }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Close")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        "Automatic Stage Calculation",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Current Evaluation:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF64748B)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = cattleEval.explanation,
+                                fontSize = 13.sp,
+                                color = Color(0xFF1E293B)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        "How Cattle Stages Work:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF475569)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "• CALF: Cattle under 6 months old.\n" +
+                        "• HEIFER: Female >= 6 months old with no calves born yet.\n" +
+                        "• INCALF: Confirmed pregnant through positive Pregnancy Diagnosis (PD) check.\n" +
+                        "• INCALF / MILKING: Confirmed pregnant while currently actively milking.\n" +
+                        "• DRY: Non-lactating cow (rest period ~60 days before calving).\n" +
+                        "• MILKING: Actively lactating cow.\n" +
+                        "• BULL: Male breeding stock.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF334155),
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                showStageInfoDialog = false
+                                showUpdateStageDialog = true
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Manual Override", fontSize = 11.sp)
+                        }
+                        Button(
+                            onClick = {
+                                showStageInfoDialog = false
+                                showAddCattleEventDialog = true
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                        ) {
+                            Text("+ Log Event", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showUpdateStageDialog) {
@@ -1230,7 +1722,7 @@ fun AnimalDetailsView(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Modify Cattle Stage / Status",
+                            "Manual Stage Override",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
@@ -1242,27 +1734,30 @@ fun AnimalDetailsView(
 
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        "Select new stage for ${animal.name}:",
-                        fontSize = 13.sp,
+                        "Normally stages update automatically via Log Events (AI, PD, Calving, Dry Off). You can also set a manual override:",
+                        fontSize = 12.sp,
                         color = Color(0xFF64748B)
                     )
                     Spacer(modifier = Modifier.height(14.dp))
 
                     val stages = listOf(
                         "MILKING" to "🐄 MILKING (Active Lactation)",
-                        "PREGNANT" to "🤰 PREGNANT (Gestating)",
+                        "INCALF_MILKING" to "🤰 INCALF / MILKING (Pregnant + Lactating)",
+                        "INCALF" to "🤰 INCALF (Confirmed Pregnant)",
+                        "DRY" to "🌾 DRY (Non-Lactating Gestation)",
                         "CALF" to "🍼 CALF (Young Stock)",
-                        "HEIFER" to "🌾 HEIFER (Pre-calving Female)",
+                        "HEIFER" to "🌿 HEIFER (Pre-calving Female)",
                         "BULL" to "🐂 BULL (Breeding Male)",
                         "DISPOSED" to "🚫 DISPOSED (Culled / Sold)"
                     )
 
                     stages.forEach { (stageKey, stageLabel) ->
-                        val isSelected = currentStatus.equals(stageKey, ignoreCase = true)
+                        val isSelected = currentStatus.equals(stageKey, ignoreCase = true) ||
+                            (cattleEval?.stage?.name.equals(stageKey, ignoreCase = true))
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = if (isSelected) ForestGreenPrimary.copy(alpha = 0.12f) else Color(0xFFF8FAFC),
-                            border = androidx.compose.foundation.BorderStroke(
+                            border = BorderStroke(
                                 1.dp,
                                 if (isSelected) ForestGreenPrimary else Color(0xFFE2E8F0)
                             ),
@@ -1270,7 +1765,19 @@ fun AnimalDetailsView(
                                 .fillMaxWidth()
                                 .padding(bottom = 8.dp)
                                 .clickable {
-                                    currentStatus = stageKey
+                                    val newStatus = when (stageKey) {
+                                        "INCALF_MILKING" -> "INCALF / MILKING"
+                                        "INCALF" -> "INCALF"
+                                        "DRY" -> "DRY"
+                                        "MILKING" -> "MILKING"
+                                        "HEIFER" -> "HEIFER"
+                                        "CALF" -> "CALF"
+                                        "BULL" -> "BULL"
+                                        "DISPOSED" -> "DISPOSED"
+                                        else -> stageKey
+                                    }
+                                    currentStatus = newStatus
+                                    onUpdateAnimalStage(newStatus, if (stageKey.contains("INCALF")) "Confirmed Pregnant" else newStatus)
                                     showUpdateStageDialog = false
                                 }
                         ) {
@@ -1299,73 +1806,104 @@ fun AnimalDetailsView(
         }
     }
 
-    val cattleEvents = remember {
-        mutableStateListOf(
-            CattleEventItem(
-                id = "e1",
-                category = "HEAT",
-                title = "Estrus (Heat Period) Observed",
-                date = "02 Aug 2026",
-                details = "Clear mucus discharge and standing heat recorded during morning check.",
-                notes = "Observed by Worker John"
-            ),
-            CattleEventItem(
-                id = "e2",
-                category = "INSEMINATION",
-                title = "Artificial Insemination (AI)",
-                date = "03 Aug 2026",
-                details = "Inseminated with Friesian Bull Straw #FRIESIAN-88 (Sire: Thunder #045).",
-                notes = "Technician: Dr. Otieno (Vet)",
-                metricValue = "Straw #88"
-            ),
-            CattleEventItem(
-                id = "e3",
-                category = "WEIGHT",
-                title = "Routine Weight Measurement",
-                date = "28 Jul 2026",
-                details = "Gained +15kg over last 30 days. Good Body Condition Score (3.5/5).",
-                notes = "Recorded by Tech",
-                metricValue = "520 kg"
-            ),
-            CattleEventItem(
-                id = "e4",
-                category = "HEALTH",
-                title = "Foot & Mouth Vaccination",
-                date = "14 May 2026",
-                details = "Administered 2ml FMD vaccine booster subcutaneously.",
-                notes = "Batch #FMD-2026-X",
-                metricValue = "2 ml"
+    // Initialize sample events if empty
+    LaunchedEffect(animal.id) {
+        if (animalEvents.isEmpty() && isCattle) {
+            animalEvents.addAll(
+                listOf(
+                    CattleEventItem(
+                        id = "e1_${animal.id}",
+                        category = "HEAT",
+                        title = "Estrus (Heat Period) Observed",
+                        date = "02 Aug 2026",
+                        details = "Clear mucus discharge and standing heat recorded during morning check.",
+                        notes = "Observed by Worker John"
+                    ),
+                    CattleEventItem(
+                        id = "e2_${animal.id}",
+                        category = "INSEMINATION",
+                        title = "Artificial Insemination (AI)",
+                        date = "03 Aug 2026",
+                        details = "Inseminated with Friesian Bull Straw #FRIESIAN-88 (Sire: Thunder #045).",
+                        notes = "Technician: Dr. Otieno (Vet)",
+                        metricValue = "Straw #88"
+                    ),
+                    CattleEventItem(
+                        id = "e3_${animal.id}",
+                        category = "WEIGHT",
+                        title = "Routine Weight Measurement",
+                        date = "28 Jul 2026",
+                        details = "Gained +15kg over last 30 days. Good Body Condition Score (3.5/5).",
+                        notes = "Recorded by Tech",
+                        metricValue = animal.weight.ifBlank { "520 kg" }
+                    ),
+                    CattleEventItem(
+                        id = "e4_${animal.id}",
+                        category = "HEALTH",
+                        title = "Foot & Mouth Vaccination",
+                        date = "14 May 2026",
+                        details = "Administered 2ml FMD vaccine booster subcutaneously.",
+                        notes = "Batch #FMD-2026-X",
+                        metricValue = "2 ml"
+                    )
+                )
             )
-        )
+        }
     }
 
-    val cattleNotifications = remember {
-        mutableStateListOf(
-            UpcomingCattleNotification(
-                id = "n1",
-                title = "Repeat Heat Check / Pregnancy Diagnosis (PD)",
-                dueDate = "Aug 24, 2026 (In 11 days)",
-                category = "INSEMINATION_PD",
-                badgeColor = Color(0xFFE0F2FE),
-                badgeTextColor = Color(0xFF0369A1)
-            ),
-            UpcomingCattleNotification(
-                id = "n2",
-                title = "Monthly Weight & Deworming Check",
-                dueDate = "Aug 28, 2026 (In 15 days)",
-                category = "WEIGHT",
-                badgeColor = Color(0xFFDCFCE7),
-                badgeTextColor = Color(0xFF15803D)
-            ),
-            UpcomingCattleNotification(
-                id = "n3",
-                title = "Expected Calving Date",
-                dueDate = "Jun 21, 2024",
-                category = "CALVING",
-                badgeColor = Color(0xFFFEF3C7),
-                badgeTextColor = Color(0xFFB45309)
+    val cattleNotifications = remember(cattleEval, animalEvents.toList()) {
+        val list = mutableListOf<UpcomingCattleNotification>()
+        if (cattleEval != null) {
+            if (cattleEval.expectedCalvingDate != null) {
+                list.add(
+                    UpcomingCattleNotification(
+                        id = "notif_calving",
+                        title = "Expected Calving Date",
+                        dueDate = cattleEval.expectedCalvingDate,
+                        category = "CALVING",
+                        badgeColor = Color(0xFFFEF3C7),
+                        badgeTextColor = Color(0xFFB45309)
+                    )
+                )
+            }
+            if (cattleEval.dryOffTargetDate != null) {
+                list.add(
+                    UpcomingCattleNotification(
+                        id = "notif_dry",
+                        title = "Target Dry Off Date (Rest Period)",
+                        dueDate = cattleEval.dryOffTargetDate,
+                        category = "DRY_OFF",
+                        badgeColor = Color(0xFFDCFCE7),
+                        badgeTextColor = Color(0xFF15803D)
+                    )
+                )
+            }
+            if (cattleEval.stage == CattleStage.INCALF || cattleEval.stage == CattleStage.INCALF_MILKING) {
+                list.add(
+                    UpcomingCattleNotification(
+                        id = "notif_pd",
+                        title = "Routine Pregnancy Check / Vet Follow-up",
+                        dueDate = "Next Vet Visit",
+                        category = "INSEMINATION_PD",
+                        badgeColor = Color(0xFFE0F2FE),
+                        badgeTextColor = Color(0xFF0369A1)
+                    )
+                )
+            }
+        }
+        if (list.isEmpty()) {
+            list.add(
+                UpcomingCattleNotification(
+                    id = "notif_default_1",
+                    title = "Monthly Weight & Deworming Check",
+                    dueDate = "Aug 28, 2026",
+                    category = "WEIGHT",
+                    badgeColor = Color(0xFFDCFCE7),
+                    badgeTextColor = Color(0xFF15803D)
+                )
             )
-        )
+        }
+        list
     }
 
     LazyColumn(
@@ -1381,26 +1919,67 @@ fun AnimalDetailsView(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBackClick) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color(0xFF1E293B))
-                }
-                Text(
-                    text = "Animal Details",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E293B)
-                )
-                if (!currentStatus.contains("DISPOSED", ignoreCase = true)) {
-                    Button(
-                        onClick = { showDisposeDialog = true },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text("🚫 DISPOSE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color(0xFF1E293B))
                     }
-                } else {
-                    Spacer(modifier = Modifier.width(48.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Animal Details",
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1E293B)
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onEditAnimal,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFECFDF5))
+                            .border(1.dp, ForestGreenPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .testTag("edit_animal_topbar_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "Edit Animal",
+                            tint = ForestGreenPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDeleteAnimal,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFFEF2F2))
+                            .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                            .testTag("delete_animal_topbar_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.DeleteForever,
+                            contentDescription = "Delete Animal",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    if (!currentStatus.contains("DISPOSED", ignoreCase = true)) {
+                        Button(
+                            onClick = { showDisposeDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("🚫 DISPOSE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
                 }
             }
         }
@@ -1490,24 +2069,30 @@ fun AnimalDetailsView(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = TagLivestockBg,
-                                    modifier = Modifier.clickable { showUpdateStageDialog = true }
+                                    color = if (isCattle && cattleEval != null) cattleEval.badgeBgColor else TagLivestockBg,
+                                    modifier = Modifier.clickable {
+                                        if (isCattle && cattleEval != null) {
+                                            showStageInfoDialog = true
+                                        } else {
+                                            showUpdateStageDialog = true
+                                        }
+                                    }
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = currentStatus,
+                                            text = if (isCattle && cattleEval != null) cattleEval.stage.displayName else currentStatus,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = TagLivestockText
+                                            color = if (isCattle && cattleEval != null) cattleEval.badgeTextColor else TagLivestockText
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Icon(
-                                            Icons.Filled.Edit,
-                                            contentDescription = "Edit Stage",
-                                            tint = TagLivestockText,
+                                            Icons.Filled.Info,
+                                            contentDescription = "Stage Details",
+                                            tint = if (isCattle && cattleEval != null) cattleEval.badgeTextColor else TagLivestockText,
                                             modifier = Modifier.size(12.dp)
                                         )
                                     }
@@ -1729,7 +2314,7 @@ fun AnimalDetailsView(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        val filteredEvents = cattleEvents.filter {
+                        val filteredEvents = animalEvents.filter {
                             when (selectedLogFilter) {
                                 "HEAT" -> it.category == "HEAT" || it.category == "INSEMINATION"
                                 "WEIGHT" -> it.category == "WEIGHT"
@@ -1846,13 +2431,16 @@ fun AnimalDetailsView(
             }
         }
 
-        // Breeding Status Summary Card
+        // Breeding Status Summary Card (Dynamic based on records)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDCFCE7))
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (isCattle && cattleEval != null) cattleEval.badgeBgColor else Color(0xFFDCFCE7)
+                )
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Row(
@@ -1861,7 +2449,11 @@ fun AnimalDetailsView(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.SentimentSatisfied, contentDescription = null, tint = ForestGreenPrimary)
+                            Icon(
+                                Icons.Filled.SentimentSatisfied,
+                                contentDescription = null,
+                                tint = if (isCattle && cattleEval != null) cattleEval.badgeTextColor else ForestGreenPrimary
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "Breeding Summary",
@@ -1873,36 +2465,106 @@ fun AnimalDetailsView(
 
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFDCFCE7)
+                            color = if (isCattle && cattleEval != null) cattleEval.badgeBgColor else Color(0xFFDCFCE7)
                         ) {
                             Text(
-                                text = animal.breedingStatus,
+                                text = if (isCattle && cattleEval != null) cattleEval.breedingStatusText else animal.breedingStatus,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ForestGreenPrimary
+                                color = if (isCattle && cattleEval != null) cattleEval.badgeTextColor else ForestGreenPrimary
                             )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Insemination (AI - Thunder)", fontSize = 13.sp, color = Color(0xFF64748B))
-                        Text("Sep 12, '23", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
-                    }
+                    if (isCattle && cattleEval != null) {
+                        // AI / Breeding Date
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Last Insemination / Mating", fontSize = 13.sp, color = Color(0xFF64748B))
+                            Text(
+                                cattleEval.lastInseminationDate ?: "None Recorded",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (cattleEval.lastInseminationDate != null) Color(0xFF1E293B) else Color(0xFF94A3B8)
+                            )
+                        }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Expected Calving", fontSize = 13.sp, color = Color(0xFF64748B))
-                        Text("Jun 21, '24", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                        // Gestation Progress if pregnant
+                        if (cattleEval.daysInGestation != null && cattleEval.daysInGestation > 0) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Gestation Progress", fontSize = 13.sp, color = Color(0xFF64748B))
+                                Text(
+                                    "Day ${cattleEval.daysInGestation} / 283 (${(cattleEval.daysInGestation * 100 / 283).coerceIn(0, 100)}%)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0369A1)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = { (cattleEval.daysInGestation / 283f).coerceIn(0f, 1f) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = Color(0xFF0284C7),
+                                trackColor = Color(0xFFE0F2FE)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        // Expected Calving
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Expected Calving Date", fontSize = 13.sp, color = Color(0xFF64748B))
+                            Text(
+                                cattleEval.expectedCalvingDate ?: "N/A",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (cattleEval.expectedCalvingDate != null) ForestGreenPrimary else Color(0xFF94A3B8)
+                            )
+                        }
+
+                        if (cattleEval.dryOffTargetDate != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Recommended Dry-Off Date", fontSize = 13.sp, color = Color(0xFF64748B))
+                                Text(
+                                    cattleEval.dryOffTargetDate,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFB45309)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Quick action button
+                        OutlinedButton(
+                            onClick = { showAddCattleEventDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, ForestGreenPrimary)
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("+ LOG HEAT / AI / PD CHECK", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                        }
+                    } else {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Breeding Status", fontSize = 13.sp, color = Color(0xFF64748B))
+                            Text(animal.breedingStatus, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                        }
                     }
                 }
             }
         }
 
-        // Yield Productivity 7-Days Bar Chart
+        // Yield Productivity 7-Days Bar Chart (Dynamic Data with Real Values)
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1910,6 +2572,41 @@ fun AnimalDetailsView(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
             ) {
+                val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+                val shortDayFormat = remember { SimpleDateFormat("EEE", Locale.getDefault()) }
+
+                val last7DaysData = remember(animal, milkLogs, eggLogs, isPoultry) {
+                    (6 downTo 0).map { dayOffset ->
+                        val c = java.util.Calendar.getInstance()
+                        c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
+                        val fullDate = dateFormat.format(c.time)
+                        val dayName = shortDayFormat.format(c.time)
+
+                        val yieldVal = if (isPoultry) {
+                            val matched = eggLogs.filter { log ->
+                                (log.unitName.equals(animal.name, ignoreCase = true) || log.unitName.contains(animal.name, ignoreCase = true) || animal.name.contains(log.unitName, ignoreCase = true)) &&
+                                (log.loggedAt.contains(fullDate, ignoreCase = true) || log.loggedAt.contains(dayName, ignoreCase = true))
+                            }
+                            matched.sumOf { it.totalEggs }.toFloat()
+                        } else {
+                            val cleanAnimal = animal.name.lowercase()
+                            val cleanTag = animal.tagNumber.lowercase().replace("#", "").trim()
+                            val matched = milkLogs.filter { log ->
+                                val logName = log.cowName.lowercase()
+                                (logName.contains(cleanAnimal) || cleanAnimal.contains(logName) || (cleanTag.isNotEmpty() && logName.contains(cleanTag))) &&
+                                (log.date.equals(fullDate, ignoreCase = true) || log.date.contains(fullDate, ignoreCase = true))
+                            }
+                            matched.sumOf { it.litres }.toFloat()
+                        }
+
+                        Triple(dayName, yieldVal, fullDate)
+                    }
+                }
+
+                val maxYield = (last7DaysData.map { it.second }.maxOrNull() ?: 10f).coerceAtLeast(if (isPoultry) 50f else 10f)
+                val total7Days = last7DaysData.sumOf { it.second.toDouble() }
+                val lastLoggedVal = last7DaysData.lastOrNull()?.second ?: 0f
+
                 Column(modifier = Modifier.padding(18.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1924,7 +2621,13 @@ fun AnimalDetailsView(
                                 color = Color(0xFF1E293B)
                             )
                             Text(
-                                text = if (isPoultry) "Last Collection: 380 Eggs (12.6 Trays)" else "Last: 15.5L",
+                                text = if (isPoultry) {
+                                    if (lastLoggedVal > 0) "Today: ${lastLoggedVal.toInt()} Eggs (${"%.1f".format(lastLoggedVal / 30.0)} Trays)"
+                                    else "Total 7-Day: ${total7Days.toInt()} Eggs"
+                                } else {
+                                    if (lastLoggedVal > 0) "Today: ${"%.1f".format(lastLoggedVal)}L"
+                                    else "Total 7-Day: ${"%.1f".format(total7Days)}L"
+                                },
                                 fontSize = 12.sp,
                                 color = Color(0xFF64748B)
                             )
@@ -1936,28 +2639,42 @@ fun AnimalDetailsView(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(120.dp),
+                            .height(130.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        listOf(
-                            "Mon" to 0.7f,
-                            "Tue" to 0.75f,
-                            "Wed" to 0.72f,
-                            "Thu" to 0.8f,
-                            "Fri" to 0.82f,
-                            "Sat" to 0.78f,
-                            "Sun" to 0.9f
-                        ).forEach { (day, heightRatio) ->
+                        last7DaysData.forEachIndexed { idx, (day, valAmt, _) ->
+                            val heightRatio = (valAmt / maxYield).coerceIn(if (valAmt > 0) 0.15f else 0.04f, 1f)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (valAmt > 0f) {
+                                    Text(
+                                        text = if (isPoultry) "${valAmt.toInt()}" else "%.1f".format(valAmt),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isPoultry) Color(0xFF92400E) else ForestGreenPrimary
+                                    )
+                                } else {
+                                    Text("-", fontSize = 9.sp, color = Color(0xFF94A3B8))
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
                                 Box(
                                     modifier = Modifier
                                         .width(22.dp)
-                                        .height((100 * heightRatio).dp)
-                                        .background(if (isPoultry) Color(0xFFD97706) else ForestGreenPrimary, RoundedCornerShape(4.dp))
+                                        .height((90 * heightRatio).dp)
+                                        .background(
+                                            if (valAmt == 0f) Color(0xFFE2E8F0)
+                                            else if (isPoultry) Color(0xFFD97706)
+                                            else ForestGreenPrimary,
+                                            RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                        )
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text(day, fontSize = 11.sp, color = Color(0xFF64748B))
+                                Text(
+                                    text = day,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (idx == 6) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (idx == 6) Color(0xFF1E293B) else Color(0xFF64748B)
+                                )
                             }
                         }
                     }
@@ -1973,18 +2690,16 @@ fun AnimalDetailsView(
             animalName = animal.name,
             onDismiss = { showAddCattleEventDialog = false },
             onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderDate: String ->
-                cattleEvents.add(
-                    0,
-                    CattleEventItem(
-                        id = "e_${System.currentTimeMillis()}",
-                        category = type,
-                        title = title,
-                        date = date,
-                        details = details,
-                        notes = notes,
-                        metricValue = metricValue
-                    )
+                val newEvent = CattleEventItem(
+                    id = "e_${System.currentTimeMillis()}",
+                    category = type,
+                    title = title,
+                    date = date,
+                    details = details,
+                    notes = notes,
+                    metricValue = metricValue
                 )
+                animalEvents.add(0, newEvent)
 
                 if (reminderDate.isNotBlank()) {
                     cattleNotifications.add(
@@ -2010,6 +2725,7 @@ fun AnimalDetailsView(
                     )
                 }
 
+                // If event is pregnancy diagnosis positive, dry off, calving, etc., the reactive cattleEval will update automatically
                 showAddCattleEventDialog = false
             }
         )
@@ -2084,6 +2800,8 @@ fun FlockDetailsView(
     onAddEggLogClick: () -> Unit,
     onAddFinanceClick: () -> Unit,
     onDisposeFlock: (quantity: Int, reason: String, amount: Double, notes: String, date: String) -> Unit = { _, _, _, _, _ -> },
+    onEditFlock: () -> Unit = {},
+    onDeleteFlock: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showFeedDialog by remember { mutableStateOf(false) }
@@ -2271,7 +2989,10 @@ fun FlockDetailsView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         IconButton(
                             onClick = onBackClick,
                             modifier = Modifier
@@ -2285,25 +3006,64 @@ fun FlockDetailsView(
                         Column {
                             Text(
                                 text = flock.name,
-                                fontSize = 22.sp,
+                                fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0F172A)
                             )
                             Text(
-                                text = "🐔 Poultry Flock Management • ${flock.breed}",
-                                fontSize = 13.sp,
+                                text = "🐔 Poultry Flock • ${flock.breed}",
+                                fontSize = 12.sp,
                                 color = Color(0xFF64748B)
                             )
                         }
                     }
 
-                    Button(
-                        onClick = { showDisposeFlockDialog = true },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("🏷️ DISPOSE / SELL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        IconButton(
+                            onClick = onEditFlock,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFECFDF5))
+                                .border(1.dp, ForestGreenPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .testTag("edit_flock_topbar_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = "Edit Flock",
+                                tint = ForestGreenPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onDeleteFlock,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFFEF2F2))
+                                .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                                .testTag("delete_flock_topbar_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteForever,
+                                contentDescription = "Delete Flock",
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Button(
+                            onClick = { showDisposeFlockDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("🏷️ DISPOSE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
             }

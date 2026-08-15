@@ -338,6 +338,12 @@ fun MkulimaApp(
                     },
                     onUpdateUnitHeadCount = { unitId, newCount ->
                         viewModel.updateUnitHeadCount(unitId, newCount)
+                    },
+                    onUpdateUnit = { unit ->
+                        viewModel.updateUnit(unit)
+                    },
+                    onDeleteUnit = { unitId ->
+                        viewModel.deleteUnit(unitId)
                     }
                 )
 

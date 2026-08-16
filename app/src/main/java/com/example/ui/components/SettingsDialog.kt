@@ -78,7 +78,7 @@ fun SettingsDialog(
     var pdDays by remember { mutableStateOf(settings.pregnancyCheckReminderDays.toString()) }
     var dryOffDays by remember { mutableStateOf(settings.dryingOffReminderDays.toString()) }
 
-    val isOwner = userSession?.isOwner ?: true
+    val isOwner = userSession?.role == "OWNER"
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(

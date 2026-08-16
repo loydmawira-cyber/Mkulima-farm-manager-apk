@@ -2295,6 +2295,27 @@ fun AnimalDetailsView(
                 }
             }
 
+            // Quick Action: Log Cattle Event Button (Placed above Events & Health Logs)
+            item {
+                Button(
+                    onClick = { showAddCattleEventDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (isCattle) "+ LOG EVENT (HEAT / AI / PD / WEIGHT / HEALTH)" else "+ LOG EVENT",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
             // Events Log & Records (Heat, Insemination, Weight, Health)
             item {
                 Card(
@@ -2306,29 +2327,16 @@ fun AnimalDetailsView(
                     Column(modifier = Modifier.padding(18.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Event, contentDescription = null, tint = ForestGreenPrimary)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Events & Health Logs",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E293B)
-                                )
-                            }
-
-                            Button(
-                                onClick = { showAddCattleEventDialog = true },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                            ) {
-                                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("+ LOG EVENT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
+                            Icon(Icons.Filled.Event, contentDescription = null, tint = ForestGreenPrimary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Events & Health Logs",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1E293B)
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -2586,20 +2594,6 @@ fun AnimalDetailsView(
                                     color = Color(0xFFB45309)
                                 )
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Quick action button
-                        OutlinedButton(
-                            onClick = { showAddCattleEventDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, ForestGreenPrimary)
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("+ LOG HEAT / AI / PD CHECK", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
                         }
                     } else {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

@@ -44,6 +44,7 @@ import com.example.ui.theme.ForestGreenPrimary
 fun FinanceScreen(
     records: List<FinanceRecord>,
     onAddTransactionClick: () -> Unit,
+    currency: String = "KES",
     modifier: Modifier = Modifier
 ) {
     val totalIncome = records.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }
@@ -99,7 +100,7 @@ fun FinanceScreen(
                         Text("TOTAL INCOME", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "$%.2f".format(totalIncome),
+                            text = "$currency %,.2f".format(totalIncome),
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
                             color = ForestGreenPrimary
@@ -120,7 +121,7 @@ fun FinanceScreen(
                         Text("TOTAL EXPENSES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "-$%.2f".format(totalExpenses),
+                            text = "-$currency %,.2f".format(totalExpenses),
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF991B1B)
@@ -140,7 +141,7 @@ fun FinanceScreen(
                         Text("NET PROFIT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDCFCE7))
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "+$%.2f".format(netProfit),
+                            text = "+$currency %,.2f".format(netProfit),
                             fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -221,7 +222,7 @@ fun FinanceScreen(
                         }
 
                         Text(
-                            text = if (isIncome) "+$%.2f".format(rec.amount) else "-$%.2f".format(rec.amount),
+                            text = if (isIncome) "+$currency %,.2f".format(rec.amount) else "-$currency %,.2f".format(rec.amount),
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isIncome) ForestGreenPrimary else Color(0xFF991B1B)

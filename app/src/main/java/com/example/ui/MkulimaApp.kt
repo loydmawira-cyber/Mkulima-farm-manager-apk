@@ -487,7 +487,7 @@ fun MkulimaApp(
         SettingsDialog(
             settings = farmSettings,
             onDismiss = { showSettingsDialog = false },
-            onSaveSettings = { newSettings ->
+            onSaveSettings = { newSettings: com.example.data.FarmSettings ->
                 viewModel.updateSettings(newSettings)
                 showSettingsDialog = false
             }

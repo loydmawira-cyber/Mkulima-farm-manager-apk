@@ -3,8 +3,9 @@ package com.example.ui
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.auth.AuthManager
+import com.example.auth.AuthResult
 import com.example.data.EggLog
 import com.example.data.EmployeeRequest
 import com.example.data.FarmRepository
@@ -14,14 +15,19 @@ import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkLog
-import com.example.data.MkulimaDatabase
 import com.example.data.RequestStatus
 import com.example.data.TaskCategory
 import com.example.data.TaskPriority
+import com.example.data.UserSession
+import com.example.data.WorkerAccount
+import com.example.data.WorkerPermissions
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -33,57 +39,102 @@ import java.util.Locale
 
 enum class TaskStatusFilter { ALL, PENDING, COMPLETED, HIGH_PRIORITY }
 
-class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
+@OptIn(ExperimentalCoroutinesApi::class)
+class FarmViewModel(
+    private val repository: FarmRepository,
+    val authManager: AuthManager
+) : ViewModel() {
+
+    val currentSession: StateFlow<UserSession?> = authManager.currentSession
 
     val searchQuery = MutableStateFlow("")
     val selectedCategoryFilter = MutableStateFlow<TaskCategory?>(null)
     val selectedStatusFilter = MutableStateFlow(TaskStatusFilter.ALL)
 
-    val allUnits: StateFlow<List<FarmUnit>> = repository.allUnits.stateIn(
+    // Farm Scoped Streams
+    val allUnits: StateFlow<List<FarmUnit>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getUnitsForFarm(farmId)
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    val allMilkLogs: StateFlow<List<MilkLog>> = repository.allMilkLogs.stateIn(
+    val allMilkLogs: StateFlow<List<MilkLog>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getMilkLogsForFarm(farmId)
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    val allEggLogs: StateFlow<List<EggLog>> = repository.allEggLogs.stateIn(
+    val allEggLogs: StateFlow<List<EggLog>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getEggLogsForFarm(farmId)
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    val allFinanceRecords: StateFlow<List<FinanceRecord>> = repository.allFinanceRecords.stateIn(
+    val allFinanceRecords: StateFlow<List<FinanceRecord>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getFinanceRecordsForFarm(farmId)
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    val allEmployeeRequests: StateFlow<List<EmployeeRequest>> = repository.allEmployeeRequests.stateIn(
+    val allEmployeeRequests: StateFlow<List<EmployeeRequest>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        if (session != null && session.role.equals("WORKER", ignoreCase = true)) {
+            repository.getEmployeeRequestsForWorker(
+                farmId = farmId,
+                workerId = session.userId,
+                emailOrPhone = session.emailOrPhone,
+                name = session.name
+            )
+        } else {
+            repository.getEmployeeRequestsForFarm(farmId)
+        }
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    val farmSettings: StateFlow<FarmSettings> = repository.farmSettings
-        .map { it ?: FarmSettings() }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = FarmSettings()
-        )
+    val farmSettings: StateFlow<FarmSettings> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getSettingsForFarm(farmId).map { it ?: FarmSettings(farmId = farmId) }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = FarmSettings()
+    )
+
+    val farmWorkers: StateFlow<List<WorkerAccount>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getWorkersForFarm(farmId)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     fun updateSettings(settings: FarmSettings) {
         viewModelScope.launch {
-            repository.updateSettings(settings)
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            repository.updateSettings(settings.copy(farmId = farmId))
         }
     }
 
-    val rawTasks: StateFlow<List<FarmTask>> = repository.allTasks.stateIn(
+    val rawTasks: StateFlow<List<FarmTask>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getTasksForFarm(farmId)
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
@@ -118,6 +169,62 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         initialValue = emptyList()
     )
 
+    // Auth Actions
+    fun login(emailOrPhone: String, pass: String, onError: (String) -> Unit, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            when (val result = authManager.login(emailOrPhone, pass)) {
+                is AuthResult.Success -> onSuccess()
+                is AuthResult.Error -> onError(result.message)
+            }
+        }
+    }
+
+    fun signUpOwner(name: String, emailOrPhone: String, pass: String, farmName: String, onError: (String) -> Unit, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            when (val result = authManager.signUpOwner(name, emailOrPhone, pass, farmName)) {
+                is AuthResult.Success -> onSuccess()
+                is AuthResult.Error -> onError(result.message)
+            }
+        }
+    }
+
+    fun forgotPassword(emailOrPhone: String, onComplete: (String) -> Unit) {
+        viewModelScope.launch {
+            val response = authManager.resetPassword(emailOrPhone)
+            onComplete(response)
+        }
+    }
+
+    fun logout() {
+        authManager.logout()
+    }
+
+    // Worker Management
+    fun createWorker(name: String, emailOrPhone: String, pass: String, permissions: WorkerPermissions) {
+        viewModelScope.launch {
+            authManager.createWorker(name, emailOrPhone, pass, permissions)
+        }
+    }
+
+    fun updateWorker(worker: WorkerAccount) {
+        viewModelScope.launch {
+            authManager.updateWorker(worker)
+        }
+    }
+
+    fun toggleWorkerRevoked(workerId: String, isRevoked: Boolean) {
+        viewModelScope.launch {
+            authManager.setWorkerRevoked(workerId, isRevoked)
+        }
+    }
+
+    fun deleteWorker(workerId: String) {
+        viewModelScope.launch {
+            authManager.deleteWorker(workerId)
+        }
+    }
+
+    // Task Actions
     fun completeTaskWithProof(
         taskId: Long,
         photoUriString: String?,
@@ -157,7 +264,9 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         assignedWorker: String?
     ) {
         viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val newTask = FarmTask(
+                farmId = farmId,
                 title = title.ifBlank { "Farm Maintenance Task" },
                 category = category,
                 targetUnit = targetUnit.ifBlank { "General Farm Area" },
@@ -186,8 +295,10 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         dam: String = ""
     ) {
         viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
             val newUnit = FarmUnit(
+                farmId = farmId,
                 name = name.ifBlank { "Farm Unit" },
                 type = type.ifBlank { "Cattle" },
                 headCount = headCount,
@@ -221,7 +332,7 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
 
     fun updateUnitHeadCount(unitId: Long, newHeadCount: Int) {
         viewModelScope.launch {
-            val existing = repository.allUnits.stateIn(viewModelScope).value.find { it.id == unitId }
+            val existing = allUnits.value.find { it.id == unitId }
             if (existing != null) {
                 val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
                 val updated = existing.copy(
@@ -243,9 +354,11 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         notes: String?
     ) {
         viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
             val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
             val log = MilkLog(
+                farmId = farmId,
                 cowName = cowName.ifBlank { "Daisy (Friesian)" },
                 unitName = unitName.ifBlank { "Dairy Herd - Friesians" },
                 litres = litres,
@@ -279,8 +392,10 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         notes: String?
     ) {
         viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
             val log = EggLog(
+                farmId = farmId,
                 unitName = unitName.ifBlank { "Poultry Flock" },
                 totalEggs = totalEggs,
                 damagedEggs = damagedEggs,
@@ -299,8 +414,10 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         description: String
     ) {
         viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
             val record = FinanceRecord(
+                farmId = farmId,
                 type = type,
                 category = category.ifBlank { "General" },
                 amount = amount,
@@ -320,9 +437,12 @@ class FarmViewModel(private val repository: FarmRepository) : ViewModel() {
         reason: String
     ) {
         viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val sessionName = currentSession.value?.name ?: employeeName
             val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
             val req = EmployeeRequest(
-                employeeName = employeeName.ifBlank { "Employee" },
+                farmId = farmId,
+                employeeName = sessionName.ifBlank { "Farm Worker" },
                 requestType = requestType,
                 amount = amount,
                 startDate = startDate,

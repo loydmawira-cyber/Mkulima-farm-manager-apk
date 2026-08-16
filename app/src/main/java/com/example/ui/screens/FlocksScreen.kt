@@ -721,14 +721,30 @@ fun FlocksScreen(
     var animalToEdit by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToDelete by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToDispose by remember { mutableStateOf<AnimalDetailData?>(null) }
-    var selectedFilterCategory by remember { mutableStateOf("CATTLE") }
+    val initialCategory = if (farmSettings.farmType.equals("Poultry Only", ignoreCase = true)) "POULTRY" else "CATTLE"
+    var selectedFilterCategory by remember(farmSettings.farmType) { mutableStateOf(initialCategory) }
     var selectedCattleStage by remember { mutableStateOf("ALL") }
     var showCategoryGuideDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(farmSettings.farmType) {
+        if (farmSettings.farmType.equals("Poultry Only", ignoreCase = true)) {
+            selectedFilterCategory = "POULTRY"
+        } else if (farmSettings.farmType.equals("Cattle Only", ignoreCase = true)) {
+            selectedFilterCategory = "CATTLE"
+        }
+    }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val deletedPrefs = remember { context.getSharedPreferences("mkulima_deleted_animals", android.content.Context.MODE_PRIVATE) }
     var deletedSet by remember {
-        mutableStateOf(deletedPrefs.getStringSet("deleted_ids", emptySet()) ?: emptySet())
+        mutableStateOf(
+            try {
+                deletedPrefs.getStringSet("deleted_ids", emptySet()) ?: emptySet()
+            } catch (e: Exception) {
+                val raw = try { deletedPrefs.getString("deleted_ids", "") ?: "" } catch (ex: Exception) { "" }
+                if (raw.isNotBlank()) raw.split(",").toSet() else emptySet()
+            }
+        )
     }
 
     val roomAnimals = remember(units, milkLogs) {
@@ -1277,32 +1293,40 @@ fun FlocksScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Category Filter Chips [ CATTLE ] [ POULTRY ] (No 'ALL' option)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        listOf("CATTLE", "POULTRY").forEach { cat ->
-                            val isSelected = selectedFilterCategory == cat
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    selectedFilterCategory = cat
-                                    if (cat == "POULTRY") selectedCattleStage = "ALL"
-                                },
-                                label = { Text(cat, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ForestGreenPrimary,
-                                    selectedLabelColor = Color.White,
-                                    containerColor = Color.White
-                                ),
-                                border = FilterChipDefaults.filterChipBorder(
-                                    enabled = true,
-                                    selected = isSelected,
-                                    borderColor = Color(0xFFE2E8F0)
-                                )
-                            )
-                        }
+                    // Category Filter Chips [ CATTLE ] [ POULTRY ]
+                    val availableCategories = when {
+                        farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> listOf("CATTLE")
+                        farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> listOf("POULTRY")
+                        else -> listOf("CATTLE", "POULTRY")
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    if (availableCategories.size > 1) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            availableCategories.forEach { cat ->
+                                val isSelected = selectedFilterCategory == cat
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedFilterCategory = cat
+                                        if (cat == "POULTRY") selectedCattleStage = "ALL"
+                                    },
+                                    label = { Text(cat, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color.White
+                                    ),
+                                    border = FilterChipDefaults.filterChipBorder(
+                                        enabled = true,
+                                        selected = isSelected,
+                                        borderColor = Color(0xFFE2E8F0)
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
 
                     // Cattle Herd Breakdown Panel (Visible for CATTLE filter)
                     if (selectedFilterCategory == "CATTLE") {
@@ -1470,6 +1494,13 @@ fun FlocksScreen(
                 }
 
                 val filteredList = mutableAnimals.filter { animal ->
+                    val matchesMode = when {
+                        farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> animal.category.equals("CATTLE", ignoreCase = true)
+                        farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> animal.category.equals("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
+                        else -> true
+                    }
+                    if (!matchesMode) return@filter false
+
                     val matchesCategory = animal.category.equals(selectedFilterCategory, ignoreCase = true)
                     if (!matchesCategory) return@filter false
                     if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true

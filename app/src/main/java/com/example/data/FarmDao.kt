@@ -9,11 +9,21 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FarmDao {
+    // Tasks
+    @Query("SELECT * FROM farm_tasks WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY isCompleted ASC, priority ASC, id DESC")
+    fun getTasksByFarm(farmId: String): Flow<List<FarmTask>>
+
     @Query("SELECT * FROM farm_tasks ORDER BY isCompleted ASC, priority ASC, id DESC")
     fun getAllTasks(): Flow<List<FarmTask>>
 
+    @Query("SELECT * FROM farm_tasks WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isCompleted = 0 ORDER BY priority ASC, id DESC")
+    fun getPendingTasks(farmId: String): Flow<List<FarmTask>>
+
     @Query("SELECT * FROM farm_tasks WHERE isCompleted = 0 ORDER BY priority ASC, id DESC")
     fun getPendingTasks(): Flow<List<FarmTask>>
+
+    @Query("SELECT * FROM farm_tasks WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isCompleted = 1 ORDER BY id DESC")
+    fun getCompletedTasks(farmId: String): Flow<List<FarmTask>>
 
     @Query("SELECT * FROM farm_tasks WHERE isCompleted = 1 ORDER BY id DESC")
     fun getCompletedTasks(): Flow<List<FarmTask>>
@@ -32,6 +42,10 @@ interface FarmDao {
 
     @Query("DELETE FROM farm_tasks WHERE id = :id")
     suspend fun deleteTaskById(id: Long)
+
+    // Units / Livestock & Crops
+    @Query("SELECT * FROM farm_units WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY name ASC")
+    fun getUnitsByFarm(farmId: String): Flow<List<FarmUnit>>
 
     @Query("SELECT * FROM farm_units ORDER BY name ASC")
     fun getAllUnits(): Flow<List<FarmUnit>>
@@ -55,6 +69,9 @@ interface FarmDao {
     suspend fun getUnitCount(): Int
 
     // Milk Logs
+    @Query("SELECT * FROM milk_logs WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY id DESC")
+    fun getMilkLogsByFarm(farmId: String): Flow<List<MilkLog>>
+
     @Query("SELECT * FROM milk_logs ORDER BY id DESC")
     fun getAllMilkLogs(): Flow<List<MilkLog>>
 
@@ -68,6 +85,9 @@ interface FarmDao {
     suspend fun deleteMilkLogById(id: Long)
 
     // Egg Logs
+    @Query("SELECT * FROM egg_logs WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY id DESC")
+    fun getEggLogsByFarm(farmId: String): Flow<List<EggLog>>
+
     @Query("SELECT * FROM egg_logs ORDER BY id DESC")
     fun getAllEggLogs(): Flow<List<EggLog>>
 
@@ -81,6 +101,9 @@ interface FarmDao {
     suspend fun deleteEggLogById(id: Long)
 
     // Finance Records
+    @Query("SELECT * FROM finance_records WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY id DESC")
+    fun getFinanceRecordsByFarm(farmId: String): Flow<List<FinanceRecord>>
+
     @Query("SELECT * FROM finance_records ORDER BY id DESC")
     fun getAllFinanceRecords(): Flow<List<FinanceRecord>>
 
@@ -94,6 +117,12 @@ interface FarmDao {
     suspend fun deleteFinanceRecordById(id: Long)
 
     // Employee Requests
+    @Query("SELECT * FROM employee_requests WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY id DESC")
+    fun getEmployeeRequestsByFarm(farmId: String): Flow<List<EmployeeRequest>>
+
+    @Query("SELECT * FROM employee_requests WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND (workerId = :workerId OR workerEmailOrPhone = :emailOrPhone OR employeeName = :name) ORDER BY id DESC")
+    fun getEmployeeRequestsForWorker(farmId: String, workerId: String, emailOrPhone: String, name: String): Flow<List<EmployeeRequest>>
+
     @Query("SELECT * FROM employee_requests ORDER BY id DESC")
     fun getAllEmployeeRequests(): Flow<List<EmployeeRequest>>
 
@@ -110,9 +139,44 @@ interface FarmDao {
     suspend fun deleteEmployeeRequestById(id: Long)
 
     // Settings
+    @Query("SELECT * FROM farm_settings WHERE farmId = :farmId LIMIT 1")
+    fun getSettingsByFarm(farmId: String): Flow<FarmSettings?>
+
     @Query("SELECT * FROM farm_settings WHERE id = 1")
     fun getSettings(): Flow<FarmSettings?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSettings(settings: FarmSettings)
+
+    // Worker Accounts
+    @Query("SELECT * FROM worker_accounts WHERE farmId = :farmId ORDER BY createdAt DESC")
+    fun getWorkersByFarm(farmId: String): Flow<List<WorkerAccount>>
+
+    @Query("SELECT * FROM worker_accounts WHERE workerId = :workerId")
+    suspend fun getWorkerById(workerId: String): WorkerAccount?
+
+    @Query("SELECT * FROM worker_accounts WHERE emailOrPhone = :emailOrPhone LIMIT 1")
+    suspend fun getWorkerByLoginIdentifier(emailOrPhone: String): WorkerAccount?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorker(worker: WorkerAccount)
+
+    @Update
+    suspend fun updateWorker(worker: WorkerAccount)
+
+    @Query("DELETE FROM worker_accounts WHERE workerId = :workerId")
+    suspend fun deleteWorkerById(workerId: String)
+
+    @Query("UPDATE worker_accounts SET isRevoked = :isRevoked WHERE workerId = :workerId")
+    suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean)
+
+    // Farm Accounts
+    @Query("SELECT * FROM farm_accounts WHERE farmId = :farmId LIMIT 1")
+    suspend fun getFarmAccount(farmId: String): FarmAccount?
+
+    @Query("SELECT * FROM farm_accounts WHERE ownerEmailOrPhone = :emailOrPhone LIMIT 1")
+    suspend fun getFarmAccountByOwner(emailOrPhone: String): FarmAccount?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFarmAccount(farm: FarmAccount)
 }

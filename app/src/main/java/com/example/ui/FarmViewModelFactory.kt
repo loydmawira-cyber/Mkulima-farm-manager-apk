@@ -3,6 +3,7 @@ package com.example.ui
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.example.auth.AuthManager
 import com.example.data.FarmRepository
 import com.example.data.MkulimaDatabase
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +15,7 @@ class FarmViewModelFactory(private val context: Context) : ViewModelProvider.Fac
         val scope = CoroutineScope(Dispatchers.IO)
         val database = MkulimaDatabase.getDatabase(context.applicationContext, scope)
         val repository = FarmRepository(database.farmDao())
-        return FarmViewModel(repository) as T
+        val authManager = AuthManager(context.applicationContext, repository)
+        return FarmViewModel(repository, authManager) as T
     }
 }

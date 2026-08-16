@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.FarmUnit
+import com.example.ui.screens.isMilkingCow
+import com.example.ui.screens.mockAnimals
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -71,19 +73,54 @@ fun AddMilkLogDialog(
         notes: String?
     ) -> Unit
 ) {
-    val milkingCows = remember {
-        listOf(
-            "Bessie (#102 - Friesian)",
-            "Daisy (#105 - Jersey)",
-            "Star (#110 - Guernsey)",
-            "Bella (#112 - Ayrshire)",
-            "Mimi (#115 - Friesian)",
-            "Flora (#120 - Simmental)",
-            "Overall Herd Bulk Yield"
-        )
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val deletedPrefs = remember { context.getSharedPreferences("mkulima_deleted_animals", android.content.Context.MODE_PRIVATE) }
+    val deletedSet = remember {
+        try {
+            deletedPrefs.getStringSet("deleted_ids", emptySet()) ?: emptySet()
+        } catch (e: Exception) {
+            val raw = try { deletedPrefs.getString("deleted_ids", "") ?: "" } catch (ex: Exception) { "" }
+            if (raw.isNotBlank()) raw.split(",").toSet() else emptySet()
+        }
     }
 
-    var selectedCowName by remember { mutableStateOf(milkingCows.first()) }
+    val milkingCows = remember(availableUnits, deletedSet) {
+        val result = mutableListOf<String>()
+
+        // 1. From Room units (registered farm livestock)
+        availableUnits.filter {
+            (it.type.equals("Cattle", ignoreCase = true) || it.type.equals("CATTLE", ignoreCase = true)) &&
+            !deletedSet.contains("unit_${it.id}") && !deletedSet.contains(it.name.lowercase()) &&
+            isMilkingCow(name = it.name, breed = it.breed, status = it.healthStatus, tag = it.tagNumber)
+        }.forEach { unit ->
+            val tag = unit.tagNumber.ifBlank { "#${unit.id + 100}" }
+            val breed = unit.breed.ifBlank { "Dairy Cow" }
+            result.add("${unit.name} ($tag - $breed)")
+        }
+
+        // 2. From mockAnimals (registered farm livestock list)
+        mockAnimals.filter {
+            it.category.equals("CATTLE", ignoreCase = true) &&
+            !deletedSet.contains(it.id) && !deletedSet.contains(it.name.lowercase()) &&
+            isMilkingCow(
+                name = it.name,
+                breed = it.breed,
+                status = it.status,
+                tag = it.tagNumber,
+                lastMilk = it.lastMilk,
+                breedingStatus = it.breedingStatus
+            )
+        }.forEach { animal ->
+            val tag = animal.tagNumber.ifBlank { "#100" }
+            val breed = animal.breed.ifBlank { "Dairy Cow" }
+            result.add("${animal.name} ($tag - $breed)")
+        }
+
+        result.add("Overall Herd Bulk Yield")
+        result.distinct()
+    }
+
+    var selectedCowName by remember(milkingCows) { mutableStateOf(milkingCows.firstOrNull() ?: "Overall Herd Bulk Yield") }
     var cowDropdownExpanded by remember { mutableStateOf(false) }
 
     val dairyUnits = availableUnits.filter { it.type.contains("Cattle", ignoreCase = true) || it.name.contains("Dairy", ignoreCase = true) }

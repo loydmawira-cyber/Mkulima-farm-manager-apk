@@ -2,36 +2,36 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Mkulima Forest Green Theme Colors
-val ForestGreenPrimary = Color(0xFF2D5A27)
-val ForestGreenDark = Color(0xFF1E3F1C)
-val ForestGreenLight = Color(0xFFE8F0E6)
-val ForestGreenOnContainer = Color(0xFF122C10)
+// Mkulima Golden Harvest & Terracotta Theme Colors (Option 3)
+val ForestGreenPrimary = Color(0xFFB45309) // Warm Golden Harvest Amber
+val ForestGreenDark = Color(0xFF78350F)    // Deep Saddle Amber / Umber
+val ForestGreenLight = Color(0xFFFEF3C7)   // Soft Warm Honey Light Container
+val ForestGreenOnContainer = Color(0xFF451A03) // Deep Roast Coffee text
 
-val MkulimaBackground = Color(0xFFF8F9FA)
+val MkulimaBackground = Color(0xFFFAFAF7)  // Warm soft parchment canvas
 val MkulimaSurface = Color(0xFFFFFFFF)
 val MkulimaCardBg = Color(0xFFFFFFFF)
-val MkulimaBorder = Color(0xFFE2E8F0)
+val MkulimaBorder = Color(0xFFE7E5E4)      // Warm Stone border
 
-val MkulimaTextPrimary = Color(0xFF1C1D1F)
-val MkulimaTextSecondary = Color(0xFF5C6470)
+val MkulimaTextPrimary = Color(0xFF292524)  // Warm Stone 800
+val MkulimaTextSecondary = Color(0xFF78716C)// Warm Stone 500
 
-val StatusSuccessGreen = Color(0xFF2D5A27)
-val StatusPendingAmber = Color(0xFFD97706)
-val StatusUrgentRed = Color(0xFFB3261E)
+val StatusSuccessGreen = Color(0xFF15803D)  // Warm Olive Forest Green
+val StatusPendingAmber = Color(0xFFD97706)  // Golden Amber
+val StatusUrgentRed = Color(0xFFDC2626)     // Terracotta Red
 
 // Tag Badge Colors
-val TagYieldBg = Color(0xFFFEF0C7)
-val TagYieldText = Color(0xFF92400E)
+val TagYieldBg = Color(0xFFFEF3C7)
+val TagYieldText = Color(0xFFB45309)
 
 val TagLivestockBg = Color(0xFFDCFCE7)
 val TagLivestockText = Color(0xFF166534)
 
-val TagFinanceBg = Color(0xFFE0F2FE)
-val TagFinanceText = Color(0xFF0369A1)
+val TagFinanceBg = Color(0xFFFFEDD5)        // Warm Peach Amber
+val TagFinanceText = Color(0xFFC2410C)       // Terracotta
 
-val TagHRBg = Color(0xFFFCE7F3)
-val TagHRText = Color(0xFF9D174D)
+val TagHRBg = Color(0xFFFEE2E2)
+val TagHRText = Color(0xFF991B1B)
 
 // Backward compatibility mappings
 val FarmGreenPrimary = ForestGreenPrimary
@@ -41,8 +41,8 @@ val FarmGreenLight = ForestGreenLight
 val HarvestAmber = StatusPendingAmber
 val HarvestAmberLight = Color(0xFFFFFBEB)
 
-val TerracottaAccent = Color(0xFF984061)
-val TerracottaLight = Color(0xFFFFD9E2)
+val TerracottaAccent = Color(0xFFC2410C)    // Rich Terracotta accent
+val TerracottaLight = Color(0xFFFFEDD5)
 
 val FarmBackground = MkulimaBackground
 val FarmSurface = MkulimaSurface
@@ -56,9 +56,9 @@ val StatusCompleted = StatusSuccessGreen
 val StatusUrgent = StatusUrgentRed
 
 // Dark Palette
-val FarmGreenDarkPrimary = Color(0xFF81C784)
-val FarmGreenDarkSurface = Color(0xFF121413)
-val FarmGreenDarkContainer = Color(0xFF1C241B)
+val FarmGreenDarkPrimary = Color(0xFFFBBF24) // Bright Golden Amber for Dark mode
+val FarmGreenDarkSurface = Color(0xFF1C1917)
+val FarmGreenDarkContainer = Color(0xFF292524)
 
 
 

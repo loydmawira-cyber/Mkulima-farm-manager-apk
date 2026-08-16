@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 @Composable
 fun AddUnitDialog(
     onDismiss: () -> Unit,
+    farmSettings: com.example.data.FarmSettings? = null,
     onUnitCreated: (
         name: String,
         type: String,
@@ -69,7 +70,10 @@ fun AddUnitDialog(
         dam: String
     ) -> Unit
 ) {
-    var category by remember { mutableStateOf("CATTLE") } // CATTLE or POULTRY
+    val initialCategory = if (farmSettings?.farmType?.equals("Poultry Only", ignoreCase = true) == true) "POULTRY" else "CATTLE"
+    var category by remember(farmSettings?.farmType) { mutableStateOf(initialCategory) }
+
+    val showCategoryToggle = farmSettings == null || farmSettings.farmType.equals("Both", ignoreCase = true)
 
     val todayFormatted = remember {
         SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
@@ -137,33 +141,35 @@ fun AddUnitDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                if (showCategoryToggle) {
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                // Category Selection Bar: [ 🐄 CATTLE ]  [ 🐔 POULTRY ]
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf("CATTLE" to "🐄 Cattle", "POULTRY" to "🐔 Poultry").forEach { (catKey, catLabel) ->
-                        val isSelected = category == catKey
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(40.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) ForestGreenPrimary else Color.Transparent)
-                                .clickable { category = catKey },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = catLabel,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.White else Color(0xFF475569),
-                                fontSize = 14.sp
-                            )
+                    // Category Selection Bar: [ 🐄 CATTLE ]  [ 🐔 POULTRY ]
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("CATTLE" to "🐄 Cattle", "POULTRY" to "🐔 Poultry").forEach { (catKey, catLabel) ->
+                            val isSelected = category == catKey
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) ForestGreenPrimary else Color.Transparent)
+                                    .clickable { category = catKey },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = catLabel,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.White else Color(0xFF475569),
+                                    fontSize = 14.sp
+                                )
+                            }
                         }
                     }
                 }

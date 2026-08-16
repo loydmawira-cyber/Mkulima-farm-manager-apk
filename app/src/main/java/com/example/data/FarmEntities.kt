@@ -16,9 +16,88 @@ enum class TaskCategory {
     GENERAL
 }
 
+data class WorkerPermissions(
+    val canViewLivestock: Boolean = true,
+    val canEditLivestock: Boolean = true,
+    val canViewLogs: Boolean = true,
+    val canEditLogs: Boolean = true,
+    val canViewFinance: Boolean = false,
+    val canEditFinance: Boolean = false,
+    val canViewTasks: Boolean = true,
+    val canCompleteTasks: Boolean = true,
+    val canViewRequests: Boolean = true
+)
+
+@Entity(tableName = "worker_accounts")
+data class WorkerAccount(
+    @PrimaryKey val workerId: String,       // e.g. "WRK-89214"
+    val farmId: String,                     // Owner's farm ID
+    val name: String,                       // Worker's full name
+    val emailOrPhone: String,               // Login identifier
+    val password: String,                   // Password set by owner
+    val role: String = "WORKER",
+    val isRevoked: Boolean = false,         // Revoked workers cannot log in
+    val createdAt: Long = System.currentTimeMillis(),
+    val canViewLivestock: Boolean = true,
+    val canEditLivestock: Boolean = true,
+    val canViewLogs: Boolean = true,
+    val canEditLogs: Boolean = true,
+    val canViewFinance: Boolean = false,
+    val canEditFinance: Boolean = false,
+    val canViewTasks: Boolean = true,
+    val canCompleteTasks: Boolean = true,
+    val canViewRequests: Boolean = true
+) {
+    fun toPermissions(): WorkerPermissions {
+        return WorkerPermissions(
+            canViewLivestock = canViewLivestock,
+            canEditLivestock = canEditLivestock,
+            canViewLogs = canViewLogs,
+            canEditLogs = canEditLogs,
+            canViewFinance = canViewFinance,
+            canEditFinance = canEditFinance,
+            canViewTasks = canViewTasks,
+            canCompleteTasks = canCompleteTasks,
+            canViewRequests = canViewRequests
+        )
+    }
+}
+
+@Entity(tableName = "farm_accounts")
+data class FarmAccount(
+    @PrimaryKey val farmId: String,          // e.g. "FARM-82K9"
+    val farmName: String,                    // e.g. "Green Pastures Farm"
+    val ownerId: String,                     // Owner UID / identifier
+    val ownerName: String,                   // Owner Full Name
+    val ownerEmailOrPhone: String,           // Owner contact
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+data class UserSession(
+    val userId: String,
+    val name: String,
+    val emailOrPhone: String,
+    val role: String,                        // "OWNER" or "WORKER"
+    val farmId: String,
+    val farmName: String,
+    val isRevoked: Boolean = false,
+    val permissions: WorkerPermissions = WorkerPermissions(
+        canViewLivestock = true,
+        canEditLivestock = true,
+        canViewLogs = true,
+        canEditLogs = true,
+        canViewFinance = true,
+        canEditFinance = true,
+        canViewTasks = true,
+        canCompleteTasks = true,
+        canViewRequests = true
+    )
+)
+
 @Entity(tableName = "farm_tasks")
 data class FarmTask(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val farmId: String = "FARM-DEFAULT",
     val title: String,                           // e.g. "Vaccinate Flock B"
     val category: TaskCategory,                  // e.g. LIVESTOCK, CROPS
     val targetUnit: String,                      // e.g. "Flock B - Layers"
@@ -36,6 +115,7 @@ data class FarmTask(
 @Entity(tableName = "farm_units")
 data class FarmUnit(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val farmId: String = "FARM-DEFAULT",
     val name: String,             // e.g. "Flock B - Layers"
     val type: String,             // "Poultry", "Cattle", "Goats", "Greenhouse", "Open Field"
     val headCount: Int,           // e.g. 350
@@ -55,6 +135,7 @@ data class FarmUnit(
 @Entity(tableName = "milk_logs")
 data class MilkLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val farmId: String = "FARM-DEFAULT",
     val cowName: String = "Daisy (Friesian)",
     val unitName: String = "Dairy Herd - Friesians",
     val litres: Double,           // Quantity in litres
@@ -68,6 +149,7 @@ data class MilkLog(
 @Entity(tableName = "egg_logs")
 data class EggLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val farmId: String = "FARM-DEFAULT",
     val unitName: String,         // e.g. "Flock B - Kienyeji Layers"
     val totalEggs: Int,           // e.g. 280
     val damagedEggs: Int = 0,     // e.g. 4
@@ -84,6 +166,7 @@ enum class FinanceType {
 @Entity(tableName = "finance_records")
 data class FinanceRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val farmId: String = "FARM-DEFAULT",
     val type: FinanceType,        // INCOME or EXPENSE
     val category: String,         // "Milk Sale", "Egg Sale", "Feed Purchase", "Medication", "Salary Advance", "Equipment Maintenance"
     val amount: Double,           // e.g. 8500.00
@@ -100,6 +183,7 @@ enum class RequestStatus {
 @Entity(tableName = "farm_settings")
 data class FarmSettings(
     @PrimaryKey val id: Int = 1,
+    val farmId: String = "FARM-DEFAULT",
     val farmType: String = "Both", // "Cattle Only", "Poultry Only", "Both"
     val currency: String = "KES",  // e.g. "KES", "USD", "EUR"
     val weaningReminderDays: Int = 180, // e.g. 6 months
@@ -110,6 +194,9 @@ data class FarmSettings(
 @Entity(tableName = "employee_requests")
 data class EmployeeRequest(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val farmId: String = "FARM-DEFAULT",
+    val workerId: String = "",
+    val workerEmailOrPhone: String = "",
     val employeeName: String,     // e.g. "John Kiprono"
     val requestType: String,      // "Salary Advance", "Annual Leave", "Sick Leave", "Emergency Leave"
     val amount: Double = 0.0,     // For advances e.g. 5000.00
@@ -117,5 +204,6 @@ data class EmployeeRequest(
     val endDate: String = "",     // For leave e.g. "20 Aug 2026"
     val reason: String,           // e.g. "Medical expenses for child"
     val status: RequestStatus = RequestStatus.PENDING,
-    val submittedAt: String       // e.g. "12 Aug 2026"
+    val submittedAt: String,      // e.g. "12 Aug 2026"
+    val reviewNotes: String? = null
 )

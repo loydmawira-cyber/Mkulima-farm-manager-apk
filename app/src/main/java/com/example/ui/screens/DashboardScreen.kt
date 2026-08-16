@@ -47,6 +47,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -147,8 +148,22 @@ fun DashboardScreen(
     farmSettings: com.example.data.FarmSettings,
     modifier: Modifier = Modifier
 ) {
-    var selectedProdMetric by remember { mutableStateOf("Milk") }
+    val isCattleMode = farmSettings.farmType.equals("Cattle Only", ignoreCase = true)
+    val isPoultryMode = farmSettings.farmType.equals("Poultry Only", ignoreCase = true)
+    val isBothMode = !isCattleMode && !isPoultryMode
+
+    var selectedProdMetric by remember(farmSettings.farmType) {
+        mutableStateOf(if (isPoultryMode) "Eggs" else "Milk")
+    }
     var showProdDropdown by remember { mutableStateOf(false) }
+
+    LaunchedEffect(farmSettings.farmType) {
+        if (isPoultryMode) {
+            selectedProdMetric = "Eggs"
+        } else if (isCattleMode) {
+            selectedProdMetric = "Milk"
+        }
+    }
 
     // Dynamic Time-Aware Greeting
     val greeting = remember {
@@ -353,20 +368,52 @@ fun DashboardScreen(
                                     .weight(1f)
                                     .clickable { onNavigateToTab(4) }
                             )
-                            HeroGlassBadge(
-                                number = "${"%.0f".format(todayMilkLitres)}L",
-                                label = "Milk today",
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { onNavigateToTab(2) }
-                            )
-                            HeroGlassBadge(
-                                number = "$todayEggsCount",
-                                label = "Eggs today",
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { onNavigateToTab(2) }
-                            )
+                            if (isCattleMode) {
+                                HeroGlassBadge(
+                                    number = "${"%.0f".format(todayMilkLitres)}L",
+                                    label = "Milk today",
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onNavigateToTab(2) }
+                                )
+                                HeroGlassBadge(
+                                    number = "$totalCattle",
+                                    label = "Total cattle",
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onNavigateToTab(1) }
+                                )
+                            } else if (isPoultryMode) {
+                                HeroGlassBadge(
+                                    number = "$todayEggsCount",
+                                    label = "Eggs today",
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onNavigateToTab(2) }
+                                )
+                                HeroGlassBadge(
+                                    number = "$totalBirds",
+                                    label = "Total birds",
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onNavigateToTab(1) }
+                                )
+                            } else {
+                                HeroGlassBadge(
+                                    number = "${"%.0f".format(todayMilkLitres)}L",
+                                    label = "Milk today",
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onNavigateToTab(2) }
+                                )
+                                HeroGlassBadge(
+                                    number = "$todayEggsCount",
+                                    label = "Eggs today",
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onNavigateToTab(2) }
+                                )
+                            }
                         }
                     }
                 }
@@ -424,11 +471,19 @@ fun DashboardScreen(
                                 Spacer(modifier = Modifier.height(10.dp))
 
                                 // Urgent Items List
-                                UrgentItemRow(
-                                    title = "Flock B — ND3 vaccine overdue",
-                                    subtitle = "2 days past due",
-                                    onClick = { onNavigateToTab(1) }
-                                )
+                                if (isCattleMode) {
+                                    UrgentItemRow(
+                                        title = "Bessie #102 — Pregnancy Check due",
+                                        subtitle = "30 days post-AI milestone",
+                                        onClick = { onNavigateToTab(1) }
+                                    )
+                                } else {
+                                    UrgentItemRow(
+                                        title = "Flock B — ND3 vaccine overdue",
+                                        subtitle = "2 days past due",
+                                        onClick = { onNavigateToTab(1) }
+                                    )
+                                }
 
                                 if (pendingRequests.isNotEmpty()) {
                                     val req = pendingRequests.first()
@@ -445,12 +500,21 @@ fun DashboardScreen(
                                     )
                                 }
 
-                                UrgentItemRow(
-                                    title = "Flock A — feed change tomorrow",
-                                    subtitle = "Starter → Grower at 3 weeks",
-                                    onClick = { onNavigateToTab(1) },
-                                    isLast = true
-                                )
+                                if (isCattleMode) {
+                                    UrgentItemRow(
+                                        title = "Heifers Pen 2 — Deworming scheduled",
+                                        subtitle = "Scheduled for tomorrow",
+                                        onClick = { onNavigateToTab(1) },
+                                        isLast = true
+                                    )
+                                } else {
+                                    UrgentItemRow(
+                                        title = "Flock A — feed change tomorrow",
+                                        subtitle = "Starter → Grower at 3 weeks",
+                                        onClick = { onNavigateToTab(1) },
+                                        isLast = true
+                                    )
+                                }
                             }
                         }
                     }
@@ -482,42 +546,57 @@ fun DashboardScreen(
                                     )
                                 }
 
-                                Box {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = RustBg,
-                                        modifier = Modifier.clickable { showProdDropdown = true }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                if (isBothMode) {
+                                    Box {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = RustBg,
+                                            modifier = Modifier.clickable { showProdDropdown = true }
                                         ) {
-                                            Text(
-                                                text = "$selectedProdMetric ▾",
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Terracotta
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "$selectedProdMetric ▾",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Terracotta
+                                                )
+                                            }
+                                        }
+
+                                        DropdownMenu(
+                                            expanded = showProdDropdown,
+                                            onDismissRequest = { showProdDropdown = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Milk 🥛", fontWeight = FontWeight.Bold, color = Soil) },
+                                                onClick = {
+                                                    selectedProdMetric = "Milk"
+                                                    showProdDropdown = false
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Eggs 🥚", fontWeight = FontWeight.Bold, color = Soil) },
+                                                onClick = {
+                                                    selectedProdMetric = "Eggs"
+                                                    showProdDropdown = false
+                                                }
                                             )
                                         }
                                     }
-
-                                    DropdownMenu(
-                                        expanded = showProdDropdown,
-                                        onDismissRequest = { showProdDropdown = false }
+                                } else {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = RustBg
                                     ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Milk 🥛", fontWeight = FontWeight.Bold, color = Soil) },
-                                            onClick = {
-                                                selectedProdMetric = "Milk"
-                                                showProdDropdown = false
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Eggs 🥚", fontWeight = FontWeight.Bold, color = Soil) },
-                                            onClick = {
-                                                selectedProdMetric = "Eggs"
-                                                showProdDropdown = false
-                                            }
+                                        Text(
+                                            text = if (isCattleMode) "Milk 🥛" else "Eggs 🥚",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Terracotta,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                         )
                                     }
                                 }
@@ -618,29 +697,59 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.height(14.dp))
 
                             // Timeline list
-                            TimelineItemRow(
-                                name = "Dairy Herd — Friesians",
-                                meta = "Local Breed · #103 · Optimal condition",
-                                isWarning = false,
-                                isLast = false,
-                                onClick = { onNavigateToTab(1) }
-                            )
-
-                            TimelineItemRow(
-                                name = "Flock A — Broiler Pen 1",
-                                meta = "200 birds · 3 weeks old · Grower feed starts tomorrow",
-                                isWarning = false,
-                                isLast = false,
-                                onClick = { onNavigateToTab(1) }
-                            )
-
-                            TimelineItemRow(
-                                name = "Flock B — Kienyeji Layers",
-                                meta = "350 birds · 6 weeks old · ND3 vaccine overdue",
-                                isWarning = true,
-                                isLast = true,
-                                onClick = { onNavigateToTab(1) }
-                            )
+                            if (isCattleMode) {
+                                TimelineItemRow(
+                                    name = "Dairy Herd — Friesians",
+                                    meta = "6 Milking · 2 In-Calf · Optimal yield",
+                                    isWarning = false,
+                                    isLast = false,
+                                    onClick = { onNavigateToTab(1) }
+                                )
+                                TimelineItemRow(
+                                    name = "Heifers Pen 2 — Yearlings",
+                                    meta = "4 Heifers · Target breeding weight reached",
+                                    isWarning = false,
+                                    isLast = true,
+                                    onClick = { onNavigateToTab(1) }
+                                )
+                            } else if (isPoultryMode) {
+                                TimelineItemRow(
+                                    name = "Flock A — Broiler Pen 1",
+                                    meta = "200 birds · 3 weeks old · Grower feed starts tomorrow",
+                                    isWarning = false,
+                                    isLast = false,
+                                    onClick = { onNavigateToTab(1) }
+                                )
+                                TimelineItemRow(
+                                    name = "Flock B — Kienyeji Layers",
+                                    meta = "350 birds · 6 weeks old · ND3 vaccine overdue",
+                                    isWarning = true,
+                                    isLast = true,
+                                    onClick = { onNavigateToTab(1) }
+                                )
+                            } else {
+                                TimelineItemRow(
+                                    name = "Dairy Herd — Friesians",
+                                    meta = "Local Breed · #103 · Optimal condition",
+                                    isWarning = false,
+                                    isLast = false,
+                                    onClick = { onNavigateToTab(1) }
+                                )
+                                TimelineItemRow(
+                                    name = "Flock A — Broiler Pen 1",
+                                    meta = "200 birds · 3 weeks old · Grower feed starts tomorrow",
+                                    isWarning = false,
+                                    isLast = false,
+                                    onClick = { onNavigateToTab(1) }
+                                )
+                                TimelineItemRow(
+                                    name = "Flock B — Kienyeji Layers",
+                                    meta = "350 birds · 6 weeks old · ND3 vaccine overdue",
+                                    isWarning = true,
+                                    isLast = true,
+                                    onClick = { onNavigateToTab(1) }
+                                )
+                            }
                         }
                     }
 
@@ -663,8 +772,12 @@ fun DashboardScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            ReceiptLineItem(label = "Milk sales", amount = "+ ${farmSettings.currency} ${"%,.0f".format(milkIncome)}", isPositive = true)
-                            ReceiptLineItem(label = "Egg sales", amount = "+ ${farmSettings.currency} ${"%,.0f".format(eggIncome)}", isPositive = true)
+                            if (!isPoultryMode) {
+                                ReceiptLineItem(label = "Milk sales", amount = "+ ${farmSettings.currency} ${"%,.0f".format(milkIncome)}", isPositive = true)
+                            }
+                            if (!isCattleMode) {
+                                ReceiptLineItem(label = "Egg sales", amount = "+ ${farmSettings.currency} ${"%,.0f".format(eggIncome)}", isPositive = true)
+                            }
                             ReceiptLineItem(label = "Feed & supplies", amount = "− ${farmSettings.currency} ${"%,.0f".format(feedExpense)}", isPositive = false)
                             ReceiptLineItem(label = "Vaccines & vet", amount = "− ${farmSettings.currency} ${"%,.0f".format(vetExpense)}", isPositive = false)
 
@@ -715,47 +828,127 @@ fun DashboardScreen(
                         .padding(horizontal = 18.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    QuickActionChip(
-                        icon = "🥛",
-                        label = "Milk Log",
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("qa_milk_log"),
-                        onClick = {
-                            onAddMilkLogClick()
-                            onNavigateToTab(2)
-                        }
-                    )
-                    QuickActionChip(
-                        icon = "🥚",
-                        label = "Egg Log",
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("qa_egg_log"),
-                        onClick = {
-                            onAddEggLogClick()
-                            onNavigateToTab(2)
-                        }
-                    )
-                    QuickActionChip(
-                        icon = "➕",
-                        label = "Add Animal",
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("qa_add_animal"),
-                        onClick = {
-                            onAddUnitClick()
-                            onNavigateToTab(1)
-                        }
-                    )
-                    QuickActionChip(
-                        icon = "✅",
-                        label = "Approvals",
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("qa_approvals"),
-                        onClick = { onNavigateToTab(4) }
-                    )
+                    if (isCattleMode) {
+                        QuickActionChip(
+                            icon = "🥛",
+                            label = "Milk Log",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_milk_log"),
+                            onClick = {
+                                onAddMilkLogClick()
+                                onNavigateToTab(2)
+                            }
+                        )
+                        QuickActionChip(
+                            icon = "➕",
+                            label = "Add Cattle",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_add_animal"),
+                            onClick = {
+                                onAddUnitClick()
+                                onNavigateToTab(1)
+                            }
+                        )
+                        QuickActionChip(
+                            icon = "📊",
+                            label = "Per Cow",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_per_cow"),
+                            onClick = { onNavigateToTab(2) }
+                        )
+                        QuickActionChip(
+                            icon = "✅",
+                            label = "Approvals",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_approvals"),
+                            onClick = { onNavigateToTab(4) }
+                        )
+                    } else if (isPoultryMode) {
+                        QuickActionChip(
+                            icon = "🥚",
+                            label = "Egg Log",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_egg_log"),
+                            onClick = {
+                                onAddEggLogClick()
+                                onNavigateToTab(2)
+                            }
+                        )
+                        QuickActionChip(
+                            icon = "➕",
+                            label = "Add Flock",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_add_animal"),
+                            onClick = {
+                                onAddUnitClick()
+                                onNavigateToTab(1)
+                            }
+                        )
+                        QuickActionChip(
+                            icon = "📉",
+                            label = "Laying %",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_laying_rate"),
+                            onClick = { onNavigateToTab(2) }
+                        )
+                        QuickActionChip(
+                            icon = "✅",
+                            label = "Approvals",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_approvals"),
+                            onClick = { onNavigateToTab(4) }
+                        )
+                    } else {
+                        QuickActionChip(
+                            icon = "🥛",
+                            label = "Milk Log",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_milk_log"),
+                            onClick = {
+                                onAddMilkLogClick()
+                                onNavigateToTab(2)
+                            }
+                        )
+                        QuickActionChip(
+                            icon = "🥚",
+                            label = "Egg Log",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_egg_log"),
+                            onClick = {
+                                onAddEggLogClick()
+                                onNavigateToTab(2)
+                            }
+                        )
+                        QuickActionChip(
+                            icon = "➕",
+                            label = "Add Unit",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_add_animal"),
+                            onClick = {
+                                onAddUnitClick()
+                                onNavigateToTab(1)
+                            }
+                        )
+                        QuickActionChip(
+                            icon = "✅",
+                            label = "Approvals",
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("qa_approvals"),
+                            onClick = { onNavigateToTab(4) }
+                        )
+                    }
                 }
             }
         }

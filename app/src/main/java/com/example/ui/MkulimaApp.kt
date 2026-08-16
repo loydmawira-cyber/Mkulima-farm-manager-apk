@@ -417,6 +417,7 @@ fun MkulimaApp(
     if (showAddUnitDialog) {
         AddUnitDialog(
             onDismiss = { showAddUnitDialog = false },
+            farmSettings = farmSettings,
             onUnitCreated = { name, type, headCount, healthStatus, location, tagNumber, breed, dob, weightAtBirth, currentWeight, sire, dam ->
                 viewModel.addNewUnit(
                     name = name,

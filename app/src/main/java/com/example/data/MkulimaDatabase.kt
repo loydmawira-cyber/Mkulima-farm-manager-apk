@@ -17,9 +17,11 @@ import kotlinx.coroutines.launch
         EggLog::class,
         FinanceRecord::class,
         EmployeeRequest::class,
-        FarmSettings::class
+        FarmSettings::class,
+        WorkerAccount::class,
+        FarmAccount::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -59,7 +61,38 @@ abstract class MkulimaDatabase : RoomDatabase() {
         }
 
         suspend fun populateInitialData(farmDao: FarmDao) {
-            farmDao.insertSettings(FarmSettings())
+            farmDao.insertSettings(FarmSettings(farmId = "FARM-DEFAULT"))
+
+            // Seed default Farm Account
+            val defaultFarm = FarmAccount(
+                farmId = "FARM-DEFAULT",
+                farmName = "Green Pastures Farm",
+                ownerId = "owner_default",
+                ownerName = "David Kimani (Farm Owner)",
+                ownerEmailOrPhone = "owner@mkulima.farm"
+            )
+            farmDao.insertFarmAccount(defaultFarm)
+
+            // Seed default Worker Account
+            val defaultWorker = WorkerAccount(
+                workerId = "WRK-1001",
+                farmId = "FARM-DEFAULT",
+                name = "John Kiprono (Field Lead)",
+                emailOrPhone = "john@mkulima.farm",
+                password = "password123",
+                role = "WORKER",
+                isRevoked = false,
+                canViewLivestock = true,
+                canEditLivestock = true,
+                canViewLogs = true,
+                canEditLogs = true,
+                canViewFinance = false,
+                canEditFinance = false,
+                canViewTasks = true,
+                canCompleteTasks = true,
+                canViewRequests = true
+            )
+            farmDao.insertWorker(defaultWorker)
 
             if (farmDao.getTaskCount() == 0) {
                 val initialUnits = listOf(

@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.NightsStay
@@ -58,6 +60,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import com.example.ui.components.AppDatePickerField
@@ -127,15 +130,71 @@ data class CowDayMilkBreakdown(
     val dailyTotal: Double
 )
 
+fun isMilkingCow(
+    name: String,
+    breed: String = "",
+    status: String = "",
+    tag: String = "",
+    lastMilk: String = "",
+    breedingStatus: String = ""
+): Boolean {
+    val s = status.uppercase()
+    val b = breed.uppercase()
+    val n = name.uppercase()
+    val bs = breedingStatus.uppercase()
+    val lm = lastMilk.uppercase()
+
+    // 1. Disqualify disposed, sold, dead, culled
+    if (s.contains("DISPOSED") || s.contains("SOLD") || s.contains("DEAD") || s.contains("CULLED") || bs.contains("DISPOSED")) return false
+
+    // 2. Disqualify bulls, sires, steers
+    if (s.contains("BULL") || b.contains("BULL") || n.contains("BULL") || s.contains("SIRE") || b.contains("SIRE") || bs.contains("BULL") || bs.contains("SIRE")) return false
+
+    // 3. Disqualify calves, weaners
+    if (s.contains("CALF") || b.contains("CALF") || n.contains("CALF") || s.contains("WEAN") || b.contains("WEAN") || bs.contains("CALF") || bs.contains("WEAN")) return false
+
+    // 4. Disqualify heifers (open heifers / yearling heifers not in milk)
+    if (s == "HEIFER" || s.contains("OPEN HEIFER") || b.contains("HEIFER") || bs.contains("HEIFER") || bs.contains("OPEN HEIFER")) return false
+
+    // 5. Disqualify dry cows (dry off / resting)
+    if (s.contains("DRY") || s.contains("DRY OFF") || s.contains("DRIED OFF") || bs.contains("DRY")) return false
+
+    // 6. Disqualify poultry, crops, greenhouses
+    if (b.contains("POULTRY") || b.contains("LAYER") || b.contains("BROILER") || n.contains("FLOCK") || b.contains("KIENYEJI") || b.contains("GREENHOUSE") || b.contains("FIELD") || b.contains("PLOT")) return false
+
+    // 7. Explicit positive matches: Milking, or In-Calf & Milking, or Pregnant with active lactation
+    if (s == "MILKING" || bs.contains("MILKING") || s.contains("MILKING")) return true
+    if (s.contains("INCALF_MILKING") || s.contains("IN-CALF / MILKING") || s.contains("IN-CALF & MILKING")) return true
+    if ((s.contains("PREGNANT") || s.contains("INCALF") || bs.contains("PREGNANT") || bs.contains("IN-CALF")) && (!lm.startsWith("0") && lm.isNotBlank() && !lm.contains("N/A"))) return true
+
+    // General active cattle in milk
+    if (s == "ACTIVE" || s == "HEALTHY" || s.isBlank()) {
+        if (lm.startsWith("0") || lm.contains("N/A")) return false
+        return true
+    }
+
+    return true
+}
+
 fun isLogForCow(log: MilkLog, cow: AnimalCowItem): Boolean {
-    val cleanLogName = log.cowName.lowercase()
-    val cleanCowName = cow.name.lowercase()
-    val cowBase = cow.name.substringBefore(" (").trim().lowercase()
+    val cleanLog = log.cowName.trim().lowercase()
+    val cleanCow = cow.name.trim().lowercase()
+
+    if (cleanLog == cleanCow) return true
+
+    val logBase = cleanLog.substringBefore(" (").substringBefore(" -").substringBefore("#").trim()
+    val cowBase = cleanCow.substringBefore(" (").substringBefore(" -").substringBefore("#").trim()
+
+    if (logBase.isNotEmpty() && cowBase.isNotEmpty() && (logBase == cowBase || cleanLog.contains(cowBase) || cleanCow.contains(logBase))) {
+        return true
+    }
+
     val tag = cow.tagId.lowercase().replace("#", "").trim()
-    return cleanLogName.contains(cleanCowName) ||
-            cleanCowName.contains(cleanLogName) ||
-            (cowBase.isNotEmpty() && cleanLogName.contains(cowBase)) ||
-            (tag.isNotEmpty() && cleanLogName.contains(tag))
+    if (tag.isNotEmpty() && (cleanLog.contains(tag) || cleanLog.contains("#$tag"))) {
+        return true
+    }
+
+    return false
 }
 
 fun parseMilkLogCalendar(dateStr: String): java.util.Calendar? {
@@ -374,45 +433,82 @@ fun MilkLogScreen(
     farmSettings: com.example.data.FarmSettings,
     modifier: Modifier = Modifier
 ) {
-    // Registered Cow Database dynamically built from Room units and default cows
-    val cowsList = remember(units, milkLogs) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val deletedPrefs = remember { context.getSharedPreferences("mkulima_deleted_animals", android.content.Context.MODE_PRIVATE) }
+    val deletedSet = remember {
+        try {
+            deletedPrefs.getStringSet("deleted_ids", emptySet()) ?: emptySet()
+        } catch (e: Exception) {
+            val raw = try { deletedPrefs.getString("deleted_ids", "") ?: "" } catch (ex: Exception) { "" }
+            if (raw.isNotBlank()) raw.split(",").toSet() else emptySet()
+        }
+    }
+
+    // Registered Milking Cow Database dynamically built strictly from active farm livestock list (Room units + mockAnimals)
+    // Filtered strictly to ONLY MILKING & IN-CALF MILKING COWS on the farm (excluding Bulls, Calves, Heifers, Dry Cows, Disposed, and animals not on the farm)
+    val cowsList = remember(units, deletedSet) {
+        val result = mutableListOf<AnimalCowItem>()
+
+        // 1. From Room units (registered farm livestock)
         units.filter {
             (it.type.equals("Cattle", ignoreCase = true) || it.type.equals("CATTLE", ignoreCase = true)) &&
-            !it.healthStatus.contains("DISPOSED", ignoreCase = true) &&
-            !it.healthStatus.contains("SOLD", ignoreCase = true) &&
-            !it.healthStatus.contains("DEAD", ignoreCase = true)
-        }.filter { unit ->
-            val mockDetail = AnimalDetailData(
-                id = "unit_${unit.id}",
-                name = unit.name,
-                tagNumber = unit.tagNumber,
-                breed = unit.breed,
-                category = "CATTLE",
-                status = unit.healthStatus,
-                age = unit.dob,
-                weight = unit.currentWeight,
-                lastMilk = "",
-                breedingStatus = "ACTIVE",
-                dateOfBirth = unit.dob,
-                weightAtBirth = unit.weightAtBirth,
-                sire = unit.sire,
-                dam = unit.dam
-            )
-            val eval = CattleLifecycleEngine.evaluateCattleStage(mockDetail, emptyList(), milkLogs)
-            eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
-        }.map { unit ->
+            !deletedSet.contains("unit_${it.id}") && !deletedSet.contains(it.name.lowercase()) &&
+            isMilkingCow(name = it.name, breed = it.breed, status = it.healthStatus, tag = it.tagNumber)
+        }.forEach { unit ->
             val tag = unit.tagNumber.ifBlank { "#${unit.id + 100}" }
-            AnimalCowItem(
-                tagId = tag,
-                name = "${unit.name} ($tag)",
-                breed = unit.breed.ifBlank { "Cattle" },
-                lactationDay = 90
+            val displayName = if (unit.name.contains(tag)) unit.name else "${unit.name} ($tag)"
+            result.add(
+                AnimalCowItem(
+                    tagId = tag,
+                    name = displayName,
+                    breed = unit.breed.ifBlank { "Dairy Cattle" },
+                    lactationDay = 90
+                )
             )
-        }.distinctBy { it.name }
+        }
+
+        // 2. From mockAnimals (registered farm livestock list)
+        mockAnimals.filter {
+            it.category.equals("CATTLE", ignoreCase = true) &&
+            !deletedSet.contains(it.id) && !deletedSet.contains(it.name.lowercase()) &&
+            isMilkingCow(
+                name = it.name,
+                breed = it.breed,
+                status = it.status,
+                tag = it.tagNumber,
+                lastMilk = it.lastMilk,
+                breedingStatus = it.breedingStatus
+            )
+        }.forEach { animal ->
+            val tag = animal.tagNumber.ifBlank { "#100" }
+            val displayName = if (animal.name.contains(tag)) animal.name else "${animal.name} ($tag)"
+            result.add(
+                AnimalCowItem(
+                    tagId = tag,
+                    name = displayName,
+                    breed = animal.breed.ifBlank { "Dairy Cattle" },
+                    lactationDay = 90
+                )
+            )
+        }
+
+        // Deduplicate by normalized base name
+        result.distinctBy {
+            it.name.substringBefore(" (").substringBefore(" -").substringBefore("#").trim().lowercase()
+        }
     }
 
     // --- MAIN LOG CATEGORY STATE (Milk vs Eggs) ---
-    var selectedMainLogCategory by remember { mutableStateOf("MILK") } // "MILK" or "EGGS"
+    val initialMainCategory = if (farmSettings.farmType.equals("Poultry Only", ignoreCase = true)) "EGGS" else "MILK"
+    var selectedMainLogCategory by remember(farmSettings.farmType) { mutableStateOf(initialMainCategory) }
+
+    LaunchedEffect(farmSettings.farmType) {
+        if (farmSettings.farmType.equals("Poultry Only", ignoreCase = true)) {
+            selectedMainLogCategory = "EGGS"
+        } else if (farmSettings.farmType.equals("Cattle Only", ignoreCase = true)) {
+            selectedMainLogCategory = "MILK"
+        }
+    }
 
     // --- VIEW SELECTOR STATE FOR MILK ---
     var activeViewTab by remember { mutableStateOf("HERD_TOTALS") } // HERD_TOTALS, QUICK_LOG, PER_COW, HISTORY, ALL
@@ -492,6 +588,15 @@ fun MilkLogScreen(
                 it.breed.contains(cowSearchQuery, ignoreCase = true)
     }
 
+    LaunchedEffect(cowsList) {
+        if (selectedCow == null || cowsList.none { it.tagId == selectedCow?.tagId || it.name == selectedCow?.name }) {
+            selectedCow = cowsList.firstOrNull()
+        }
+        if (cowsList.isNotEmpty() && cowsList.none { it.tagId == perCowSelectedCow.tagId || it.name == perCowSelectedCow.name }) {
+            cowsList.firstOrNull()?.let { perCowSelectedCow = it }
+        }
+    }
+
     // --- EGG LOG STATE ---
     val poultryFlocks = remember(units) {
         val defaultFlocks = listOf("Alpha Layers", "Beta Broilers", "Kienyeji Flock 1")
@@ -528,60 +633,62 @@ fun MilkLogScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // --- 0. MAIN LOG CATEGORY TAB SWITCHER (Milk Logs vs Egg Logs) ---
-        item {
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFE2E8F0), shape = RoundedCornerShape(14.dp))
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Surface(
+        if (farmSettings.farmType.equals("Both", ignoreCase = true)) {
+            item {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .clickable { selectedMainLogCategory = "MILK" },
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (selectedMainLogCategory == "MILK") Color.White else Color.Transparent,
-                    shadowElevation = if (selectedMainLogCategory == "MILK") 2.dp else 0.dp
+                        .fillMaxWidth()
+                        .background(Color(0xFFE2E8F0), shape = RoundedCornerShape(14.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { selectedMainLogCategory = "MILK" },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (selectedMainLogCategory == "MILK") Color.White else Color.Transparent,
+                        shadowElevation = if (selectedMainLogCategory == "MILK") 2.dp else 0.dp
                     ) {
-                        Icon(Icons.Filled.WaterDrop, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "🥛 Milk Yield Log (${milkLogs.size})",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (selectedMainLogCategory == "MILK") ForestGreenPrimary else Color(0xFF64748B)
-                        )
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.WaterDrop, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "🥛 Milk Yield Log (${milkLogs.size})",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = if (selectedMainLogCategory == "MILK") ForestGreenPrimary else Color(0xFF64748B)
+                            )
+                        }
                     }
-                }
 
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { selectedMainLogCategory = "EGGS" },
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (selectedMainLogCategory == "EGGS") Color.White else Color.Transparent,
-                    shadowElevation = if (selectedMainLogCategory == "EGGS") 2.dp else 0.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { selectedMainLogCategory = "EGGS" },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (selectedMainLogCategory == "EGGS") Color.White else Color.Transparent,
+                        shadowElevation = if (selectedMainLogCategory == "EGGS") 2.dp else 0.dp
                     ) {
-                        Text("🥚", fontSize = 15.sp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Egg Yield Log (${eggLogs.size})",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (selectedMainLogCategory == "EGGS") ForestGreenPrimary else Color(0xFF64748B)
-                        )
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🥚", fontSize = 15.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Egg Yield Log (${eggLogs.size})",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = if (selectedMainLogCategory == "EGGS") ForestGreenPrimary else Color(0xFF64748B)
+                            )
+                        }
                     }
                 }
             }
@@ -1103,7 +1210,7 @@ fun MilkLogScreen(
 
                         // Step 1: Search Animal by Name, ID, or Tag
                         Text(
-                            text = "1. SEARCH & SELECT ANIMAL",
+                            text = "1. SEARCH & SELECT ANIMAL (MILKING COWS ONLY)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF64748B)
@@ -1112,20 +1219,31 @@ fun MilkLogScreen(
 
                         Box(modifier = Modifier.fillMaxWidth()) {
                             OutlinedTextField(
-                                value = selectedCow?.name ?: cowSearchQuery,
-                                onValueChange = {
-                                    cowSearchQuery = it
-                                    selectedCow = null
+                                value = if (selectedCow != null && cowSearchQuery.isBlank()) selectedCow!!.name else cowSearchQuery,
+                                onValueChange = { query ->
+                                    cowSearchQuery = query
+                                    selectedCow = cowsList.firstOrNull { it.name.equals(query.trim(), ignoreCase = true) }
                                     showCowDropdown = true
                                 },
                                 placeholder = { Text("Search by Name (e.g. Bessie), Tag (#102)...") },
                                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = ForestGreenPrimary) },
                                 trailingIcon = {
-                                    Icon(
-                                        Icons.Filled.ArrowDropDown,
-                                        contentDescription = "Dropdown",
-                                        modifier = Modifier.clickable { showCowDropdown = !showCowDropdown }
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (selectedCow != null || cowSearchQuery.isNotBlank()) {
+                                            IconButton(
+                                                onClick = {
+                                                    selectedCow = null
+                                                    cowSearchQuery = ""
+                                                    showCowDropdown = true
+                                                }
+                                            ) {
+                                                Icon(Icons.Filled.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp), tint = Color(0xFF94A3B8))
+                                            }
+                                        }
+                                        IconButton(onClick = { showCowDropdown = !showCowDropdown }) {
+                                            Icon(Icons.Filled.ArrowDropDown, contentDescription = "Dropdown", tint = Color(0xFF475569))
+                                        }
+                                    }
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1137,25 +1255,47 @@ fun MilkLogScreen(
                             DropdownMenu(
                                 expanded = showCowDropdown,
                                 onDismissRequest = { showCowDropdown = false },
-                                modifier = Modifier.fillMaxWidth(0.9f)
+                                modifier = Modifier.fillMaxWidth(0.9f).background(Color.White)
                             ) {
-                                matchingCows.forEach { cow ->
+                                if (matchingCows.isEmpty()) {
                                     DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Text(cow.name, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                                                Text(cow.breed, fontSize = 12.sp, color = Color(0xFF64748B))
-                                            }
-                                        },
-                                        onClick = {
-                                            selectedCow = cow
-                                            cowSearchQuery = cow.name
-                                            showCowDropdown = false
-                                        }
+                                        text = { Text("No matching milking cows found", color = Color.Gray, fontSize = 13.sp) },
+                                        onClick = { showCowDropdown = false }
                                     )
+                                } else {
+                                    matchingCows.forEach { cow ->
+                                        val isCurrent = selectedCow?.tagId == cow.tagId || selectedCow?.name == cow.name
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column {
+                                                        Text(
+                                                            text = cow.name,
+                                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                            color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                        )
+                                                        Text(
+                                                            text = "${cow.breed} • ${cow.tagId}",
+                                                            fontSize = 12.sp,
+                                                            color = Color(0xFF64748B)
+                                                        )
+                                                    }
+                                                    if (isCurrent) {
+                                                        Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedCow = cow
+                                                cowSearchQuery = ""
+                                                showCowDropdown = false
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1168,14 +1308,14 @@ fun MilkLogScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             items(cowsList) { cow ->
-                                val isSel = selectedCow?.tagId == cow.tagId
+                                val isSel = selectedCow?.tagId == cow.tagId || selectedCow?.name == cow.name
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
                                     border = if (isSel) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
                                     modifier = Modifier.clickable {
                                         selectedCow = cow
-                                        cowSearchQuery = cow.name
+                                        cowSearchQuery = ""
                                     }
                                 ) {
                                     Text(
@@ -1419,16 +1559,125 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Cow Selector Dropdown Row
-                        Text("SELECT COW TO ANALYZE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                        Spacer(modifier = Modifier.height(4.dp))
+                        var isPerCowSelectorExpanded by remember { mutableStateOf(false) }
 
+                        // Cow Selector Dropdown Row
+                        Text("SELECT COW TO ANALYZE (MILKING COWS ONLY)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // 1. Prominent Dropdown Card for Cow Selection
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF1F5F9),
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isPerCowSelectorExpanded = true }
+                                    .testTag("per_cow_dropdown_selector")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = ForestGreenPrimary.copy(alpha = 0.15f),
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    Icons.Filled.Pets,
+                                                    contentDescription = null,
+                                                    tint = ForestGreenPrimary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = perCowSelectedCow.name,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF1E293B)
+                                            )
+                                            Text(
+                                                text = "${perCowSelectedCow.breed} • Tag: ${perCowSelectedCow.tagId}",
+                                                fontSize = 12.sp,
+                                                color = ForestGreenPrimary,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Filled.ArrowDropDown,
+                                        contentDescription = "Select Cow",
+                                        tint = Color(0xFF475569)
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = isPerCowSelectorExpanded,
+                                onDismissRequest = { isPerCowSelectorExpanded = false },
+                                modifier = Modifier.fillMaxWidth(0.9f).background(Color.White)
+                            ) {
+                                if (cowsList.isEmpty()) {
+                                    DropdownMenuItem(
+                                        text = { Text("No milking cows available", color = Color.Gray, fontSize = 13.sp) },
+                                        onClick = { isPerCowSelectorExpanded = false }
+                                    )
+                                } else {
+                                    cowsList.forEach { cow ->
+                                        val isCurrent = perCowSelectedCow.tagId == cow.tagId || perCowSelectedCow.name == cow.name
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column {
+                                                        Text(
+                                                            text = cow.name,
+                                                            fontSize = 14.sp,
+                                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                            color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                        )
+                                                        Text(
+                                                            text = "${cow.breed} • ${cow.tagId}",
+                                                            fontSize = 12.sp,
+                                                            color = Color(0xFF64748B)
+                                                        )
+                                                    }
+                                                    if (isCurrent) {
+                                                        Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                perCowSelectedCow = cow
+                                                isPerCowSelectorExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // 2. Fast 1-tap horizontal selection chips
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(cowsList) { cow ->
-                                val isSel = perCowSelectedCow.tagId == cow.tagId
+                                val isSel = perCowSelectedCow.tagId == cow.tagId || perCowSelectedCow.name == cow.name
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
                                     color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    border = if (isSel) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
                                     modifier = Modifier.clickable { perCowSelectedCow = cow }
                                 ) {
                                     Text(
@@ -1444,13 +1693,13 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Timeframe Tabs for Per Cow View: Today, Month, Year
+                        // Timeframe Tabs for Per Cow View: Today, Month, Year, All Time
                         Text("TIME PERIOD", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             // 1. TODAY TAB
                             val isTodaySelected = perCowTimeframe == "TODAY"
@@ -1466,13 +1715,13 @@ fun MilkLogScreen(
                                     .testTag("per_cow_today_tab")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = "Today",
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isTodaySelected) Color.White else Color(0xFF334155)
                                     )
@@ -1481,7 +1730,7 @@ fun MilkLogScreen(
 
                             // 2. MONTH TAB (defaults to current month e.g. "August", clickable with 12 months dropdown)
                             val isMonthSelected = perCowTimeframe == "MONTH"
-                            Box(modifier = Modifier.weight(1.3f)) {
+                            Box(modifier = Modifier.weight(1.2f)) {
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
                                     color = if (isMonthSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
@@ -1495,23 +1744,23 @@ fun MilkLogScreen(
                                         .testTag("per_cow_month_tab")
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
                                         horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = selectedPerCowMonth,
-                                            fontSize = 12.sp,
+                                            text = selectedPerCowMonth.take(3),
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isMonthSelected) Color.White else Color(0xFF334155),
                                             maxLines = 1
                                         )
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Spacer(modifier = Modifier.width(2.dp))
                                         Icon(
                                             imageVector = Icons.Filled.ArrowDropDown,
                                             contentDescription = "Select Month",
                                             tint = if (isMonthSelected) Color.White else Color(0xFF64748B),
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(14.dp)
                                         )
                                     }
                                 }
@@ -1551,7 +1800,7 @@ fun MilkLogScreen(
                                 }
                             }
 
-                            // 3. YEAR TAB (defaults to current year e.g. "2026", clickable with 8 years dropdown)
+                            // 3. YEAR TAB (defaults to current year e.g. "2026", clickable with years dropdown)
                             val isYearSelected = perCowTimeframe == "YEAR"
                             Box(modifier = Modifier.weight(1.1f)) {
                                 Surface(
@@ -1567,23 +1816,23 @@ fun MilkLogScreen(
                                         .testTag("per_cow_year_tab")
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
                                         horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = selectedPerCowYear,
-                                            fontSize = 12.sp,
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isYearSelected) Color.White else Color(0xFF334155),
                                             maxLines = 1
                                         )
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Spacer(modifier = Modifier.width(2.dp))
                                         Icon(
                                             imageVector = Icons.Filled.ArrowDropDown,
                                             contentDescription = "Select Year",
                                             tint = if (isYearSelected) Color.White else Color(0xFF64748B),
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(14.dp)
                                         )
                                     }
                                 }
@@ -1620,6 +1869,33 @@ fun MilkLogScreen(
                                             }
                                         )
                                     }
+                                }
+                            }
+
+                            // 4. ALL TIME TAB
+                            val isAllTimeSelected = perCowTimeframe == "ALL_TIME"
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isAllTimeSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                border = if (isAllTimeSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier
+                                    .weight(1.1f)
+                                    .clickable {
+                                        perCowTimeframe = "ALL_TIME"
+                                    }
+                                    .testTag("per_cow_all_time_tab")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "All Time",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isAllTimeSelected) Color.White else Color(0xFF334155)
+                                    )
                                 }
                             }
                         }

@@ -17,7 +17,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.EmployeeRequest
 import com.example.data.RequestStatus
+import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.TagFinanceBg
 import com.example.ui.theme.TagFinanceText
@@ -60,31 +63,69 @@ fun ApprovalRequestsScreen(
     requests: List<EmployeeRequest>,
     onUpdateRequestStatus: (EmployeeRequest, String) -> Unit,
     currency: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userRole: String = "OWNER",
+    onAddRequestClick: (() -> Unit)? = null
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("PENDING (${requests.count { it.status == RequestStatus.PENDING }})", "APPROVED", "REJECTED")
+    val isOwner = userRole.equals("OWNER", ignoreCase = true)
 
-    val filteredRequests = when (selectedTabIndex) {
-        0 -> requests.filter { it.status == RequestStatus.PENDING }
-        1 -> requests.filter { it.status == RequestStatus.APPROVED }
-        else -> requests.filter { it.status == RequestStatus.REJECTED }
+    val tabs = if (isOwner) {
+        listOf("PENDING (${requests.count { it.status == RequestStatus.PENDING }})", "APPROVED", "REJECTED")
+    } else {
+        listOf("ALL (${requests.size})", "PENDING", "APPROVED", "REJECTED")
+    }
+
+    val filteredRequests = if (isOwner) {
+        when (selectedTabIndex) {
+            0 -> requests.filter { it.status == RequestStatus.PENDING }
+            1 -> requests.filter { it.status == RequestStatus.APPROVED }
+            else -> requests.filter { it.status == RequestStatus.REJECTED }
+        }
+    } else {
+        when (selectedTabIndex) {
+            0 -> requests
+            1 -> requests.filter { it.status == RequestStatus.PENDING }
+            2 -> requests.filter { it.status == RequestStatus.APPROVED }
+            else -> requests.filter { it.status == RequestStatus.REJECTED }
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
-            Text(
-                text = "Approval Requests",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1C1D1F)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Review and manage pending changes from field workers.",
-                fontSize = 14.sp,
-                color = Color(0xFF5C6470)
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (isOwner) "Approval Requests" else "My Requests",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1C1D1F)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (isOwner) "Review leave and advance requests from workers." else "Track your leave applications and advance requests.",
+                    fontSize = 13.sp,
+                    color = Color(0xFF5C6470)
+                )
+            }
+
+            if (onAddRequestClick != null) {
+                Button(
+                    onClick = onAddRequestClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.testTag("btn_submit_request_top")
+                ) {
+                    Icon(Icons.Filled.PostAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (isOwner) "Add Request" else "New Request", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
 
         TabRow(
@@ -110,7 +151,7 @@ fun ApprovalRequestsScreen(
                         Text(
                             text = title,
                             fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             color = if (selectedTabIndex == index) ForestGreenPrimary else Color(0xFF5C6470)
                         )
                     }
@@ -127,11 +168,23 @@ fun ApprovalRequestsScreen(
                     .padding(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "No requests found under this status.",
-                    color = Color.Gray,
-                    fontSize = 14.sp
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (isOwner) "No requests in this category." else "No requests submitted yet.",
+                        color = Color.Gray,
+                        fontSize = 14.sp
+                    )
+                    if (onAddRequestClick != null && !isOwner) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = onAddRequestClick,
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Submit Leave or Advance Request")
+                        }
+                    }
+                }
             }
         } else {
             LazyColumn(
@@ -144,6 +197,7 @@ fun ApprovalRequestsScreen(
                     ApprovalRequestCard(
                         request = req,
                         currency = currency,
+                        isOwner = isOwner,
                         onApprove = { onUpdateRequestStatus(req, "APPROVED") },
                         onReject = { onUpdateRequestStatus(req, "REJECTED") }
                     )
@@ -161,6 +215,7 @@ fun ApprovalRequestsScreen(
 fun ApprovalRequestCard(
     request: EmployeeRequest,
     currency: String,
+    isOwner: Boolean,
     onApprove: () -> Unit,
     onReject: () -> Unit
 ) {
@@ -215,7 +270,7 @@ fun ApprovalRequestCard(
                             color = Color(0xFF1E293B)
                         )
                         Text(
-                            text = request.submittedAt,
+                            text = "Submitted: ${request.submittedAt}",
                             fontSize = 12.sp,
                             color = Color(0xFF64748B)
                         )
@@ -280,50 +335,70 @@ fun ApprovalRequestCard(
                 Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // Action Buttons Row or Status Badge
+            // Action Buttons for Owner OR Status Pill for Worker
             if (request.status == RequestStatus.PENDING) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onReject,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155))
+                if (isOwner) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("REJECT", fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), fontSize = 13.sp)
+                        OutlinedButton(
+                            onClick = onReject,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155))
+                        ) {
+                            Text("REJECT", fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), fontSize = 13.sp)
+                        }
+
+                        Button(
+                            onClick = onApprove,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                        ) {
+                            Text("APPROVE", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                        }
                     }
 
-                    Button(
-                        onClick = onApprove,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                    ) {
-                        Text("APPROVE", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = Color(0xFF64748B),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "The worker will see your decision immediately.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
                     }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.Info,
-                        contentDescription = null,
-                        tint = Color(0xFF64748B),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "The worker will be notified of your decision instantly.",
-                        fontSize = 11.sp,
-                        color = Color(0xFF64748B)
-                    )
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFEF3C7),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "⏳ PENDING ADMIN REVIEW",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFB45309),
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
                 }
             } else {
                 val isApproved = request.status == RequestStatus.APPROVED
@@ -339,7 +414,7 @@ fun ApprovalRequestCard(
                         Text(
                             text = if (isApproved) "✓ APPROVED" else "✕ REJECTED",
                             fontWeight = FontWeight.Bold,
-                            color = if (isApproved) ForestGreenPrimary else Color(0xFF991B1B),
+                            color = if (isApproved) ForestGreenDark else Color(0xFF991B1B),
                             fontSize = 13.sp
                         )
                     }
@@ -348,3 +423,4 @@ fun ApprovalRequestCard(
         }
     }
 }
+

@@ -99,6 +99,7 @@ fun MkulimaApp(
     val financeRecords by viewModel.allFinanceRecords.collectAsState()
     val employeeRequests by viewModel.allEmployeeRequests.collectAsState()
     val farmSettings by viewModel.farmSettings.collectAsState()
+    val userSession by viewModel.currentSession.collectAsState()
 
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
@@ -487,10 +488,14 @@ fun MkulimaApp(
     if (showSettingsDialog) {
         SettingsDialog(
             settings = farmSettings,
-            userSession = viewModel.currentSession.collectAsState().value,
+            userSession = userSession,
             onDismiss = { showSettingsDialog = false },
             onSaveSettings = { newSettings: com.example.data.FarmSettings ->
                 viewModel.updateSettings(newSettings)
+                showSettingsDialog = false
+            },
+            onLogout = {
+                viewModel.logout()
                 showSettingsDialog = false
             }
         )

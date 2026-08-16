@@ -92,7 +92,9 @@ data class UserSession(
         canCompleteTasks = true,
         canViewRequests = true
     )
-)
+) {
+    val isOwner: Boolean get() = role.equals("OWNER", ignoreCase = true)
+}
 
 @Entity(tableName = "farm_tasks")
 data class FarmTask(

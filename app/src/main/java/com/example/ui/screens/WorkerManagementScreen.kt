@@ -117,7 +117,7 @@ fun WorkerManagementScreen(
                     Column {
                         Text(
                             text = "Team & Worker Management",
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF1E293B)
                         )
@@ -129,7 +129,7 @@ fun WorkerManagementScreen(
                                 Text(
                                     text = farmId,
                                     color = ForestGreenDark,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
@@ -137,7 +137,7 @@ fun WorkerManagementScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = farmName,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 color = Color(0xFF64748B)
                             )
                         }
@@ -150,9 +150,9 @@ fun WorkerManagementScreen(
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.testTag("btn_add_worker_top")
                 ) {
-                    Icon(Icons.Filled.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Add Worker", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Filled.PersonAdd, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add Worker", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

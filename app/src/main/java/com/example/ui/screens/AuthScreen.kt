@@ -589,69 +589,6 @@ fun AuthScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-
-            // Quick Demo Accounts Access
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White.copy(alpha = 0.9f),
-                shadowElevation = 4.dp
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "⚡ Quick Demo Logins",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E293B)
-                    )
-                    Text(
-                        text = "Switch roles instantly to test Owner & Worker capabilities:",
-                        fontSize = 11.sp,
-                        color = Color(0xFF64748B)
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                emailOrPhone = "owner@mkulima.farm"
-                                password = "password123"
-                                selectedTab = 0
-                                mode = AuthMode.LOGIN
-                                onLogin("owner@mkulima.farm", "password123") {}
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("demo_owner_btn"),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("👨‍🌾 Farm Owner", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                emailOrPhone = "john@mkulima.farm"
-                                password = "password123"
-                                selectedTab = 0
-                                mode = AuthMode.LOGIN
-                                onLogin("john@mkulima.farm", "password123") {}
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("demo_worker_btn"),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("👷 Field Worker", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

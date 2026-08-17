@@ -84,6 +84,9 @@ interface FarmDao {
     @Query("DELETE FROM milk_logs WHERE id = :id")
     suspend fun deleteMilkLogById(id: Long)
 
+    @Update
+    suspend fun updateMilkLog(log: MilkLog)
+
     // Egg Logs
     @Query("SELECT * FROM egg_logs WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY id DESC")
     fun getEggLogsByFarm(farmId: String): Flow<List<EggLog>>
@@ -99,6 +102,9 @@ interface FarmDao {
 
     @Query("DELETE FROM egg_logs WHERE id = :id")
     suspend fun deleteEggLogById(id: Long)
+
+    @Update
+    suspend fun updateEggLog(log: EggLog)
 
     // Finance Records
     @Query("SELECT * FROM finance_records WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY id DESC")

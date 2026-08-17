@@ -199,31 +199,6 @@ class FarmViewModel(
         authManager.logout()
     }
 
-    // Worker Management
-    fun createWorker(name: String, emailOrPhone: String, pass: String, permissions: WorkerPermissions) {
-        viewModelScope.launch {
-            authManager.createWorker(name, emailOrPhone, pass, permissions)
-        }
-    }
-
-    fun updateWorker(worker: WorkerAccount) {
-        viewModelScope.launch {
-            authManager.updateWorker(worker)
-        }
-    }
-
-    fun toggleWorkerRevoked(workerId: String, isRevoked: Boolean) {
-        viewModelScope.launch {
-            authManager.setWorkerRevoked(workerId, isRevoked)
-        }
-    }
-
-    fun deleteWorker(workerId: String) {
-        viewModelScope.launch {
-            authManager.deleteWorker(workerId)
-        }
-    }
-
     // Task Actions
     fun completeTaskWithProof(
         taskId: Long,
@@ -482,6 +457,47 @@ class FarmViewModel(
         } catch (e: Exception) {
             e.printStackTrace()
             sourceUri.toString()
+        }
+    }
+
+    fun deleteWorker(workerId: String) {
+        viewModelScope.launch {
+            repository.deleteWorker(workerId)
+        }
+    }
+
+    fun toggleWorkerRevoked(workerId: String, isRevoked: Boolean) {
+        viewModelScope.launch {
+            repository.setWorkerRevoked(workerId, isRevoked)
+        }
+    }
+
+    fun updateWorker(worker: WorkerAccount) {
+        viewModelScope.launch {
+            repository.updateWorker(worker)
+        }
+    }
+
+    fun createWorker(name: String, emailOrPhone: String, password: String, permissions: WorkerPermissions) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val worker = WorkerAccount(
+                workerId = java.util.UUID.randomUUID().toString(),
+                farmId = farmId,
+                name = name,
+                emailOrPhone = emailOrPhone,
+                password = password,
+                canViewLivestock = permissions.canViewLivestock,
+                canEditLivestock = permissions.canEditLivestock,
+                canViewLogs = permissions.canViewLogs,
+                canEditLogs = permissions.canEditLogs,
+                canViewFinance = permissions.canViewFinance,
+                canEditFinance = permissions.canEditFinance,
+                canViewTasks = permissions.canViewTasks,
+                canCompleteTasks = permissions.canCompleteTasks,
+                canViewRequests = permissions.canViewRequests
+            )
+            repository.insertWorker(worker)
         }
     }
 }

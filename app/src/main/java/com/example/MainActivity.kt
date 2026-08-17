@@ -12,9 +12,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MkulimaTheme {
-                MkulimaApp()
-            }
+            MkulimaApp()
         }
     }
 }

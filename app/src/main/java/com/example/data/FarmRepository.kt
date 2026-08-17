@@ -37,9 +37,11 @@ class FarmRepository(private val farmDao: FarmDao) {
     suspend fun deleteUnit(id: Long) = farmDao.deleteUnitById(id)
 
     suspend fun insertMilkLog(log: MilkLog): Long = farmDao.insertMilkLog(log)
+    suspend fun updateMilkLog(log: MilkLog) = farmDao.updateMilkLog(log)
     suspend fun deleteMilkLog(id: Long) = farmDao.deleteMilkLogById(id)
 
     suspend fun insertEggLog(log: EggLog): Long = farmDao.insertEggLog(log)
+    suspend fun updateEggLog(log: EggLog) = farmDao.updateEggLog(log)
     suspend fun deleteEggLog(id: Long) = farmDao.deleteEggLogById(id)
 
     suspend fun insertFinanceRecord(record: FinanceRecord): Long = farmDao.insertFinanceRecord(record)

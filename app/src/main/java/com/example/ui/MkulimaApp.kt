@@ -72,20 +72,40 @@ import com.example.ui.components.ProofUploadDialog
 import androidx.compose.material.icons.filled.Settings
 import com.example.ui.components.SettingsDialog
 import com.example.ui.screens.ApprovalRequestsScreen
+import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.WorkerManagementScreen
 import com.example.ui.screens.FinanceScreen
 import com.example.ui.screens.FlocksScreen
 import com.example.ui.screens.MilkLogScreen
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.TagLivestockBg
 import com.example.ui.theme.TagLivestockText
+import com.example.ui.theme.MkulimaTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MkulimaApp(
     viewModel: FarmViewModel = viewModel(
         factory = FarmViewModelFactory(LocalContext.current)
     )
+) {
+    MkulimaThemeWrapper(viewModel) {
+        MkulimaAppContent(viewModel)
+    }
+}
+
+@Composable
+fun MkulimaThemeWrapper(viewModel: FarmViewModel, content: @Composable () -> Unit) {
+    val farmSettings by viewModel.farmSettings.collectAsState()
+    MkulimaTheme(themeMode = farmSettings.themeMode) {
+        content()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MkulimaAppContent(
+    viewModel: FarmViewModel
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -99,7 +119,17 @@ fun MkulimaApp(
     val financeRecords by viewModel.allFinanceRecords.collectAsState()
     val employeeRequests by viewModel.allEmployeeRequests.collectAsState()
     val farmSettings by viewModel.farmSettings.collectAsState()
+    val farmWorkers by viewModel.farmWorkers.collectAsState()
     val userSession by viewModel.currentSession.collectAsState()
+
+    if (userSession == null) {
+        AuthScreen(
+            onLogin = { email, pass, onError -> viewModel.login(email, pass, onError) },
+            onSignUp = { name, email, pass, farmName, onError -> viewModel.signUpOwner(name, email, pass, farmName, onError) },
+            onForgotPassword = { email, onComplete -> viewModel.forgotPassword(email, onComplete) }
+        )
+        return
+    }
 
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
@@ -115,6 +145,7 @@ fun MkulimaApp(
     var showAddFinanceDialog by remember { mutableStateOf(false) }
     var showAddEmployeeRequestDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showWorkerManagementScreen by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -494,10 +525,300 @@ fun MkulimaApp(
                 viewModel.updateSettings(newSettings)
                 showSettingsDialog = false
             },
+            onOpenWorkerManagement = { showWorkerManagementScreen = true },
             onLogout = {
                 viewModel.logout()
                 showSettingsDialog = false
             }
         )
+    }
+
+    if (showWorkerManagementScreen) {
+        WorkerManagementScreen(
+            farmId = userSession?.farmId ?: "FARM-DEFAULT",
+            farmName = userSession?.farmName ?: "Farm",
+            workers = farmWorkers,
+            onCreateWorker = { name, email, pass, perms -> viewModel.createWorker(name, email, pass, perms) },
+            onUpdateWorker = { viewModel.updateWorker(it) },
+            onToggleRevoke = { id, revoked -> viewModel.toggleWorkerRevoked(id, revoked) },
+            onDeleteWorker = { id -> viewModel.deleteWorker(id) },
+            onClose = { showWorkerManagementScreen = false }
+        )
+    } else {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(end = 12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Menu,
+                                        contentDescription = "Menu",
+                                        tint = Color(0xFF1E293B)
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Filled.Agriculture,
+                                    contentDescription = null,
+                                    tint = ForestGreenPrimary,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Mkulima",
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B)
+                                )
+                            }
+                            IconButton(onClick = { showSettingsDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Settings,
+                                    contentDescription = "Settings",
+                                    tint = Color(0xFF1E293B)
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFFF8F9FA)
+                    )
+                )
+            },
+            bottomBar = {
+                NavigationBar(
+                    containerColor = Color.White,
+                    tonalElevation = 6.dp
+                ) {
+                    // Tab 0: Home
+                    NavigationBarItem(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        icon = {
+                            Icon(
+                                if (selectedTab == 0) Icons.Filled.Home else Icons.Outlined.Home,
+                                contentDescription = "Home"
+                            )
+                        },
+                        label = {
+                            Text(
+                                "Home",
+                                fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = ForestGreenPrimary,
+                            selectedTextColor = ForestGreenPrimary,
+                            indicatorColor = Color(0xFFDCFCE7),
+                            unselectedIconColor = Color(0xFF64748B),
+                            unselectedTextColor = Color(0xFF64748B)
+                        ),
+                        modifier = Modifier.testTag("nav_home_tab")
+                    )
+
+                    // Tab 1: Livestock
+                    NavigationBarItem(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        icon = {
+                            Icon(
+                                if (selectedTab == 1) Icons.Filled.Grass else Icons.Outlined.Grass,
+                                contentDescription = "Livestock"
+                            )
+                        },
+                        label = {
+                            Text(
+                                "Livestock",
+                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = ForestGreenPrimary,
+                            selectedTextColor = ForestGreenPrimary,
+                            indicatorColor = Color(0xFFDCFCE7),
+                            unselectedIconColor = Color(0xFF64748B),
+                            unselectedTextColor = Color(0xFF64748B)
+                        ),
+                        modifier = Modifier.testTag("nav_livestock_tab")
+                    )
+
+                    // Tab 2: Log
+                    NavigationBarItem(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        icon = {
+                            Icon(
+                                if (selectedTab == 2) Icons.Filled.Assignment else Icons.Outlined.Assignment,
+                                contentDescription = "Log"
+                            )
+                        },
+                        label = {
+                            Text(
+                                "Log",
+                                fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = ForestGreenPrimary,
+                            selectedTextColor = ForestGreenPrimary,
+                            indicatorColor = Color(0xFFDCFCE7),
+                            unselectedIconColor = Color(0xFF64748B),
+                            unselectedTextColor = Color(0xFF64748B)
+                        ),
+                        modifier = Modifier.testTag("nav_daily_log_tab")
+                    )
+
+                    // Tab 3: Finance
+                    NavigationBarItem(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        icon = {
+                            Icon(
+                                if (selectedTab == 3) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet,
+                                contentDescription = "Finance"
+                            )
+                        },
+                        label = {
+                            Text(
+                                "Finance",
+                                fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = ForestGreenPrimary,
+                            selectedTextColor = ForestGreenPrimary,
+                            indicatorColor = Color(0xFFDCFCE7),
+                            unselectedIconColor = Color(0xFF64748B),
+                            unselectedTextColor = Color(0xFF64748B)
+                        ),
+                        modifier = Modifier.testTag("nav_finance_tab")
+                    )
+
+                    // Tab 4: Requests / Inventory
+                    NavigationBarItem(
+                        selected = selectedTab == 4,
+                        onClick = { selectedTab = 4 },
+                        icon = {
+                            Icon(
+                                if (selectedTab == 4) Icons.Filled.FactCheck else Icons.Outlined.FactCheck,
+                                contentDescription = "Requests"
+                            )
+                        },
+                        label = {
+                            Text(
+                                "Requests",
+                                fontWeight = if (selectedTab == 4) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = ForestGreenPrimary,
+                            selectedTextColor = ForestGreenPrimary,
+                            indicatorColor = Color(0xFFDCFCE7),
+                            unselectedIconColor = Color(0xFF64748B),
+                            unselectedTextColor = Color(0xFF64748B)
+                        ),
+                        modifier = Modifier.testTag("nav_requests_tab")
+                    )
+                }
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(Color(0xFFF8F9FA))
+            ) {
+                when (selectedTab) {
+                    0 -> DashboardScreen(
+                        tasks = filteredTasks,
+                        milkLogs = milkLogs,
+                        eggLogs = eggLogs,
+                        units = allUnits,
+                        financeRecords = financeRecords,
+                        employeeRequests = employeeRequests,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { viewModel.searchQuery.value = it },
+                        selectedCategory = selectedCategoryFilter,
+                        onCategorySelected = { viewModel.selectedCategoryFilter.value = it },
+                        selectedStatus = selectedStatusFilter,
+                        onStatusSelected = { viewModel.selectedStatusFilter.value = it },
+                        onCompleteTaskClick = { proofUploadTaskTarget = it },
+                        onReopenTaskClick = { viewModel.markTaskIncomplete(it.id) },
+                        onViewProofClick = { proofModalTaskTarget = it },
+                        onDeleteTaskClick = { viewModel.deleteTask(it.id) },
+                        onAddTaskClick = { showAddTaskDialog = true },
+                        onRestockClick = { showAddFinanceDialog = true },
+                        onNavigateToTab = { selectedTab = it },
+                        onAddUnitClick = { showAddUnitDialog = true },
+                        onAddMilkLogClick = { showAddMilkLogDialog = true },
+                        onAddEggLogClick = { showAddEggLogDialog = true },
+                        userRole = userRole,
+                        farmSettings = farmSettings
+                    )
+
+                    1 -> FlocksScreen(
+                        units = allUnits,
+                        milkLogs = milkLogs,
+                        eggLogs = eggLogs,
+                        financeRecords = financeRecords,
+                        employeeRequests = employeeRequests,
+                        onAddUnitClick = { showAddUnitDialog = true },
+                        onAddTaskForUnit = { showAddTaskDialog = true },
+                        onAddMilkLogClick = { showAddMilkLogDialog = true },
+                        onAddEggLogClick = { showAddEggLogDialog = true },
+                        onAddFinanceClick = { showAddFinanceDialog = true },
+                        onAddEmployeeRequestClick = { showAddEmployeeRequestDialog = true },
+                        onUpdateRequestStatus = { req, status ->
+                            viewModel.updateEmployeeRequestStatus(req, status)
+                        },
+                        onAddFinanceRecord = { type, category, amount, description ->
+                            viewModel.addFinanceRecord(type, category, amount, description)
+                        },
+                        onUpdateUnitHeadCount = { unitId, newCount ->
+                            viewModel.updateUnitHeadCount(unitId, newCount)
+                        },
+                        onUpdateUnit = { unit ->
+                            viewModel.updateUnit(unit)
+                        },
+                        onDeleteUnit = { unitId ->
+                            viewModel.deleteUnit(unitId)
+                        },
+                        farmSettings = farmSettings
+                    )
+
+                    2 -> MilkLogScreen(
+                        milkLogs = milkLogs,
+                        eggLogs = eggLogs,
+                        units = allUnits,
+                        onAddMilkLogClick = { showAddMilkLogDialog = true },
+                        onAddEggLogClick = { showAddEggLogDialog = true },
+                        onQuickSaveMilkLog = { cowName, litres, session, recordDate ->
+                            val finalDate = recordDate.ifBlank {
+                                java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+                            }
+                            viewModel.addMilkLog(cowName, "Cattle Unit", litres, session, 3.8, finalDate, "Recorded from Daily Log")
+                        },
+                        onQuickSaveEggLog = { flockName, totalEggs, damagedEggs, grade, date, notes ->
+                            viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, notes)
+                        },
+                        onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
+                        onDeleteEggLog = { viewModel.deleteEggLog(it) },
+                        farmSettings = farmSettings
+                    )
+                }
+            }
+        }
     }
 }

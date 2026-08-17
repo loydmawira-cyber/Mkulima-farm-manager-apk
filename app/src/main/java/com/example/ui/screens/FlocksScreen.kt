@@ -144,7 +144,8 @@ data class AnimalDetailData(
     val disposalAmount: Double = 0.0,
     val disposalDate: String = "",
     val disposalNotes: String = "",
-    val headCountInt: Int = 1
+    val headCountInt: Int = 1,
+    val manuallySetStatus: String? = null
 )
 
 data class FlockDisposalLogItem(
@@ -763,22 +764,33 @@ fun FlocksScreen(
             } else {
                 "1y"
             }
-            AnimalDetailData(
+
+            val animalDetail = AnimalDetailData(
                 id = "unit_${unit.id}",
                 name = unit.name,
                 tagNumber = if (unit.tagNumber.isNotBlank()) unit.tagNumber else if (isPoultry) "Count: ${unit.headCount}" else "#${unit.id + 100}",
                 breed = unit.breed.ifBlank { if (isPoultry) "Poultry Flock" else "Local Breed" },
                 category = if (isPoultry) "POULTRY" else "CATTLE",
-                status = unit.healthStatus.ifBlank { "ACTIVE" },
+                status = "ACTIVE",
                 age = calculatedAge,
                 weight = unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
                 lastMilk = lastMilkStr,
-                breedingStatus = if (isPoultry) "ACTIVE LAYING" else "HEALTHY",
+                breedingStatus = "HEALTHY",
                 dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },
                 weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
                 sire = unit.sire.ifBlank { "N/A" },
                 dam = unit.dam.ifBlank { "N/A" },
                 headCountInt = unit.headCount
+            )
+            
+            val eval = CattleLifecycleEngine.evaluateCattleStage(animalDetail, emptyList(), cowLogs)
+            
+            // Only update status if it was set to ACTIVE (default), otherwise keep manual override
+            val newStatus = if (animalDetail.status == "ACTIVE") eval.stage.displayName else animalDetail.status
+            
+            animalDetail.copy(
+                status = newStatus,
+                breedingStatus = eval.breedingStatusText
             )
         }
     }

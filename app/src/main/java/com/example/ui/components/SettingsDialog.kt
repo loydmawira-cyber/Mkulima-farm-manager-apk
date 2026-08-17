@@ -77,6 +77,7 @@ fun SettingsDialog(
     var weaningDays by remember { mutableStateOf(settings.weaningReminderDays.toString()) }
     var pdDays by remember { mutableStateOf(settings.pregnancyCheckReminderDays.toString()) }
     var dryOffDays by remember { mutableStateOf(settings.dryingOffReminderDays.toString()) }
+    var themeMode by remember { mutableStateOf(settings.themeMode) }
 
     val isOwner = userSession?.role?.equals("OWNER", ignoreCase = true) ?: true
 
@@ -268,7 +269,7 @@ fun SettingsDialog(
                 OutlinedTextField(
                     value = currency,
                     onValueChange = { currency = it },
-                    label = { Text("Currency Symbol / Code (e.g. KES, USD)") },
+                    label = { Text("Currency (e.g. KES)", fontSize = 12.sp) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     singleLine = true,
@@ -280,7 +281,7 @@ fun SettingsDialog(
                 OutlinedTextField(
                     value = pdDays,
                     onValueChange = { pdDays = it },
-                    label = { Text("PD Pregnancy Check Alert (Days post-AI)") },
+                    label = { Text("PD Check Alert (Days)", fontSize = 12.sp) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     singleLine = true,
@@ -292,7 +293,7 @@ fun SettingsDialog(
                 OutlinedTextField(
                     value = dryOffDays,
                     onValueChange = { dryOffDays = it },
-                    label = { Text("Dry-Off Alert Target (Days before calving)") },
+                    label = { Text("Dry-Off Target (Days)", fontSize = 12.sp) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     singleLine = true,
@@ -304,13 +305,27 @@ fun SettingsDialog(
                 OutlinedTextField(
                     value = weaningDays,
                     onValueChange = { weaningDays = it },
-                    label = { Text("Calf Weaning Target (Days)") },
+                    label = { Text("Weaning Target (Days)", fontSize = 12.sp) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     singleLine = true,
                     enabled = isOwner
                 )
 
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text("Theme Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    listOf("SYSTEM", "LIGHT", "DARK").forEach { mode ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = themeMode == mode,
+                                onClick = { themeMode = mode }
+                            )
+                            Text(mode, fontSize = 12.sp)
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(18.dp))
 
                 if (isOwner) {
@@ -321,7 +336,8 @@ fun SettingsDialog(
                                 currency = currency.ifBlank { "KES" },
                                 pregnancyCheckReminderDays = pdDays.toIntOrNull() ?: 30,
                                 dryingOffReminderDays = dryOffDays.toIntOrNull() ?: 60,
-                                weaningReminderDays = weaningDays.toIntOrNull() ?: 180
+                                weaningReminderDays = weaningDays.toIntOrNull() ?: 180,
+                                themeMode = themeMode
                             )
                             onSaveSettings(updated)
                         },

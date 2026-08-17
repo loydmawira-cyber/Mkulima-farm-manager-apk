@@ -190,7 +190,8 @@ data class FarmSettings(
     val currency: String = "KES",  // e.g. "KES", "USD", "EUR"
     val weaningReminderDays: Int = 180, // e.g. 6 months
     val pregnancyCheckReminderDays: Int = 30,
-    val dryingOffReminderDays: Int = 60
+    val dryingOffReminderDays: Int = 60,
+    val themeMode: String = "SYSTEM" // "LIGHT", "DARK", "SYSTEM"
 )
 
 @Entity(tableName = "employee_requests")

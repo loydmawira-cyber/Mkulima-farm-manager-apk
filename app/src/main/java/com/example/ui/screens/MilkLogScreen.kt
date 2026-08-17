@@ -745,7 +745,7 @@ fun MilkLogScreen(
                             "QUICK_LOG" to "⚡ Quick Entry",
                             "PER_COW" to "🐄 Per Cow Stats",
                             "HISTORY" to "📋 Log History",
-                            "ALL" to "👁️ Show All"
+                            "ALL" to "👁️ Lactation"
                         )
                     ) { (key, label) ->
                         val isSel = activeViewTab == key
@@ -1891,7 +1891,7 @@ fun MilkLogScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "All Time",
+                                        text = "Lactation",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isAllTimeSelected) Color.White else Color(0xFF334155)
@@ -2020,7 +2020,7 @@ fun MilkLogScreen(
                             "TODAY" -> "Today ($todayDateStr)"
                             "MONTH" -> "$selectedPerCowMonth $selectedPerCowYear"
                             "YEAR" -> "Year $selectedPerCowYear"
-                            else -> "All Time"
+                            else -> "Lactation"
                         }
 
                         // Cow Period Overview Card
@@ -2713,7 +2713,7 @@ fun MilkLogScreen(
                                     "DAILY" to "Daily",
                                     "WEEKLY" to "Weekly",
                                     "MONTHLY" to "Monthly",
-                                    "ALL_TIME" to "All Time"
+                                    "ALL_TIME" to "Lactation"
                                 ).forEach { (tfKey, tfLabel) ->
                                     val isSel = analyticsEggTimeframe == tfKey
                                     FilterChip(

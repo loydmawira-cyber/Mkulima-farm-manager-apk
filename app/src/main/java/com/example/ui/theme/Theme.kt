@@ -51,10 +51,15 @@ val MaterialTheme.terracottaColor: Color
 
 @Composable
 fun MkulimaTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: String = "SYSTEM", // "LIGHT", "DARK", "SYSTEM"
     dynamicColor: Boolean = false, // Use our brand farm colors by default
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (themeMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> isSystemInDarkTheme()
+    }
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
@@ -73,10 +78,10 @@ fun MkulimaTheme(
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: String = "SYSTEM",
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    MkulimaTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, content = content)
+    MkulimaTheme(themeMode = themeMode, dynamicColor = dynamicColor, content = content)
 }
 

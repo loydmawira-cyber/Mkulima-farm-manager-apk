@@ -176,6 +176,19 @@ interface FarmDao {
     @Query("UPDATE worker_accounts SET isRevoked = :isRevoked WHERE workerId = :workerId")
     suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean)
 
+    // Cattle Events
+    @Query("SELECT * FROM cattle_events WHERE unitId = :unitId ORDER BY date DESC")
+    fun getCattleEventsByUnit(unitId: Long): Flow<List<CattleEvent>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCattleEvent(event: CattleEvent): Long
+
+    @Update
+    suspend fun updateCattleEvent(event: CattleEvent)
+
+    @Query("DELETE FROM cattle_events WHERE id = :id")
+    suspend fun deleteCattleEventById(id: Long)
+
     // Farm Accounts
     @Query("SELECT * FROM farm_accounts WHERE farmId = :farmId LIMIT 1")
     suspend fun getFarmAccount(farmId: String): FarmAccount?

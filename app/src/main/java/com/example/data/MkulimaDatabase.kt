@@ -17,11 +17,12 @@ import kotlinx.coroutines.launch
         EggLog::class,
         FinanceRecord::class,
         EmployeeRequest::class,
+        CattleEvent::class,
         FarmSettings::class,
         WorkerAccount::class,
         FarmAccount::class
     ],
-    version = 8,
+    version = 10,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {

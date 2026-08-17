@@ -339,6 +339,7 @@ fun MkulimaAppContent(
                 )
 
                 1 -> FlocksScreen(
+                    viewModel = viewModel,
                     units = allUnits,
                     milkLogs = milkLogs,
                     eggLogs = eggLogs,
@@ -769,6 +770,7 @@ fun MkulimaAppContent(
                     )
 
                     1 -> FlocksScreen(
+                        viewModel = viewModel,
                         units = allUnits,
                         milkLogs = milkLogs,
                         eggLogs = eggLogs,

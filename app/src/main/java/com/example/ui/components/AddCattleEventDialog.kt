@@ -52,19 +52,19 @@ import java.util.Locale
 @Composable
 fun AddCattleEventDialog(
     animalName: String,
-    initialCategory: String = "PD",
+    unitId: Long,
     onDismiss: () -> Unit,
     onSaveEvent: (
-        eventType: String, // "PD", "INSEMINATION", "CALVING", "DRY_OFF", "HEAT", "WEIGHT", "HEALTH"
+        eventType: String,
         title: String,
         date: String,
         details: String,
         notes: String,
         metricValue: String,
-        nextReminderDate: String
+        reminderText: String
     ) -> Unit
 ) {
-    var selectedCategory by remember { mutableStateOf(initialCategory) } // PD, INSEMINATION, CALVING, DRY_OFF, HEAT, WEIGHT, HEALTH, OTHER
+    var selectedCategory by remember { mutableStateOf("PD") } // PD, INSEMINATION, CALVING, DRY_OFF, HEAT, WEIGHT, HEALTH, OTHER
     var pdResult by remember { mutableStateOf("CONFIRMED_POSITIVE") } // CONFIRMED_POSITIVE, NEGATIVE
 
     val todayDate = remember {
@@ -72,9 +72,9 @@ fun AddCattleEventDialog(
     }
 
     var dateText by remember { mutableStateOf(todayDate) }
-    var detailsText by remember(initialCategory) {
+    var detailsText by remember(selectedCategory) {
         mutableStateOf(
-            when (initialCategory) {
+            when (selectedCategory) {
                 "INSEMINATION" -> "Inseminated with high-grade dairy semen straw."
                 "CALVING" -> "Delivered healthy calf. Mother and calf in good condition."
                 "DRY_OFF" -> "Milking stopped. Administered intramammary dry cow therapy."
@@ -87,9 +87,9 @@ fun AddCattleEventDialog(
         )
     }
     var notesText by remember { mutableStateOf("Technician: Dr. Otieno (Vet)") }
-    var metricText by remember(initialCategory) {
+    var metricText by remember(selectedCategory) {
         mutableStateOf(
-            when (initialCategory) {
+            when (selectedCategory) {
                 "INSEMINATION" -> "Straw #88"
                 "CALVING" -> "Birth Wt: 34 kg"
                 "DRY_OFF" -> "Dry period started"
@@ -101,9 +101,9 @@ fun AddCattleEventDialog(
             }
         )
     }
-    var reminderText by remember(initialCategory) {
+    var reminderText by remember(selectedCategory) {
         mutableStateOf(
-            when (initialCategory) {
+            when (selectedCategory) {
                 "INSEMINATION" -> "PD Check in 60-90 days"
                 "CALVING" -> "First Heat Check in 45-60 days"
                 "DRY_OFF" -> "Expected Calving in ~60 days"

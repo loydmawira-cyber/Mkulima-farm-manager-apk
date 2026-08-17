@@ -210,3 +210,16 @@ data class EmployeeRequest(
     val submittedAt: String,      // e.g. "12 Aug 2026"
     val reviewNotes: String? = null
 )
+
+@Entity(tableName = "cattle_events")
+data class CattleEvent(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val farmId: String = "FARM-DEFAULT",
+    val unitId: Long,             // Foreign key to FarmUnit
+    val category: String,         // "PD", "INSEMINATION", "CALVING", etc.
+    val title: String,
+    val date: String,
+    val details: String,
+    val notes: String?,
+    val metricValue: String?
+)

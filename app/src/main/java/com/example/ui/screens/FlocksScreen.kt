@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.LaunchedEffect
+import com.example.ui.FarmViewModel
 import com.example.ui.components.AddCattleEventDialog
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
@@ -698,6 +699,7 @@ fun DisposeFlockDialog(
 
 @Composable
 fun FlocksScreen(
+    viewModel: FarmViewModel,
     units: List<FarmUnit>,
     milkLogs: List<MilkLog>,
     eggLogs: List<EggLog>,
@@ -1270,6 +1272,7 @@ fun FlocksScreen(
                 mutableStateListOf<CattleEventItem>()
             }
             AnimalDetailsView(
+                viewModel = viewModel,
                 animal = selectedAnimal!!,
                 milkLogs = milkLogs,
                 eggLogs = eggLogs,
@@ -1667,6 +1670,7 @@ fun FlocksScreen(
 
 @Composable
 fun AnimalDetailsView(
+    viewModel: FarmViewModel,
     animal: AnimalDetailData,
     onBackClick: () -> Unit,
     onDisposeAnimal: (reason: String, amount: Double, notes: String, date: String) -> Unit = { _, _, _, _ -> },
@@ -2772,10 +2776,11 @@ fun AnimalDetailsView(
     if (showAddCattleEventDialog) {
         AddCattleEventDialog(
             animalName = animal.name,
+            unitId = animal.id.toLongOrNull() ?: 0L,
             onDismiss = { showAddCattleEventDialog = false },
-            onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderDate: String ->
-                val newEvent = CattleEventItem(
-                    id = "e_${System.currentTimeMillis()}",
+            onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String ->
+                viewModel.addCattleEvent(
+                    unitId = animal.id.toLongOrNull() ?: 0L,
                     category = type,
                     title = title,
                     date = date,
@@ -2783,33 +2788,6 @@ fun AnimalDetailsView(
                     notes = notes,
                     metricValue = metricValue
                 )
-                animalEvents.add(0, newEvent)
-
-                if (reminderDate.isNotBlank()) {
-                    cattleNotifications.add(
-                        0,
-                        UpcomingCattleNotification(
-                            id = "n_${System.currentTimeMillis()}",
-                            title = "Follow-up: $title",
-                            dueDate = reminderDate,
-                            category = type,
-                            badgeColor = when (type) {
-                                "HEAT" -> Color(0xFFFEF3C7)
-                                "INSEMINATION" -> Color(0xFFE0F2FE)
-                                "WEIGHT" -> Color(0xFFDCFCE7)
-                                else -> Color(0xFFFEE2E2)
-                            },
-                            badgeTextColor = when (type) {
-                                "HEAT" -> Color(0xFFB45309)
-                                "INSEMINATION" -> Color(0xFF0369A1)
-                                "WEIGHT" -> Color(0xFF15803D)
-                                else -> Color(0xFF991B1B)
-                            }
-                        )
-                    )
-                }
-
-                // If event is pregnancy diagnosis positive, dry off, calving, etc., the reactive cattleEval will update automatically
                 showAddCattleEventDialog = false
             }
         )

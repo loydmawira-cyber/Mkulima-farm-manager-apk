@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.auth.AuthManager
 import com.example.auth.AuthResult
+import com.example.data.CattleEvent
 import com.example.data.EggLog
 import com.example.data.EmployeeRequest
 import com.example.data.FarmRepository
@@ -498,6 +499,38 @@ class FarmViewModel(
                 canViewRequests = permissions.canViewRequests
             )
             repository.insertWorker(worker)
+        }
+    }
+
+    // Cattle Events
+    fun addCattleEvent(
+        unitId: Long,
+        category: String,
+        title: String,
+        date: String,
+        details: String,
+        notes: String?,
+        metricValue: String?
+    ) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val event = CattleEvent(
+                farmId = farmId,
+                unitId = unitId,
+                category = category,
+                title = title,
+                date = date,
+                details = details,
+                notes = notes,
+                metricValue = metricValue
+            )
+            repository.insertCattleEvent(event)
+        }
+    }
+
+    fun deleteCattleEvent(eventId: Long) {
+        viewModelScope.launch {
+            repository.deleteCattleEvent(eventId)
         }
     }
 }

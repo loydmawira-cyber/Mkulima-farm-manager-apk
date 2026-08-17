@@ -61,6 +61,12 @@ class FarmRepository(private val farmDao: FarmDao) {
     suspend fun getWorkerById(workerId: String): WorkerAccount? = farmDao.getWorkerById(workerId)
     suspend fun getWorkerByLoginIdentifier(identifier: String): WorkerAccount? = farmDao.getWorkerByLoginIdentifier(identifier)
 
+    // Cattle Events
+    fun getCattleEventsForUnit(unitId: Long): Flow<List<CattleEvent>> = farmDao.getCattleEventsByUnit(unitId)
+    suspend fun insertCattleEvent(event: CattleEvent): Long = farmDao.insertCattleEvent(event)
+    suspend fun updateCattleEvent(event: CattleEvent) = farmDao.updateCattleEvent(event)
+    suspend fun deleteCattleEvent(id: Long) = farmDao.deleteCattleEventById(id)
+
     // Farm operations
     suspend fun insertFarmAccount(farm: FarmAccount) = farmDao.insertFarmAccount(farm)
     suspend fun getFarmAccount(farmId: String): FarmAccount? = farmDao.getFarmAccount(farmId)

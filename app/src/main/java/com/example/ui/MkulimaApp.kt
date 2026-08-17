@@ -819,6 +819,25 @@ fun MkulimaAppContent(
                         onDeleteEggLog = { viewModel.deleteEggLog(it) },
                         farmSettings = farmSettings
                     )
+
+                    3 -> FinanceScreen(
+                        records = financeRecords,
+                        onAddTransactionClick = { showAddFinanceDialog = true },
+                        currency = farmSettings.currency
+                    )
+
+                    4 -> ApprovalRequestsScreen(
+                        requests = employeeRequests,
+                        onUpdateRequestStatus = { req, statusString ->
+                            val requestStatus = when (statusString) {
+                                "APPROVED" -> RequestStatus.APPROVED
+                                "REJECTED" -> RequestStatus.REJECTED
+                                else -> RequestStatus.PENDING
+                            }
+                            viewModel.updateEmployeeRequestStatus(req, requestStatus)
+                        },
+                        currency = farmSettings.currency
+                    )
                 }
             }
         }

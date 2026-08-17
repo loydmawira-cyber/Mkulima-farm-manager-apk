@@ -400,7 +400,7 @@ fun AuthScreen(
                                 .testTag("auth_email_phone_input"),
                             shape = RoundedCornerShape(12.dp),
                             keyboardOptions = KeyboardOptions(
-                                keyboardType = if (emailOrPhone.contains("@")) KeyboardType.Email else KeyboardType.Text,
+                                keyboardType = if (emailOrPhone.contains("@")) KeyboardType.Email else KeyboardType.Phone,
                                 imeAction = ImeAction.Next
                             )
                         )

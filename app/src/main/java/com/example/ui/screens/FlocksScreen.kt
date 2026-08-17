@@ -88,6 +88,9 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.toMutableStateList
+import com.example.data.CattleEvent
 import com.example.data.EggLog
 import com.example.data.EmployeeRequest
 import com.example.data.FarmUnit
@@ -1268,15 +1271,11 @@ fun FlocksScreen(
                 modifier = modifier
             )
         } else {
-            val currentEvents = allAnimalEventsMap.getOrPut(selectedAnimal!!.id) {
-                mutableStateListOf<CattleEventItem>()
-            }
             AnimalDetailsView(
                 viewModel = viewModel,
                 animal = selectedAnimal!!,
                 milkLogs = milkLogs,
                 eggLogs = eggLogs,
-                animalEvents = currentEvents,
                 onUpdateAnimalStage = { newStatus, newBreedingStatus ->
                     handleUpdateAnimalStage(selectedAnimal!!.id, newStatus, newBreedingStatus)
                 },
@@ -1678,10 +1677,25 @@ fun AnimalDetailsView(
     onDeleteAnimal: () -> Unit = {},
     milkLogs: List<MilkLog> = emptyList(),
     eggLogs: List<EggLog> = emptyList(),
-    animalEvents: SnapshotStateList<CattleEventItem> = remember { mutableStateListOf() },
     onUpdateAnimalStage: (newStatus: String, newBreedingStatus: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
+    val unitId = animal.id.toLongOrNull() ?: 0L
+    val dbEvents by viewModel.getCattleEventsFlow(unitId).collectAsStateWithLifecycle(initialValue = emptyList())
+    val animalEvents = remember(dbEvents) {
+        dbEvents.map {
+            CattleEventItem(
+                id = it.id.toString(),
+                category = it.category,
+                title = it.title,
+                date = it.date,
+                details = it.details,
+                notes = it.notes ?: "",
+                metricValue = it.metricValue ?: ""
+            )
+        }.toMutableStateList()
+    }
+
     var showAddCattleEventDialog by remember { mutableStateOf(false) }
     var selectedLogFilter by remember { mutableStateOf("ALL") } // ALL, HEAT, WEIGHT, HEALTH
     var currentStatus by remember(animal.id, animal.status) { mutableStateOf(animal.status) }

@@ -836,7 +836,9 @@ fun MkulimaAppContent(
                             }
                             viewModel.updateEmployeeRequestStatus(req, requestStatus)
                         },
-                        currency = farmSettings.currency
+                        currency = farmSettings.currency,
+                        userRole = userRole,
+                        onAddRequestClick = { showAddEmployeeRequestDialog = true }
                     )
                 }
             }

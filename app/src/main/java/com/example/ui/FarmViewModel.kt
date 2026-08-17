@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.auth.AuthManager
 import com.example.auth.AuthResult
+import kotlinx.coroutines.flow.Flow
 import com.example.data.CattleEvent
 import com.example.data.EggLog
 import com.example.data.EmployeeRequest
@@ -503,6 +504,8 @@ class FarmViewModel(
     }
 
     // Cattle Events
+    fun getCattleEventsFlow(unitId: Long): Flow<List<CattleEvent>> = repository.getCattleEventsForUnit(unitId)
+
     fun addCattleEvent(
         unitId: Long,
         category: String,

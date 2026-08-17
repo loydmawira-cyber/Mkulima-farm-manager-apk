@@ -123,7 +123,7 @@ fun ApprovalRequestsScreen(
                 ) {
                     Icon(Icons.Filled.PostAdd, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isOwner) "Add Request" else "New Request", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(if (isOwner) "Add Request" else "Apply Leave/Advance", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

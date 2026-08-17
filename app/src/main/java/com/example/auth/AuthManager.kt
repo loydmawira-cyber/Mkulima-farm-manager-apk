@@ -283,41 +283,7 @@ class AuthManager(
             return@withContext AuthResult.Success(session)
         }
 
-        // Auto-provision owner for first-time direct credentials
-        val fallbackFarmId = generateUniqueFarmId()
-        val ownerName = if (cleanIdentifier.contains("@")) cleanIdentifier.substringBefore("@").replaceFirstChar { it.uppercase() } else "Farm Owner"
-        val newOwnerFarm = FarmAccount(
-            farmId = fallbackFarmId,
-            farmName = "$ownerName's Farm",
-            ownerId = "OWNER_${UUID.randomUUID().toString().take(6)}",
-            ownerName = ownerName,
-            ownerEmailOrPhone = cleanIdentifier
-        )
-        repository.insertFarmAccount(newOwnerFarm)
-        repository.seedNewFarmStarterData(fallbackFarmId, newOwnerFarm.farmName)
-
-        val session = UserSession(
-            userId = newOwnerFarm.ownerId,
-            name = newOwnerFarm.ownerName,
-            emailOrPhone = newOwnerFarm.ownerEmailOrPhone,
-            role = "OWNER",
-            farmId = newOwnerFarm.farmId,
-            farmName = newOwnerFarm.farmName,
-            isRevoked = false,
-            permissions = WorkerPermissions(
-                canViewLivestock = true,
-                canEditLivestock = true,
-                canViewLogs = true,
-                canEditLogs = true,
-                canViewFinance = true,
-                canEditFinance = true,
-                canViewTasks = true,
-                canCompleteTasks = true,
-                canViewRequests = true
-            )
-        )
-        saveSession(session)
-        AuthResult.Success(session)
+        return@withContext AuthResult.Error("Account not found. Please check your email/phone or sign up if you're new.")
     }
 
     suspend fun resetPassword(emailOrPhone: String): String = withContext(Dispatchers.IO) {

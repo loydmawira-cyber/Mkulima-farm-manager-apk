@@ -366,15 +366,23 @@ fun MkulimaAppContent(
                 )
             }
 
-            if (showAddMilkLogDialog) AddMilkLogDialog(onDismiss = { showAddMilkLogDialog = false }, onSave = { cowName, unitName, litres, sessionStr, fat, date, notes ->
-                viewModel.addMilkLog(cowName, unitName, litres, sessionStr, fat, date, notes)
-                showAddMilkLogDialog = false
-            })
+            if (showAddMilkLogDialog) AddMilkLogDialog(
+                availableUnits = allUnits,
+                onDismiss = { showAddMilkLogDialog = false },
+                onSaveMilkLog = { cowName, unitName, litres, sessionStr, fat, date, notes ->
+                    viewModel.addMilkLog(cowName, unitName, litres, sessionStr, fat, date, notes)
+                    showAddMilkLogDialog = false
+                }
+            )
 
-            if (showAddEggLogDialog) AddEggLogDialog(onDismiss = { showAddEggLogDialog = false }, onSave = { unitName, totalEggs, damagedEggs, grade, notes ->
-                viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, notes)
-                showAddEggLogDialog = false
-            })
+            if (showAddEggLogDialog) AddEggLogDialog(
+                availableUnits = allUnits,
+                onDismiss = { showAddEggLogDialog = false },
+                onSaveEggLog = { unitName, totalEggs, damagedEggs, grade, notes ->
+                    viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, notes)
+                    showAddEggLogDialog = false
+                }
+            )
 
             if (showAddUnitDialog) AddUnitDialog(
                 onDismiss = { showAddUnitDialog = false },
@@ -390,7 +398,9 @@ fun MkulimaAppContent(
                         breed = breed.ifBlank { null },
                         dob = dob,
                         weightAtBirth = weightAtBirth.filter { ch -> ch.isDigit() || ch == '.' }.toDoubleOrNull(),
-                        currentWeight = currentWeight.filter { ch -> ch.isDigit() || ch == '.' }.toDoubleOrNull()
+                        currentWeight = currentWeight.filter { ch -> ch.isDigit() || ch == '.' }.toDoubleOrNull(),
+                        sire = sire,
+                        dam = dam
                     )
                     showAddUnitDialog = false
                 }
@@ -421,7 +431,7 @@ fun MkulimaAppContent(
 
             if (showWorkerManagementScreen) WorkerManagementScreen(
                 farmId = userSession?.farmId ?: "FARM-DEFAULT",
-                farmName = farmSettings.farmName ?: userSession?.name ?: "My Farm",
+                farmName = userSession?.farmId ?: userSession?.name ?: "My Farm",
                 workers = farmWorkers,
                 onCreateWorker = { name, emailOrPhone, pass, permissions ->
                     viewModel.createWorker(name, emailOrPhone, pass, permissions)

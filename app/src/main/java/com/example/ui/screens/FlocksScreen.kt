@@ -776,7 +776,7 @@ fun FlocksScreen(
                 tagNumber = if (unit.tagNumber.isNotBlank()) unit.tagNumber else if (isPoultry) "Count: ${unit.headCount}" else "#${unit.id + 100}",
                 breed = unit.breed.ifBlank { if (isPoultry) "Poultry Flock" else "Local Breed" },
                 category = if (isPoultry) "POULTRY" else "CATTLE",
-                status = "ACTIVE",
+                status = unit.healthStatus.ifBlank { "ACTIVE" },
                 age = calculatedAge,
                 weight = unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
                 lastMilk = lastMilkStr,

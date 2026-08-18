@@ -431,6 +431,7 @@ fun MilkLogScreen(
     onDeleteMilkLog: (Long) -> Unit,
     onDeleteEggLog: (Long) -> Unit,
     farmSettings: com.example.data.FarmSettings,
+    userRole: String = "OWNER",
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -741,11 +742,10 @@ fun MilkLogScreen(
                 ) {
                     items(
                         listOf(
-                            "HERD_TOTALS" to "📊 Herd Overview",
+                            "HERD_TOTALS" to "📊 Overview",
                             "QUICK_LOG" to "⚡ Quick Entry",
                             "PER_COW" to "🐄 Per Cow Stats",
-                            "HISTORY" to "📋 Log History",
-                            "ALL" to "👁️ Lactation"
+                            "HISTORY" to "📋 Log History"
                         )
                     ) { (key, label) ->
                         val isSel = activeViewTab == key
@@ -1033,15 +1033,15 @@ fun MilkLogScreen(
                                                         (log.date.contains(targetYearInt.toString()) || log.loggedAt.contains(targetYearInt.toString()))
                                             }
                                         }
-                                        val w1Logs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 1) in 1..7 }
-                                        val w2Logs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 8) in 8..14 }
-                                        val w3Logs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 15) in 15..21 }
-                                        val w4Logs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 22) >= 22 }
-                                        
-                                        val w1 = w1Logs.sumOf { it.litres }.toFloat()
-                                        val w2 = w2Logs.sumOf { it.litres }.toFloat()
-                                        val w3 = w3Logs.sumOf { it.litres }.toFloat()
-                                        val w4 = w4Logs.sumOf { it.litres }.toFloat()
+                                        val daysInMonth = java.util.Calendar.getInstance().apply {
+                                            set(java.util.Calendar.YEAR, targetYearInt)
+                                            set(java.util.Calendar.MONTH, targetMonthIdx)
+                                        }.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+
+                                        val dailyData = (1..daysInMonth).map { day ->
+                                            val dayLogs = monthLogs.filter { (parseMilkLogCalendar(it.date)?.get(java.util.Calendar.DAY_OF_MONTH) ?: 1) == day }
+                                            dayLogs.sumOf { it.litres }.toFloat()
+                                        }
                                         
                                         val totalL = monthLogs.sumOf { it.litres }
                                         val distinctDays = monthLogs.map { it.date }.distinct().size.coerceAtLeast(1)
@@ -1055,8 +1055,8 @@ fun MilkLogScreen(
                                                 topCow = topCowName,
                                                 trendStr = "$selectedHerdMonth $targetYearInt: ${monthLogs.size} logs across $distinctDays days"
                                             ),
-                                            listOf(w1, w2, w3, w4),
-                                            listOf("1-7 $shortMonthLabel", "8-14 $shortMonthLabel", "15-21 $shortMonthLabel", "22+ $shortMonthLabel")
+                                            dailyData,
+                                            (1..daysInMonth).map { "Day $it" }
                                         )
                                     }
                                     "YEAR" -> {
@@ -2408,7 +2408,7 @@ fun MilkLogScreen(
         }
 
         // --- 5. HISTORY & RECENT LOGS REGISTER ---
-        if (activeViewTab == "HISTORY" || activeViewTab == "QUICK_LOG" || activeViewTab == "ALL") {
+        if (activeViewTab == "HISTORY") {
             item {
                 Column {
                     Row(
@@ -2548,8 +2548,10 @@ fun MilkLogScreen(
 
                                 Spacer(modifier = Modifier.width(8.dp))
 
-                                IconButton(onClick = { onDeleteMilkLog(log.id) }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
+                                if (userRole == "OWNER") {
+                                    IconButton(onClick = { onDeleteMilkLog(log.id) }) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
+                                    }
                                 }
                             }
                         }
@@ -3199,8 +3201,10 @@ fun MilkLogScreen(
                                     }
                                 }
 
-                                IconButton(onClick = { onDeleteEggLog(log.id) }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
+                                if (userRole == "OWNER") {
+                                    IconButton(onClick = { onDeleteEggLog(log.id) }) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
+                                    }
                                 }
                             }
                         }

@@ -109,7 +109,6 @@ fun MkulimaAppContent(
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
-    var userRole by remember { mutableStateOf("Owner") } // Owner or Worker
 
     val filteredTasks by viewModel.filteredTasks.collectAsState()
     val allTasks by viewModel.rawTasks.collectAsState()
@@ -121,6 +120,7 @@ fun MkulimaAppContent(
     val farmSettings by viewModel.farmSettings.collectAsState()
     val farmWorkers by viewModel.farmWorkers.collectAsState()
     val userSession by viewModel.currentSession.collectAsState()
+    val userRole = userSession?.role ?: "Worker"
 
     if (userSession == null) {
         AuthScreen(
@@ -260,26 +260,28 @@ fun MkulimaAppContent(
                     modifier = Modifier.testTag("nav_daily_log_tab")
                 )
 
-                // Tab 3: Finance
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
-                    icon = {
-                        Icon(
-                            if (selectedTab == 3) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet,
-                            contentDescription = "Finance"
-                        )
-                    },
-                    label = { Text("Finance", fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Medium, fontSize = 11.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = ForestGreenPrimary,
-                        selectedTextColor = ForestGreenPrimary,
-                        indicatorColor = Color(0xFFDCFCE7),
-                        unselectedIconColor = Color(0xFF64748B),
-                        unselectedTextColor = Color(0xFF64748B)
-                    ),
-                    modifier = Modifier.testTag("nav_finance_tab")
-                )
+                // Tab 3: Finance (Only for Owner)
+                if (userRole == "OWNER") {
+                    NavigationBarItem(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        icon = {
+                            Icon(
+                                if (selectedTab == 3) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet,
+                                contentDescription = "Finance"
+                            )
+                        },
+                        label = { Text("Finance", fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Medium, fontSize = 11.sp) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = ForestGreenPrimary,
+                            selectedTextColor = ForestGreenPrimary,
+                            indicatorColor = Color(0xFFDCFCE7),
+                            unselectedIconColor = Color(0xFF64748B),
+                            unselectedTextColor = Color(0xFF64748B)
+                        ),
+                        modifier = Modifier.testTag("nav_finance_tab")
+                    )
+                }
 
                 // Tab 4: Requests / Inventory
                 NavigationBarItem(
@@ -680,31 +682,33 @@ fun MkulimaAppContent(
                     )
 
                     // Tab 3: Finance
-                    NavigationBarItem(
-                        selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
-                        icon = {
-                            Icon(
-                                if (selectedTab == 3) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet,
-                                contentDescription = "Finance"
-                            )
-                        },
-                        label = {
-                            Text(
-                                "Finance",
-                                fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 11.sp
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = ForestGreenPrimary,
-                            selectedTextColor = ForestGreenPrimary,
-                            indicatorColor = Color(0xFFDCFCE7),
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        ),
-                        modifier = Modifier.testTag("nav_finance_tab")
-                    )
+                    if (userRole == "OWNER") {
+                        NavigationBarItem(
+                            selected = selectedTab == 3,
+                            onClick = { selectedTab = 3 },
+                            icon = {
+                                Icon(
+                                    if (selectedTab == 3) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet,
+                                    contentDescription = "Finance"
+                                )
+                            },
+                            label = {
+                                Text(
+                                    "Finance",
+                                    fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.sp
+                                )
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = ForestGreenPrimary,
+                                selectedTextColor = ForestGreenPrimary,
+                                indicatorColor = Color(0xFFDCFCE7),
+                                unselectedIconColor = Color(0xFF64748B),
+                                unselectedTextColor = Color(0xFF64748B)
+                            ),
+                            modifier = Modifier.testTag("nav_finance_tab")
+                        )
+                    }
 
                     // Tab 4: Requests / Inventory
                     NavigationBarItem(
@@ -741,7 +745,15 @@ fun MkulimaAppContent(
                     .padding(innerPadding)
                     .background(Color(0xFFF8F9FA))
             ) {
-                when (selectedTab) {
+                val effectiveTab = if (userRole != "OWNER") {
+                    when(selectedTab) {
+                        0 -> 2
+                        3 -> 2
+                        else -> selectedTab
+                    }
+                } else selectedTab
+
+                when (effectiveTab) {
                     0 -> DashboardScreen(
                         tasks = filteredTasks,
                         milkLogs = milkLogs,
@@ -817,14 +829,15 @@ fun MkulimaAppContent(
                         },
                         onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
                         onDeleteEggLog = { viewModel.deleteEggLog(it) },
-                        farmSettings = farmSettings
+                        farmSettings = farmSettings,
+                        userRole = userRole
                     )
 
-                    3 -> FinanceScreen(
+                    3 -> if (userRole == "OWNER") FinanceScreen(
                         records = financeRecords,
                         onAddTransactionClick = { showAddFinanceDialog = true },
                         currency = farmSettings.currency
-                    )
+                    ) else { /* No-op for workers */ }
 
                     4 -> ApprovalRequestsScreen(
                         requests = employeeRequests,

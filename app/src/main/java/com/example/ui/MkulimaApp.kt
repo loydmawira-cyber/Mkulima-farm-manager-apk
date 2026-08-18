@@ -342,6 +342,7 @@ fun MkulimaAppContent(
 
                 1 -> FlocksScreen(
                     viewModel = viewModel,
+                    userRole = userRole,
                     units = allUnits,
                     milkLogs = milkLogs,
                     eggLogs = eggLogs,
@@ -388,7 +389,8 @@ fun MkulimaAppContent(
                     },
                     onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
                     onDeleteEggLog = { viewModel.deleteEggLog(it) },
-                    farmSettings = farmSettings
+                    farmSettings = farmSettings,
+                    userRole = userRole
                 )
 
                 3 -> FinanceScreen(
@@ -783,6 +785,7 @@ fun MkulimaAppContent(
 
                     1 -> FlocksScreen(
                         viewModel = viewModel,
+                        userRole = userRole,
                         units = allUnits,
                         milkLogs = milkLogs,
                         eggLogs = eggLogs,

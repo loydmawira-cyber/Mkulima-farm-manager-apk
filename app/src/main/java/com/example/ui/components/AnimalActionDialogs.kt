@@ -58,6 +58,7 @@ import com.example.ui.theme.TagYieldText
 @Composable
 fun AnimalOptionsDialog(
     animal: AnimalDetailData,
+    userRole: String,
     onDismiss: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -67,6 +68,8 @@ fun AnimalOptionsDialog(
     val isPoultry = animal.category.equals("POULTRY", ignoreCase = true) ||
             animal.breed.contains("Layer", ignoreCase = true) ||
             animal.breed.contains("Flock", ignoreCase = true)
+    
+    val canEdit = userRole == "OWNER"
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -161,52 +164,55 @@ fun AnimalOptionsDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Action 1: Modify / Edit
-                AnimalActionOptionItem(
-                    icon = Icons.Filled.Edit,
-                    iconBg = Color(0xFFECFDF5),
-                    iconTint = ForestGreenPrimary,
-                    title = "Modify / Edit Animal Data",
-                    subtitle = "Correct name, tag, breed, weight, parentage or stage info",
-                    testTag = "option_modify_animal",
-                    onClick = {
-                        onDismiss()
-                        onEditClick()
-                    }
-                )
+                if (canEdit) {
+                    AnimalActionOptionItem(
+                        icon = Icons.Filled.Edit,
+                        iconBg = Color(0xFFECFDF5),
+                        iconTint = ForestGreenPrimary,
+                        title = "Modify / Edit Animal Data",
+                        subtitle = "Correct name, tag, breed, weight, parentage or stage info",
+                        testTag = "option_modify_animal",
+                        onClick = {
+                            onDismiss()
+                            onEditClick()
+                        }
+                    )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                // Action 2: Delete Completely
-                AnimalActionOptionItem(
-                    icon = Icons.Filled.DeleteForever,
-                    iconBg = Color(0xFFFEF2F2),
-                    iconTint = Color(0xFFDC2626),
-                    title = "Delete Completely",
-                    subtitle = "Permanently remove this animal from database & records",
-                    testTag = "option_delete_animal_completely",
-                    onClick = {
-                        onDismiss()
-                        onDeleteClick()
-                    }
-                )
+                    // Action 2: Delete Completely
+                    AnimalActionOptionItem(
+                        icon = Icons.Filled.DeleteForever,
+                        iconBg = Color(0xFFFEF2F2),
+                        iconTint = Color(0xFFDC2626),
+                        title = "Delete Completely",
+                        subtitle = "Permanently remove this animal from database & records",
+                        testTag = "option_delete_animal_completely",
+                        onClick = {
+                            onDismiss()
+                            onDeleteClick()
+                        }
+                    )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
 
                 // Action 3: Record Disposal / Sale
-                AnimalActionOptionItem(
-                    icon = Icons.Filled.NotInterested,
-                    iconBg = Color(0xFFFFFBEB),
-                    iconTint = Color(0xFFD97706),
-                    title = if (isPoultry) "Dispose / Cull / Sell Flock" else "Record Disposal / Sale",
-                    subtitle = "Mark as sold, culled, or deceased (keeps audit history)",
-                    testTag = "option_dispose_animal",
-                    onClick = {
-                        onDismiss()
-                        onDisposeClick()
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
+                if (canEdit) {
+                    AnimalActionOptionItem(
+                        icon = Icons.Filled.NotInterested,
+                        iconBg = Color(0xFFFFFBEB),
+                        iconTint = Color(0xFFD97706),
+                        title = if (isPoultry) "Dispose / Cull / Sell Flock" else "Record Disposal / Sale",
+                        subtitle = "Mark as sold, culled, or deceased (keeps audit history)",
+                        testTag = "option_dispose_animal",
+                        onClick = {
+                            onDismiss()
+                            onDisposeClick()
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
 
                 // Action 4: View Details
                 AnimalActionOptionItem(

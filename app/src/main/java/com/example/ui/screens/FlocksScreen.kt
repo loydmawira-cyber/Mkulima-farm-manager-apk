@@ -703,6 +703,7 @@ fun DisposeFlockDialog(
 @Composable
 fun FlocksScreen(
     viewModel: FarmViewModel,
+    userRole: String, // Add userRole
     units: List<FarmUnit>,
     milkLogs: List<MilkLog>,
     eggLogs: List<EggLog>,
@@ -1179,6 +1180,7 @@ fun FlocksScreen(
         val target = animalForOptions!!
         AnimalOptionsDialog(
             animal = target,
+            userRole = userRole,
             onDismiss = { animalForOptions = null },
             onEditClick = {
                 animalForOptions = null
@@ -1274,6 +1276,7 @@ fun FlocksScreen(
             AnimalDetailsView(
                 viewModel = viewModel,
                 animal = selectedAnimal!!,
+                userRole = userRole,
                 milkLogs = milkLogs,
                 eggLogs = eggLogs,
                 onUpdateAnimalStage = { newStatus, newBreedingStatus ->
@@ -1671,6 +1674,7 @@ fun FlocksScreen(
 fun AnimalDetailsView(
     viewModel: FarmViewModel,
     animal: AnimalDetailData,
+    userRole: String,
     onBackClick: () -> Unit,
     onDisposeAnimal: (reason: String, amount: Double, notes: String, date: String) -> Unit = { _, _, _, _ -> },
     onEditAnimal: () -> Unit = {},
@@ -1680,6 +1684,46 @@ fun AnimalDetailsView(
     onUpdateAnimalStage: (newStatus: String, newBreedingStatus: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
+    val canEdit = userRole == "OWNER"
+    // ...
+    // And in the top bar:
+    // ...
+                    if (canEdit) {
+                        IconButton(
+                            onClick = onEditAnimal,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFECFDF5))
+                                .border(1.dp, ForestGreenPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .testTag("edit_animal_topbar_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = "Edit Animal",
+                                tint = ForestGreenPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onDeleteAnimal,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFFEF2F2))
+                                .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                                .testTag("delete_animal_topbar_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteForever,
+                                contentDescription = "Delete Animal",
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
     val unitId = animal.id.toLongOrNull() ?: 0L
     val dbEvents by viewModel.getCattleEventsFlow(unitId).collectAsStateWithLifecycle(initialValue = emptyList())
     val animalEvents = remember(dbEvents) {
@@ -2044,38 +2088,40 @@ fun AnimalDetailsView(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onEditAnimal,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFECFDF5))
-                            .border(1.dp, ForestGreenPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                            .testTag("edit_animal_topbar_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = "Edit Animal",
-                            tint = ForestGreenPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    if (canEdit) {
+                        IconButton(
+                            onClick = onEditAnimal,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFECFDF5))
+                                .border(1.dp, ForestGreenPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .testTag("edit_animal_topbar_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = "Edit Animal",
+                                tint = ForestGreenPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
 
-                    IconButton(
-                        onClick = onDeleteAnimal,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFFEF2F2))
-                            .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
-                            .testTag("delete_animal_topbar_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.DeleteForever,
-                            contentDescription = "Delete Animal",
-                            tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(18.dp)
-                        )
+                        IconButton(
+                            onClick = onDeleteAnimal,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFFEF2F2))
+                                .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                                .testTag("delete_animal_topbar_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteForever,
+                                contentDescription = "Delete Animal",
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
 
                     if (!currentStatus.contains("DISPOSED", ignoreCase = true)) {

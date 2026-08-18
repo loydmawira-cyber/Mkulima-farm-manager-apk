@@ -87,6 +87,21 @@ interface FarmDao {
     @Update
     suspend fun updateMilkLog(log: MilkLog)
 
+    // NEW: Per-unit and per-cow milk queries
+    @Query(
+        """
+        SELECT * FROM milk_logs
+        WHERE unitId = :unitId
+          AND ( ( :cowTag IS NOT NULL AND cowTag = :cowTag )
+                OR ( :cowTag IS NULL AND cowName = :cowName ) )
+        ORDER BY id DESC
+        """
+    )
+    fun getMilkLogsByUnitAndCow(unitId: Long, cowTag: String?, cowName: String): Flow<List<MilkLog>>
+
+    @Query("SELECT * FROM milk_logs WHERE unitId = :unitId ORDER BY id DESC")
+    fun getMilkLogsByUnit(unitId: Long): Flow<List<MilkLog>>
+
     // Egg Logs
     @Query("SELECT * FROM egg_logs WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY id DESC")
     fun getEggLogsByFarm(farmId: String): Flow<List<EggLog>>
@@ -179,6 +194,10 @@ interface FarmDao {
     // Cattle Events
     @Query("SELECT * FROM cattle_events WHERE unitId = :unitId ORDER BY date DESC")
     fun getCattleEventsByUnit(unitId: Long): Flow<List<CattleEvent>>
+
+    // Optional: query cattle events filtered by cowTag
+    @Query("SELECT * FROM cattle_events WHERE unitId = :unitId AND cowTag = :cowTag ORDER BY date DESC")
+    fun getCattleEventsByUnitAndCow(unitId: Long, cowTag: String): Flow<List<CattleEvent>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCattleEvent(event: CattleEvent): Long

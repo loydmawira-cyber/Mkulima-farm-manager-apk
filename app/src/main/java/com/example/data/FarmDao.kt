@@ -119,6 +119,9 @@ interface FarmDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFinanceRecords(records: List<FinanceRecord>)
 
+    @Update
+    suspend fun updateFinanceRecord(record: FinanceRecord)
+
     @Query("DELETE FROM finance_records WHERE id = :id")
     suspend fun deleteFinanceRecordById(id: Long)
 
@@ -126,7 +129,7 @@ interface FarmDao {
     @Query("SELECT * FROM employee_requests WHERE farmId = :farmId OR farmId = 'FARM-DEFAULT' ORDER BY id DESC")
     fun getEmployeeRequestsByFarm(farmId: String): Flow<List<EmployeeRequest>>
 
-    @Query("SELECT * FROM employee_requests WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND (workerId = :workerId OR workerEmailOrPhone = :emailOrPhone OR employeeName = :name) ORDER BY id DESC")
+    @Query("SELECT * FROM employee_requests WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND (workerId = :workerId OR workerEmailOrPhone = :emailOrPhone OR employeeName = :name) ORDER BY i[...]")
     fun getEmployeeRequestsForWorker(farmId: String, workerId: String, emailOrPhone: String, name: String): Flow<List<EmployeeRequest>>
 
     @Query("SELECT * FROM employee_requests ORDER BY id DESC")

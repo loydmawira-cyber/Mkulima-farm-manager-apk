@@ -20,12 +20,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +47,8 @@ import com.example.ui.theme.ForestGreenPrimary
 fun FinanceScreen(
     records: List<FinanceRecord>,
     onAddTransactionClick: () -> Unit,
+    onEditTransaction: (FinanceRecord) -> Unit,
+    onDeleteTransaction: (FinanceRecord) -> Unit,
     currency: String = "KES",
     modifier: Modifier = Modifier
 ) {
@@ -221,12 +226,20 @@ fun FinanceScreen(
                             }
                         }
 
-                        Text(
-                            text = if (isIncome) "+$currency %,.2f".format(rec.amount) else "-$currency %,.2f".format(rec.amount),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isIncome) ForestGreenPrimary else Color(0xFF991B1B)
-                        )
+                        Row {
+                            Text(
+                                text = if (isIncome) "+$currency %,.2f".format(rec.amount) else "-$currency %,.2f".format(rec.amount),
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isIncome) ForestGreenPrimary else Color(0xFF991B1B)
+                            )
+                            IconButton(onClick = { onEditTransaction(rec) }) {
+                                Icon(Icons.Filled.Edit, contentDescription = "Edit")
+                            }
+                            IconButton(onClick = { onDeleteTransaction(rec) }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF991B1B))
+                            }
+                        }
                     }
                 }
             }

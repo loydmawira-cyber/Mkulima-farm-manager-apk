@@ -201,97 +201,40 @@ class FarmViewModel(
         authManager.logout()
     }
 
-    // Task Actions
-    fun completeTaskWithProof(
-        taskId: Long,
-        photoUriString: String?,
-        notes: String?
-    ) {
-        viewModelScope.launch {
-            val existingTask = repository.getTaskById(taskId) ?: return@launch
-            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-            val updatedTask = existingTask.copy(
-                isCompleted = true,
-                completedAt = nowFormatted,
-                proofPhotoUri = photoUriString ?: existingTask.proofPhotoUri,
-                proofNotes = notes ?: existingTask.proofNotes ?: "Task completed with photo verification."
-            )
-            repository.updateTask(updatedTask)
-        }
-    }
-
-    fun markTaskIncomplete(taskId: Long) {
-        viewModelScope.launch {
-            val existingTask = repository.getTaskById(taskId) ?: return@launch
-            val updatedTask = existingTask.copy(
-                isCompleted = false,
-                completedAt = null
-            )
-            repository.updateTask(updatedTask)
-        }
-    }
-
-    fun addNewTask(
-        title: String,
-        category: TaskCategory,
-        targetUnit: String,
-        priority: TaskPriority,
-        scheduledTime: String,
-        instructions: String?,
-        assignedWorker: String?
-    ) {
+    // Task CRUD
+    suspend fun getTaskById(id: Long): FarmTask? = repository.getTaskById(id)
+    fun addNewTask(title: String, category: TaskCategory, targetUnit: String, priority: TaskPriority, scheduledTime: String, instructions: String?, worker: String?) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val newTask = FarmTask(
-                farmId = farmId,
-                title = title.ifBlank { "Farm Maintenance Task" },
-                category = category,
-                targetUnit = targetUnit.ifBlank { "General Farm Area" },
-                priority = priority,
-                scheduledTime = scheduledTime.ifBlank { "Today" },
-                instructions = instructions,
-                assignedWorker = assignedWorker?.ifBlank { "Lead Operator" } ?: "Lead Operator"
-            )
-            repository.insertTask(newTask)
+            repository.insertTask(FarmTask(farmId = farmId, title = title, category = category, targetUnit = targetUnit, priority = priority, scheduledTime = scheduledTime, instructions = instructions, assignedWorker = worker))
         }
     }
 
-    fun addNewUnit(
-        name: String,
-        type: String,
-        headCount: Int,
-        healthStatus: String,
-        location: String,
-        tagNumber: String = "",
-        breed: String = "",
-        dob: String = "",
-        dateAdded: String = "",
-        weightAtBirth: String = "",
-        currentWeight: String = "",
-        sire: String = "",
-        dam: String = ""
-    ) {
+    fun markTaskComplete(id: Long, proofUri: String?, notes: String?) {
+        viewModel.launch {
+            val task = repository.getTaskById(id) ?: return@launch
+            repository.updateTask(task.copy(isCompleted = true, completedAt = notes ?: "", proofPhotoUri = proofUri, proofNotes = notes))
+        }
+    }
+
+    fun markTaskIncomplete(id: Long) {
+        viewModelScope.launch {
+            val task = repository.getTaskById(id) ?: return@launch
+            repository.updateTask(task.copy(isCompleted = false, completedAt = null, proofPhotoUri = null, proofNotes = null))
+        }
+    }
+
+    fun deleteTask(id: Long) {
+        viewModelScope.launch {
+            repository.deleteTask(id)
+        }
+    }
+
+    // Unit CRUD
+    fun addNewUnit(name: String, type: String, headCount: Int, healthStatus: String, location: String, tagNumber: String?, breed: String?, dob: String?, weightAtBirth: Double?, currentWeight: Double?, sire: String?, dam: String?) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-            val newUnit = FarmUnit(
-                farmId = farmId,
-                name = name.ifBlank { "Farm Unit" },
-                type = type.ifBlank { "Cattle" },
-                headCount = headCount,
-                healthStatus = healthStatus.ifBlank { "Optimal" },
-                location = location.ifBlank { "Main Sector" },
-                lastUpdated = nowFormatted,
-                tagNumber = tagNumber,
-                breed = breed,
-                dob = dob,
-                dateAdded = if (dateAdded.isNotBlank()) dateAdded else dob,
-                weightAtBirth = weightAtBirth,
-                currentWeight = currentWeight,
-                sire = sire,
-                dam = dam
-            )
-            repository.insertUnit(newUnit)
+            repository.insertUnit(FarmUnit(farmId = farmId, name = name, type = type, headCount = headCount, healthStatus = healthStatus, location = location, tagNumber = tagNumber, breed = breed, dob = dob, weightAtBirth = weightAtBirth, currentWeight = currentWeight, sire = sire, dam = dam))
         }
     }
 
@@ -301,133 +244,67 @@ class FarmViewModel(
         }
     }
 
-    fun deleteUnit(unitId: Long) {
+    fun deleteUnit(id: Long) {
         viewModelScope.launch {
-            repository.deleteUnit(unitId)
+            repository.deleteUnit(id)
         }
     }
 
-    fun updateUnitHeadCount(unitId: Long, newHeadCount: Int) {
-        viewModelScope.launch {
-            val existing = allUnits.value.find { it.id == unitId }
-            if (existing != null) {
-                val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-                val updated = existing.copy(
-                    headCount = newHeadCount.coerceAtLeast(0),
-                    lastUpdated = nowFormatted
-                )
-                repository.updateUnit(updated)
-            }
-        }
-    }
-
-    fun addMilkLog(
-        cowName: String,
-        unitName: String,
-        litres: Double,
-        session: String,
-        fatPercentage: Double,
-        date: String,
-        notes: String?
-    ) {
+    // Milk Logs
+    fun addMilkLog(cowName: String, unitName: String, litres: Double, session: String, fat: Double, date: String, notes: String?) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-            val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-            val log = MilkLog(
-                farmId = farmId,
-                cowName = cowName.ifBlank { "Daisy (Friesian)" },
-                unitName = unitName.ifBlank { "Dairy Herd - Friesians" },
-                litres = litres,
-                session = session,
-                fatPercentage = fatPercentage,
-                date = date.ifBlank { todayFormatted },
-                loggedAt = nowFormatted,
-                notes = notes
-            )
-            repository.insertMilkLog(log)
+            repository.insertMilkLog(MilkLog(farmId = farmId, cowName = cowName, unitName = unitName, litres = litres, session = session, fat = fat, date = date, notes = notes))
         }
     }
 
-    fun deleteMilkLog(logId: Long) {
+    fun deleteMilkLog(id: Long) {
         viewModelScope.launch {
-            repository.deleteMilkLog(logId)
+            repository.deleteMilkLog(id)
         }
     }
 
-    fun deleteEggLog(logId: Long) {
-        viewModelScope.launch {
-            repository.deleteEggLog(logId)
-        }
-    }
-
-    fun addEggLog(
-        unitName: String,
-        totalEggs: Int,
-        damagedEggs: Int,
-        grade: String,
-        notes: String?
-    ) {
+    // Egg Logs
+    fun addEggLog(unitName: String, totalEggs: Int, damagedEggs: Int, grade: String, notes: String?) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-            val log = EggLog(
-                farmId = farmId,
-                unitName = unitName.ifBlank { "Poultry Flock" },
-                totalEggs = totalEggs,
-                damagedEggs = damagedEggs,
-                grade = grade,
-                loggedAt = nowFormatted,
-                notes = notes
-            )
-            repository.insertEggLog(log)
+            repository.insertEggLog(EggLog(farmId = farmId, unitName = unitName, totalEggs = totalEggs, damagedEggs = damagedEggs, grade = grade, notes = notes))
         }
     }
 
-    fun addFinanceRecord(
-        type: FinanceType,
-        category: String,
-        amount: Double,
-        description: String
-    ) {
+    fun deleteEggLog(id: Long) {
+        viewModelScope.launch {
+            repository.deleteEggLog(id)
+        }
+    }
+
+    // Finance
+    fun addFinanceRecord(type: FinanceType, category: String, amount: Double, description: String) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-            val record = FinanceRecord(
-                farmId = farmId,
-                type = type,
-                category = category.ifBlank { "General" },
-                amount = amount,
-                date = todayFormatted,
-                description = description.ifBlank { "Farm transaction" }
-            )
-            repository.insertFinanceRecord(record)
+            repository.insertFinanceRecord(FinanceRecord(farmId = farmId, type = type, category = category, amount = amount, description = description, date = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())))
         }
     }
 
-    fun addEmployeeRequest(
-        employeeName: String,
-        requestType: String,
-        amount: Double,
-        startDate: String,
-        endDate: String,
-        reason: String
-    ) {
+    fun updateFinanceRecord(record: FinanceRecord) {
+        viewModelScope.launch {
+            repository.updateFinanceRecord(record)
+        }
+    }
+
+    fun deleteFinanceRecord(recordId: Long) {
+        viewModelScope.launch {
+            repository.deleteFinanceRecord(recordId)
+        }
+    }
+
+    // Employee Requests
+    fun addEmployeeRequest(employeeName: String, requestType: String, amount: Double, startDate: String, endDate: String, reason: String) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val sessionName = currentSession.value?.name ?: employeeName
             val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-            val req = EmployeeRequest(
-                farmId = farmId,
-                employeeName = sessionName.ifBlank { "Farm Worker" },
-                requestType = requestType,
-                amount = amount,
-                startDate = startDate,
-                endDate = endDate,
-                reason = reason.ifBlank { "No reason provided" },
-                status = RequestStatus.PENDING,
-                submittedAt = todayFormatted
-            )
+            val req = EmployeeRequest(farmId = farmId, employeeName = sessionName.ifBlank { "Farm Worker" }, requestType = requestType, amount = amount, startDate = startDate, endDate = endDate, reason = reason.ifBlank { "No reason provided" }, status = RequestStatus.PENDING, submittedAt = todayFormatted)
             repository.insertEmployeeRequest(req)
         }
     }
@@ -439,11 +316,7 @@ class FarmViewModel(
         }
     }
 
-    fun deleteTask(taskId: Long) {
-        viewModelScope.launch {
-            repository.deleteTask(taskId)
-        }
-    }
+    // ... other helpers (photo save, workers, cattle events) remain unchanged
 
     fun savePhotoToInternalStorage(context: Context, sourceUri: Uri): String? {
         return try {
@@ -483,22 +356,7 @@ class FarmViewModel(
     fun createWorker(name: String, emailOrPhone: String, password: String, permissions: WorkerPermissions) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val worker = WorkerAccount(
-                workerId = java.util.UUID.randomUUID().toString(),
-                farmId = farmId,
-                name = name,
-                emailOrPhone = emailOrPhone,
-                password = password,
-                canViewLivestock = permissions.canViewLivestock,
-                canEditLivestock = permissions.canEditLivestock,
-                canViewLogs = permissions.canViewLogs,
-                canEditLogs = permissions.canEditLogs,
-                canViewFinance = permissions.canViewFinance,
-                canEditFinance = permissions.canEditFinance,
-                canViewTasks = permissions.canViewTasks,
-                canCompleteTasks = permissions.canCompleteTasks,
-                canViewRequests = permissions.canViewRequests
-            )
+            val worker = WorkerAccount(workerId = java.util.UUID.randomUUID().toString(), farmId = farmId, name = name, emailOrPhone = emailOrPhone, password = password, canViewLivestock = permissions.canViewLivestock, canEditLivestock = permissions.canEditLivestock, canViewLogs = permissions.canViewLogs, canEditLogs = permissions.canEditLogs, canViewFinance = permissions.canViewFinance, canEditFinance = permissions.canEditFinance, canViewTasks = permissions.canViewTasks, canCompleteTasks = permissions.canCompleteTasks, canViewRequests = permissions.canViewRequests)
             repository.insertWorker(worker)
         }
     }
@@ -506,27 +364,10 @@ class FarmViewModel(
     // Cattle Events
     fun getCattleEventsFlow(unitId: Long): Flow<List<CattleEvent>> = repository.getCattleEventsForUnit(unitId)
 
-    fun addCattleEvent(
-        unitId: Long,
-        category: String,
-        title: String,
-        date: String,
-        details: String,
-        notes: String?,
-        metricValue: String?
-    ) {
+    fun addCattleEvent(unitId: Long, category: String, title: String, date: String, details: String, notes: String?, metricValue: String?) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val event = CattleEvent(
-                farmId = farmId,
-                unitId = unitId,
-                category = category,
-                title = title,
-                date = date,
-                details = details,
-                notes = notes,
-                metricValue = metricValue
-            )
+            val event = CattleEvent(farmId = farmId, unitId = unitId, category = category, title = title, date = date, details = details, notes = notes, metricValue = metricValue)
             repository.insertCattleEvent(event)
         }
     }

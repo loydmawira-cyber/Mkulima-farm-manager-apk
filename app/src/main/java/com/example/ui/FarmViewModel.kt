@@ -211,7 +211,7 @@ class FarmViewModel(
     }
 
     fun markTaskComplete(id: Long, proofUri: String?, notes: String?) {
-        viewModel.launch {
+        viewModelScope.launch {
             val task = repository.getTaskById(id) ?: return@launch
             repository.updateTask(task.copy(isCompleted = true, completedAt = notes ?: "", proofPhotoUri = proofUri, proofNotes = notes))
         }
@@ -231,10 +231,39 @@ class FarmViewModel(
     }
 
     // Unit CRUD
-    fun addNewUnit(name: String, type: String, headCount: Int, healthStatus: String, location: String, tagNumber: String?, breed: String?, dob: String?, weightAtBirth: Double?, currentWeight: Double?, sire: String?, dam: String?) {
+    fun addNewUnit(
+        name: String,
+        type: String,
+        headCount: Int,
+        healthStatus: String,
+        location: String,
+        tagNumber: String?,
+        breed: String?,
+        dob: String?,
+        weightAtBirth: Double?,
+        currentWeight: Double?,
+        sire: String?,
+        dam: String?
+    ) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            repository.insertUnit(FarmUnit(farmId = farmId, name = name, type = type, headCount = headCount, healthStatus = healthStatus, location = location, tagNumber = tagNumber, breed = breed, dob = dob, weightAtBirth = weightAtBirth, currentWeight = currentWeight, sire = sire, dam = dam))
+            repository.insertUnit(
+                FarmUnit(
+                    farmId = farmId,
+                    name = name,
+                    type = type,
+                    headCount = headCount,
+                    healthStatus = healthStatus,
+                    location = location,
+                    tagNumber = tagNumber,
+                    breed = breed,
+                    dob = dob,
+                    weightAtBirth = weightAtBirth,
+                    currentWeight = currentWeight,
+                    sire = sire ?: "",
+                    dam = dam ?: ""
+                )
+            )
         }
     }
 
@@ -304,7 +333,7 @@ class FarmViewModel(
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val sessionName = currentSession.value?.name ?: employeeName
             val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-            val req = EmployeeRequest(farmId = farmId, employeeName = sessionName.ifBlank { "Farm Worker" }, requestType = requestType, amount = amount, startDate = startDate, endDate = endDate, reason = reason.ifBlank { "No reason provided" }, status = RequestStatus.PENDING, submittedAt = todayFormatted)
+            val req = EmployeeRequest(farmId = farmId, employeeName = sessionName.ifBlank { "Farm Worker" }, requestType = requestType, amount = amount, startDate = startDate, endDate = endDate, reason = reason, requestedAt = todayFormatted)
             repository.insertEmployeeRequest(req)
         }
     }

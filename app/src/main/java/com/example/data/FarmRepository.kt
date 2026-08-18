@@ -47,6 +47,9 @@ class FarmRepository(private val farmDao: FarmDao) {
     suspend fun insertFinanceRecord(record: FinanceRecord): Long = farmDao.insertFinanceRecord(record)
     suspend fun deleteFinanceRecord(id: Long) = farmDao.deleteFinanceRecordById(id)
 
+    // New: update finance record
+    suspend fun updateFinanceRecord(record: FinanceRecord) = farmDao.updateFinanceRecord(record)
+
     suspend fun insertEmployeeRequest(request: EmployeeRequest): Long = farmDao.insertEmployeeRequest(request)
     suspend fun updateEmployeeRequest(request: EmployeeRequest) = farmDao.updateEmployeeRequest(request)
     suspend fun deleteEmployeeRequest(id: Long) = farmDao.deleteEmployeeRequestById(id)

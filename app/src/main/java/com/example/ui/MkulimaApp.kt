@@ -284,9 +284,21 @@ fun MkulimaAppContent(
         Box(modifier = Modifier.padding(it)) {
             when (selectedTab) {
                 0 -> DashboardScreen(
-                    onAddTask = { showAddTaskDialog = true },
-                    onOpenWorkerManagement = { showWorkerManagementScreen = true },
-                    onOpenSettings = { showSettingsDialog = true }
+                    tasks = filteredTasks,
+                    milkLogs = milkLogs,
+                    eggLogs = eggLogs,
+                    units = allUnits,
+                    financeRecords = financeRecords,
+                    employeeRequests = employeeRequests,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { viewModel.searchQuery.value = it },
+                    onAddTaskClick = { showAddTaskDialog = true },
+                    onAddUnitClick = { showAddUnitDialog = true },
+                    onAddMilkLogClick = { showAddMilkLogDialog = true },
+                    onAddEggLogClick = { showAddEggLogDialog = true },
+                    onNavigateToTab = { selectedTab = it },
+                    userRole = userRole,
+                    farmSettings = farmSettings
                 )
                 1 -> ApprovalRequestsScreen()
                 2 -> FlocksScreen()
@@ -304,7 +316,16 @@ fun MkulimaAppContent(
                 )
                 4 -> MilkLogScreen(
                     milkLogs = milkLogs,
-                    onAddMilkLog = { showAddMilkLogDialog = true }
+                    eggLogs = eggLogs,
+                    units = allUnits,
+                    onAddMilkLogClick = { showAddMilkLogDialog = true },
+                    onAddEggLogClick = { showAddEggLogDialog = true },
+                    onQuickSaveMilkLog = { cowName, litres, sessionStr, date -> viewModel.addMilkLog(cowName, "", litres, sessionStr, 0.0, date, null) },
+                    onQuickSaveEggLog = { flockName, totalEggs, damagedEggs, grade, date, notes -> viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, notes) },
+                    onDeleteMilkLog = { id -> viewModel.deleteMilkLog(id) },
+                    onDeleteEggLog = { id -> viewModel.deleteEggLog(id) },
+                    farmSettings = farmSettings,
+                    userRole = userRole
                 )
             }
 

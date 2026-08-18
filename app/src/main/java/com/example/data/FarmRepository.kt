@@ -1,6 +1,7 @@
 package com.example.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class FarmRepository(private val farmDao: FarmDao) {
     val allTasks: Flow<List<FarmTask>> = farmDao.getAllTasks()
@@ -26,6 +27,20 @@ class FarmRepository(private val farmDao: FarmDao) {
         farmDao.getEmployeeRequestsForWorker(farmId, workerId, emailOrPhone, name)
     fun getSettingsForFarm(farmId: String): Flow<FarmSettings?> = farmDao.getSettingsByFarm(farmId)
     fun getWorkersForFarm(farmId: String): Flow<List<WorkerAccount>> = farmDao.getWorkersByFarm(farmId)
+
+    // New: per-cow / unit scoped accessors
+    fun getMilkLogsForCow(unitId: Long, cowTag: String?, cowName: String): Flow<List<MilkLog>> =
+        farmDao.getMilkLogsByUnitAndCow(unitId, cowTag, cowName)
+
+    fun getMilkLogsForUnit(unitId: Long): Flow<List<MilkLog>> = farmDao.getMilkLogsByUnit(unitId)
+
+    fun getCattleEventsForCow(unitId: Long, cowTag: String?): Flow<List<CattleEvent>> {
+        return if (cowTag != null) {
+            farmDao.getCattleEventsByUnitAndCow(unitId, cowTag)
+        } else {
+            farmDao.getCattleEventsByUnit(unitId)
+        }
+    }
 
     suspend fun getTaskById(id: Long): FarmTask? = farmDao.getTaskById(id)
     suspend fun insertTask(task: FarmTask): Long = farmDao.insertTask(task)

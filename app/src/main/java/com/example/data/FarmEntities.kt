@@ -138,6 +138,8 @@ data class FarmUnit(
 data class MilkLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val farmId: String = "FARM-DEFAULT",
+    val unitId: Long? = null,                // NEW: reference to FarmUnit.id
+    val cowTag: String? = null,              // NEW: stable cow identifier/tag
     val cowName: String = "Daisy (Friesian)",
     val unitName: String = "Dairy Herd - Friesians",
     val litres: Double,           // Quantity in litres
@@ -216,6 +218,7 @@ data class CattleEvent(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val farmId: String = "FARM-DEFAULT",
     val unitId: Long,             // Foreign key to FarmUnit
+    val cowTag: String? = null,   // NEW: optional link to a specific cow
     val category: String,         // "PD", "INSEMINATION", "CALVING", etc.
     val title: String,
     val date: String,

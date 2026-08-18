@@ -8,10 +8,14 @@ import com.example.data.UserSession
 import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.AuthResult
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.firestore.ktx.firestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
@@ -25,21 +29,57 @@ class AuthManager(
     private val repository: FarmRepository
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences("mkulima_auth_prefs", Context.MODE_PRIVATE)
-    private var firebaseAuth: FirebaseAuth? = null
-
-    init {
-        try {
-            firebaseAuth = FirebaseAuth.getInstance()
-        } catch (e: Exception) {
-            // Firebase not initialized or offline fallback
-            firebaseAuth = null
-        }
-    }
+    private val firebaseAuth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val firestore = Firebase.firestore
 
     private val _currentSession = MutableStateFlow<UserSession?>(loadSavedSession())
     val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
 
     private fun loadSavedSession(): UserSession? {
+        // Prefer Firebase current user (server-side persistent account).
+        val firebaseUser = firebaseAuth.currentUser
+        if (firebaseUser != null) {
+            // Attempt to load profile from Firestore (best-effort cached values in prefs otherwise)
+            val uid = firebaseUser.uid
+            val name = prefs.getString("user_name", "Farm User") ?: "Farm User"
+            val emailOrPhone = firebaseUser.email ?: prefs.getString("email_or_phone", "") ?: ""
+            val role = prefs.getString("user_role", "OWNER") ?: "OWNER"
+            val farmId = prefs.getString("farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT"
+            val farmName = prefs.getString("farm_name", "Green Pastures Farm") ?: "Green Pastures Farm"
+
+            val canViewLivestock = prefs.getBoolean("can_view_livestock", true)
+            val canEditLivestock = prefs.getBoolean("can_edit_livestock", role == "OWNER")
+            val canViewLogs = prefs.getBoolean("can_view_logs", true)
+            val canEditLogs = prefs.getBoolean("can_edit_logs", role == "OWNER")
+            val canViewFinance = prefs.getBoolean("can_view_finance", role == "OWNER")
+            val canEditFinance = prefs.getBoolean("can_edit_finance", role == "OWNER")
+            val canViewTasks = prefs.getBoolean("can_view_tasks", true)
+            val canCompleteTasks = prefs.getBoolean("can_complete_tasks", true)
+            val canViewRequests = prefs.getBoolean("can_view_requests", true)
+
+            return UserSession(
+                userId = uid,
+                name = name,
+                emailOrPhone = emailOrPhone,
+                role = role,
+                farmId = farmId,
+                farmName = farmName,
+                isRevoked = false,
+                permissions = WorkerPermissions(
+                    canViewLivestock = canViewLivestock,
+                    canEditLivestock = canEditLivestock,
+                    canViewLogs = canViewLogs,
+                    canEditLogs = canEditLogs,
+                    canViewFinance = canViewFinance,
+                    canEditFinance = canEditFinance,
+                    canViewTasks = canViewTasks,
+                    canCompleteTasks = canCompleteTasks,
+                    canViewRequests = canViewRequests
+                )
+            )
+        }
+
+        // Fallback: try local prefs (this will be cleared on uninstall)
         val userId = prefs.getString("user_id", null) ?: return null
         val name = prefs.getString("user_name", "Farm User") ?: "Farm User"
         val emailOrPhone = prefs.getString("email_or_phone", "") ?: ""
@@ -80,6 +120,7 @@ class AuthManager(
     }
 
     private fun saveSession(session: UserSession) {
+        // Keep a small, non-sensitive local cache to improve UX. Do not store passwords or secrets.
         prefs.edit().apply {
             putString("user_id", session.userId)
             putString("user_name", session.name)
@@ -125,16 +166,70 @@ class AuthManager(
         }
 
         val farmId = generateUniqueFarmId()
-        val userId = "OWNER_${UUID.randomUUID().toString().take(8)}"
 
-        // Try Firebase Auth if email provided
+        // If email, prefer Firebase Auth for persistent server-side account
         if (cleanIdentifier.contains("@")) {
             try {
-                firebaseAuth?.createUserWithEmailAndPassword(cleanIdentifier, password)
+                val result: AuthResult = try {
+                    val authResult = firebaseAuth.createUserWithEmailAndPassword(cleanIdentifier, password).await()
+                    val uid = authResult.user?.uid ?: throw Exception("No uid returned")
+
+                    // Write owner profile to Firestore
+                    val profile = mapOf(
+                        "uid" to uid,
+                        "name" to cleanName,
+                        "email" to cleanIdentifier,
+                        "farmId" to farmId,
+                        "farmName" to cleanFarmName,
+                        "role" to "OWNER",
+                        "createdAt" to System.currentTimeMillis()
+                    )
+                    firestore.collection("users").document(uid).set(profile).await()
+
+                    // Persist app data locally (farm record), using uid as owner id
+                    val farmAccount = FarmAccount(
+                        farmId = farmId,
+                        farmName = cleanFarmName,
+                        ownerId = uid,
+                        ownerName = cleanName,
+                        ownerEmailOrPhone = cleanIdentifier
+                    )
+                    repository.insertFarmAccount(farmAccount)
+                    repository.seedNewFarmStarterData(farmId, cleanFarmName)
+
+                    val session = UserSession(
+                        userId = uid,
+                        name = cleanName,
+                        emailOrPhone = cleanIdentifier,
+                        role = "OWNER",
+                        farmId = farmId,
+                        farmName = cleanFarmName,
+                        isRevoked = false,
+                        permissions = WorkerPermissions(
+                            canViewLivestock = true,
+                            canEditLivestock = true,
+                            canViewLogs = true,
+                            canEditLogs = true,
+                            canViewFinance = true,
+                            canEditFinance = true,
+                            canViewTasks = true,
+                            canCompleteTasks = true,
+                            canViewRequests = true
+                        )
+                    )
+                    saveSession(session)
+                    AuthResult.Success(session)
+                } catch (e: Exception) {
+                    AuthResult.Error(e.localizedMessage ?: "Firebase signup failed")
+                }
+                return@withContext result
             } catch (e: Exception) {
-                // Ignore or proceed with local registration fallback
+                // If Firebase fails, fall through to local registration below
             }
         }
+
+        // Local-only fallback registration (unchanged from before)
+        val userId = "OWNER_${UUID.randomUUID().toString().take(8)}"
 
         val farmAccount = FarmAccount(
             farmId = farmId,
@@ -179,7 +274,7 @@ class AuthManager(
             return@withContext AuthResult.Error("Please enter your email/phone and password.")
         }
 
-        // 1. Check if it's a Worker account
+        // 1. Worker account (local) fallback
         val worker = repository.getWorkerByLoginIdentifier(cleanIdentifier)
         if (worker != null) {
             if (worker.password != password) {
@@ -205,34 +300,61 @@ class AuthManager(
             return@withContext AuthResult.Success(session)
         }
 
-        // 2. Check if it's a registered Owner
-        val ownerFarm = repository.getFarmAccountByOwner(cleanIdentifier)
-        if (ownerFarm != null) {
-            val session = UserSession(
-                userId = ownerFarm.ownerId,
-                name = ownerFarm.ownerName,
-                emailOrPhone = ownerFarm.ownerEmailOrPhone,
-                role = "OWNER",
-                farmId = ownerFarm.farmId,
-                farmName = ownerFarm.farmName,
-                isRevoked = false,
-                permissions = WorkerPermissions(
-                    canViewLivestock = true,
-                    canEditLivestock = true,
-                    canViewLogs = true,
-                    canEditLogs = true,
-                    canViewFinance = true,
-                    canEditFinance = true,
-                    canViewTasks = true,
-                    canCompleteTasks = true,
-                    canViewRequests = true
+        // 2. Try Firebase login (owners using email)
+        if (cleanIdentifier.contains("@")) {
+            try {
+                val res = firebaseAuth.signInWithEmailAndPassword(cleanIdentifier, password).await()
+                val uid = res.user?.uid ?: return@withContext AuthResult.Error("Sign-in failed")
+                // Load profile from Firestore
+                val doc = firestore.collection("users").document(uid).get().await()
+                val data = doc.data
+                val name = data?.get("name") as? String ?: prefs.getString("user_name", "Farm Owner") ?: "Farm Owner"
+                val farmId = data?.get("farmId") as? String ?: prefs.getString("farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT"
+                val farmName = data?.get("farmName") as? String ?: prefs.getString("farm_name", "Green Pastures Farm") ?: "Green Pastures Farm"
+
+                // Ensure local repository has farm record if missing
+                val ownerFarm = repository.getFarmAccount(farmId)
+                if (ownerFarm == null) {
+                    val farmAccount = FarmAccount(
+                        farmId = farmId,
+                        farmName = farmName,
+                        ownerId = uid,
+                        ownerName = name,
+                        ownerEmailOrPhone = cleanIdentifier
+                    )
+                    repository.insertFarmAccount(farmAccount)
+                    repository.seedNewFarmStarterData(farmId, farmName)
+                }
+
+                val session = UserSession(
+                    userId = uid,
+                    name = name,
+                    emailOrPhone = cleanIdentifier,
+                    role = "OWNER",
+                    farmId = farmId,
+                    farmName = farmName,
+                    isRevoked = false,
+                    permissions = WorkerPermissions(
+                        canViewLivestock = true,
+                        canEditLivestock = true,
+                        canViewLogs = true,
+                        canEditLogs = true,
+                        canViewFinance = true,
+                        canEditFinance = true,
+                        canViewTasks = true,
+                        canCompleteTasks = true,
+                        canViewRequests = true
+                    )
                 )
-            )
-            saveSession(session)
-            return@withContext AuthResult.Success(session)
+                saveSession(session)
+                return@withContext AuthResult.Success(session)
+            } catch (e: Exception) {
+                // Fallthrough to default demo credentials handling or error
+                return@withContext AuthResult.Error(e.localizedMessage ?: "Login error")
+            }
         }
 
-        // 3. Check default demo accounts or fallback Firebase Auth
+        // 3. Demo/legacy accounts (unchanged)
         if (cleanIdentifier.equals("owner@mkulima.farm", ignoreCase = true) && (password == "password123" || password == "admin")) {
             val session = UserSession(
                 userId = "owner_default",
@@ -292,11 +414,11 @@ class AuthManager(
 
         if (clean.contains("@")) {
             try {
-                firebaseAuth?.sendPasswordResetEmail(clean)
+                firebaseAuth.sendPasswordResetEmail(clean).await()
+                return@withContext "Password reset instructions sent to $clean. Please check your inbox."
             } catch (e: Exception) {
-                // Fallback
+                return@withContext "Unable to send reset email: ${e.localizedMessage}"
             }
-            return@withContext "Password reset instructions sent to $clean. Please check your inbox."
         } else {
             return@withContext "A 6-digit password verification code was dispatched via SMS to $clean."
         }
@@ -306,12 +428,13 @@ class AuthManager(
         prefs.edit().clear().apply()
         _currentSession.value = null
         try {
-            firebaseAuth?.signOut()
+            firebaseAuth.signOut()
         } catch (e: Exception) {
             // Ignored
         }
     }
 
+    // Worker management methods remain local and unchanged
     suspend fun createWorker(
         name: String,
         emailOrPhone: String,

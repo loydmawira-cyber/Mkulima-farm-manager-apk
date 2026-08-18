@@ -198,9 +198,7 @@ class FarmViewModel(
     }
 
     fun logout() {
-        viewModelScope.launch {
-            authManager.logout()
-        }
+        authManager.logout()
     }
 
     // Task CRUD
@@ -213,9 +211,10 @@ class FarmViewModel(
     }
 
     fun markTaskComplete(id: Long, proofUri: String?, notes: String?) {
-        viewModelScope.launch {
+        viewModel.launch {
             val task = repository.getTaskById(id) ?: return@launch
             repository.updateTask(task.copy(isCompleted = true, completedAt = notes ?: "", proofPhotoUri = proofUri, proofNotes = notes))
+        }
     }
 
     fun markTaskIncomplete(id: Long) {
@@ -287,3 +286,95 @@ class FarmViewModel(
         }
     }
 
+    fun updateFinanceRecord(record: FinanceRecord) {
+        viewModelScope.launch {
+            repository.updateFinanceRecord(record)
+        }
+    }
+
+    fun deleteFinanceRecord(recordId: Long) {
+        viewModelScope.launch {
+            repository.deleteFinanceRecord(recordId)
+        }
+    }
+
+    // Employee Requests
+    fun addEmployeeRequest(employeeName: String, requestType: String, amount: Double, startDate: String, endDate: String, reason: String) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val sessionName = currentSession.value?.name ?: employeeName
+            val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+            val req = EmployeeRequest(farmId = farmId, employeeName = sessionName.ifBlank { "Farm Worker" }, requestType = requestType, amount = amount, startDate = startDate, endDate = endDate, reason = reason.ifBlank { "No reason provided" }, status = RequestStatus.PENDING, submittedAt = todayFormatted)
+            repository.insertEmployeeRequest(req)
+        }
+    }
+
+    fun updateEmployeeRequestStatus(request: EmployeeRequest, newStatus: RequestStatus) {
+        viewModelScope.launch {
+            val updated = request.copy(status = newStatus)
+            repository.updateEmployeeRequest(updated)
+        }
+    }
+
+    // ... other helpers (photo save, workers, cattle events) remain unchanged
+
+    fun savePhotoToInternalStorage(context: Context, sourceUri: Uri): String? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(sourceUri) ?: return null
+            val proofsDir = File(context.filesDir, "task_proofs").apply { mkdirs() }
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val destFile = File(proofsDir, "PROOF_$timeStamp.jpg")
+
+            FileOutputStream(destFile).use { outputStream ->
+                inputStream.copyTo(outputStream)
+            }
+            Uri.fromFile(destFile).toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            sourceUri.toString()
+        }
+    }
+
+    fun deleteWorker(workerId: String) {
+        viewModelScope.launch {
+            repository.deleteWorker(workerId)
+        }
+    }
+
+    fun toggleWorkerRevoked(workerId: String, isRevoked: Boolean) {
+        viewModelScope.launch {
+            repository.setWorkerRevoked(workerId, isRevoked)
+        }
+    }
+
+    fun updateWorker(worker: WorkerAccount) {
+        viewModelScope.launch {
+            repository.updateWorker(worker)
+        }
+    }
+
+    fun createWorker(name: String, emailOrPhone: String, password: String, permissions: WorkerPermissions) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val worker = WorkerAccount(workerId = java.util.UUID.randomUUID().toString(), farmId = farmId, name = name, emailOrPhone = emailOrPhone, password = password, canViewLivestock = permissions.canViewLivestock, canEditLivestock = permissions.canEditLivestock, canViewLogs = permissions.canViewLogs, canEditLogs = permissions.canEditLogs, canViewFinance = permissions.canViewFinance, canEditFinance = permissions.canEditFinance, canViewTasks = permissions.canViewTasks, canCompleteTasks = permissions.canCompleteTasks, canViewRequests = permissions.canViewRequests)
+            repository.insertWorker(worker)
+        }
+    }
+
+    // Cattle Events
+    fun getCattleEventsFlow(unitId: Long): Flow<List<CattleEvent>> = repository.getCattleEventsForUnit(unitId)
+
+    fun addCattleEvent(unitId: Long, category: String, title: String, date: String, details: String, notes: String?, metricValue: String?) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val event = CattleEvent(farmId = farmId, unitId = unitId, category = category, title = title, date = date, details = details, notes = notes, metricValue = metricValue)
+            repository.insertCattleEvent(event)
+        }
+    }
+
+    fun deleteCattleEvent(eventId: Long) {
+        viewModelScope.launch {
+            repository.deleteCattleEvent(eventId)
+        }
+    }
+}

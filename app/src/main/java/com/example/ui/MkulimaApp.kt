@@ -309,18 +309,22 @@ fun MkulimaAppContent(
             }
 
             // Dialogs
-            if (showAddTaskDialog) AddTaskDialog(onDismiss = { showAddTaskDialog = false }, onSave = { title, category, targetUnit, priority, scheduledTime, instructions, assignee ->
-                viewModel.addNewTask(
-                    title = title,
-                    category = category,
-                    targetUnit = targetUnit,
-                    priority = priority,
-                    scheduledTime = scheduledTime,
-                    instructions = instructions,
-                    assignedWorker = assignee
-                )
-                showAddTaskDialog = false
-            })
+            if (showAddTaskDialog) AddTaskDialog(
+                availableUnits = allUnits,
+                onDismiss = { showAddTaskDialog = false },
+                onTaskCreated = { title, category, targetUnit, priority, scheduledTime, instructions, assignedWorker ->
+                    viewModel.addNewTask(
+                        title = title,
+                        category = category,
+                        targetUnit = targetUnit,
+                        priority = priority,
+                        scheduledTime = scheduledTime,
+                        instructions = instructions,
+                        worker = assignedWorker
+                    )
+                    showAddTaskDialog = false
+                }
+            )
 
             if (showAddFinanceDialog) {
                 AddFinanceRecordDialog(onDismiss = { showAddFinanceDialog = false }, onSaveRecord = { type, category, amount, description ->
@@ -372,22 +376,61 @@ fun MkulimaAppContent(
                 showAddEggLogDialog = false
             })
 
-            if (showAddUnitDialog) AddUnitDialog(onDismiss = { showAddUnitDialog = false }, onSave = { name, type, headCount, healthStatus, location, tagNumber, breed, dob, dateAdded, weightAtBirth, currentWeight, sire, dam ->
-                viewModel.addNewUnit(name = name, type = type, headCount = headCount, healthStatus = healthStatus, location = location, tagNumber = tagNumber, breed = breed, dob = dob, weightAtBirth = weightAtBirth, currentWeight = currentWeight, sire = sire, dam = dam)
-                showAddUnitDialog = false
-            })
+            if (showAddUnitDialog) AddUnitDialog(
+                onDismiss = { showAddUnitDialog = false },
+                farmSettings = farmSettings,
+                onUnitCreated = { name, type, headCount, healthStatus, location, tagNumber, breed, dob, weightAtBirth, currentWeight, sire, dam ->
+                    viewModel.addNewUnit(
+                        name = name,
+                        type = type,
+                        headCount = headCount,
+                        healthStatus = healthStatus,
+                        location = location,
+                        tagNumber = tagNumber.ifBlank { null },
+                        breed = breed.ifBlank { null },
+                        dob = dob,
+                        weightAtBirth = weightAtBirth.filter { ch -> ch.isDigit() || ch == '.' }.toDoubleOrNull(),
+                        currentWeight = currentWeight.filter { ch -> ch.isDigit() || ch == '.' }.toDoubleOrNull()
+                    )
+                    showAddUnitDialog = false
+                }
+            )
 
-            if (showAddEmployeeRequestDialog) AddEmployeeRequestDialog(onDismiss = { showAddEmployeeRequestDialog = false }, onSave = { employeeName, requestType, amount, startDate, endDate, reason ->
-                viewModel.addEmployeeRequest(employeeName, requestType, amount, startDate, endDate, reason)
-                showAddEmployeeRequestDialog = false
-            })
+            if (showAddEmployeeRequestDialog) AddEmployeeRequestDialog(
+                onDismiss = { showAddEmployeeRequestDialog = false },
+                onSaveRequest = { employeeName, requestType, amount, startDate, endDate, reason ->
+                    viewModel.addEmployeeRequest(employeeName, requestType, amount, startDate, endDate, reason)
+                    showAddEmployeeRequestDialog = false
+                }
+            )
 
-            if (showSettingsDialog) SettingsDialog(onDismiss = { showSettingsDialog = false }, onSave = { settings ->
-                viewModel.updateSettings(settings)
-                showSettingsDialog = false
-            })
+            if (showSettingsDialog) SettingsDialog(
+                settings = farmSettings,
+                userSession = userSession,
+                onDismiss = { showSettingsDialog = false },
+                onSaveSettings = { settings ->
+                    viewModel.updateSettings(settings)
+                    showSettingsDialog = false
+                },
+                onOpenWorkerManagement = { showWorkerManagementScreen = true },
+                onLogout = {
+                    viewModel.logout()
+                    showSettingsDialog = false
+                }
+            )
 
-            if (showWorkerManagementScreen) WorkerManagementScreen(onDismiss = { showWorkerManagementScreen = false }, farmWorkers = farmWorkers)
+            if (showWorkerManagementScreen) WorkerManagementScreen(
+                farmId = userSession?.farmId ?: "FARM-DEFAULT",
+                farmName = farmSettings.farmName ?: userSession?.name ?: "My Farm",
+                workers = farmWorkers,
+                onCreateWorker = { name, emailOrPhone, pass, permissions ->
+                    viewModel.createWorker(name, emailOrPhone, pass, permissions)
+                },
+                onUpdateWorker = { updated -> viewModel.updateWorker(updated) },
+                onToggleRevoke = { workerId, isRevoked -> viewModel.toggleWorkerRevoked(workerId, isRevoked) },
+                onDeleteWorker = { workerId -> viewModel.deleteWorker(workerId) },
+                onClose = { showWorkerManagementScreen = false }
+            )
         }
     }
 }

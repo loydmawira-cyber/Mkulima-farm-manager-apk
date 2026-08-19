@@ -495,7 +495,7 @@ fun DashboardScreen(
                                         UrgentItemRow(
                                             title = task.title,
                                             subtitle = "${task.category.name} • ${task.targetUnit.ifBlank { "General" }} • ${task.scheduledTime}",
-                                            onClick = { onCompleteTaskClick(task) },
+                                            onClick = { onNavigateToTab(4) },
                                             isLast = isLast
                                         )
                                     }
@@ -504,8 +504,8 @@ fun DashboardScreen(
                                 if (urgentItems.isEmpty()) {
                                     UrgentItemRow(
                                         title = "All clear! No urgent tasks pending 🎉",
-                                        subtitle = "All assigned tasks completed. Tap to add a new task.",
-                                        onClick = { onAddTaskClick() },
+                                        subtitle = "All assigned tasks completed. Tap to view tasks.",
+                                        onClick = { onNavigateToTab(4) },
                                         isLast = true
                                     )
                                 } else {
@@ -955,7 +955,7 @@ fun DashboardScreen(
                         )
                         QuickActionChip(
                             icon = "✅",
-                            label = "Approvals",
+                            label = "Tasks",
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("qa_approvals"),
@@ -965,258 +965,8 @@ fun DashboardScreen(
                 }
             }
 
-            // 4. DAILY FARM TASKS & ACTIVITIES (INTERACTIVE)
             item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 14.dp)
-                ) {
-                    // Header Row with Task Counts and Add Task Button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "📋 Daily Tasks & Operations",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Soil
-                                )
-                                val pendingCount = tasks.count { !it.isCompleted }
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (pendingCount > 0) Terracotta else Sage
-                                ) {
-                                    Text(
-                                        text = "$pendingCount pending",
-                                        color = Color.White,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "Track, complete and log verification proof",
-                                fontSize = 11.5.sp,
-                                color = SoilSoft
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = ForestGreenPrimary,
-                            modifier = Modifier
-                                .clickable { onAddTaskClick() }
-                                .testTag("dashboard_add_task_btn")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = Color.White, modifier = Modifier.size(16.dp))
-                                Text("New Task", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Task Status Filter Chips: Pending, All, Completed
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val pendingActive = selectedStatus == TaskStatusFilter.PENDING
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (pendingActive) ForestGreenPrimary else Color.White,
-                            border = BorderStroke(1.dp, if (pendingActive) ForestGreenPrimary else LineColor),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { onStatusSelected(TaskStatusFilter.PENDING) }
-                                .testTag("filter_status_pending")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "⏳ Pending (${tasks.count { !it.isCompleted }})",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (pendingActive) Color.White else Soil
-                                )
-                            }
-                        }
-
-                        val allActive = selectedStatus == TaskStatusFilter.ALL
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (allActive) ForestGreenPrimary else Color.White,
-                            border = BorderStroke(1.dp, if (allActive) ForestGreenPrimary else LineColor),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { onStatusSelected(TaskStatusFilter.ALL) }
-                                .testTag("filter_status_all")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "📋 All (${tasks.size})",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (allActive) Color.White else Soil
-                                )
-                            }
-                        }
-
-                        val completedActive = selectedStatus == TaskStatusFilter.COMPLETED
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (completedActive) ForestGreenPrimary else Color.White,
-                            border = BorderStroke(1.dp, if (completedActive) ForestGreenPrimary else LineColor),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { onStatusSelected(TaskStatusFilter.COMPLETED) }
-                                .testTag("filter_status_completed")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "✅ Done (${tasks.count { it.isCompleted }})",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (completedActive) Color.White else Soil
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Task Category Quick Filter Chips
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        item {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (selectedCategory == null) Soil else Color.White,
-                                border = BorderStroke(1.dp, if (selectedCategory == null) Soil else LineColor),
-                                modifier = Modifier.clickable { onCategorySelected(null) }
-                            ) {
-                                Text(
-                                    text = "All Categories",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (selectedCategory == null) Color.White else SoilSoft,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                )
-                            }
-                        }
-                        items(TaskCategory.values()) { category ->
-                            val isCatSel = selectedCategory == category
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isCatSel) Soil else Color.White,
-                                border = BorderStroke(1.dp, if (isCatSel) Soil else LineColor),
-                                modifier = Modifier.clickable { onCategorySelected(if (isCatSel) null else category) }
-                            ) {
-                                Text(
-                                    text = category.name.lowercase().replaceFirstChar { it.uppercase() },
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isCatSel) Color.White else SoilSoft,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Render Tasks List with TaskCard
-                    val displayedTasks = tasks.filter { task ->
-                        val matchesStatus = when (selectedStatus) {
-                            TaskStatusFilter.PENDING -> !task.isCompleted
-                            TaskStatusFilter.COMPLETED -> task.isCompleted
-                            TaskStatusFilter.HIGH_PRIORITY -> !task.isCompleted && task.priority == TaskPriority.HIGH
-                            TaskStatusFilter.ALL -> true
-                            else -> true
-                        }
-                        val matchesCategory = selectedCategory == null || task.category == selectedCategory
-                        val matchesSearch = searchQuery.isBlank() ||
-                                task.title.contains(searchQuery, ignoreCase = true) ||
-                                task.targetUnit.contains(searchQuery, ignoreCase = true) ||
-                                (task.assignedWorker?.contains(searchQuery, ignoreCase = true) == true)
-                        matchesStatus && matchesCategory && matchesSearch
-                    }
-
-                    if (displayedTasks.isEmpty()) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, LineColor)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("🌾", fontSize = 32.sp)
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = when (selectedStatus) {
-                                        TaskStatusFilter.PENDING -> "No pending tasks 🎉"
-                                        TaskStatusFilter.COMPLETED -> "No completed tasks yet"
-                                        TaskStatusFilter.HIGH_PRIORITY -> "No high priority tasks"
-                                        TaskStatusFilter.ALL -> "No tasks registered"
-                                        else -> "No tasks found"
-                                    },
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Soil
-                                )
-                                Text(
-                                    text = "Tap + New Task to assign farm operations.",
-                                    fontSize = 11.5.sp,
-                                    color = SoilSoft
-                                )
-                            }
-                        }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            displayedTasks.forEach { task ->
-                                TaskCard(
-                                    task = task,
-                                    onCompleteClick = onCompleteTaskClick,
-                                    onReopenClick = onReopenTaskClick,
-                                    onViewProofClick = onViewProofClick,
-                                    onDeleteClick = onDeleteTaskClick
-                                )
-                            }
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.height(28.dp))
             }
         }
     }

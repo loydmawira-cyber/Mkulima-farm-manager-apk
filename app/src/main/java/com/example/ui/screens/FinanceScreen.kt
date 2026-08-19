@@ -32,6 +32,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
+import com.example.ui.components.ConfirmDeleteDialog
 import com.example.ui.theme.ForestGreenPrimary
 
 @Composable
@@ -52,6 +57,27 @@ fun FinanceScreen(
     currency: String = "KES",
     modifier: Modifier = Modifier
 ) {
+    var recordToDelete by remember { mutableStateOf<FinanceRecord?>(null) }
+
+    if (recordToDelete != null) {
+        val rec = recordToDelete!!
+        val isIncome = rec.type == FinanceType.INCOME
+        val amountFormatted = "$currency %,.2f".format(rec.amount)
+        ConfirmDeleteDialog(
+            title = "Delete Transaction?",
+            message = "Are you sure you want to delete this ${if (isIncome) "Income" else "Expense"} transaction of $amountFormatted (${rec.category})? This will update your financial balances.",
+            confirmButtonText = "Delete Transaction",
+            confirmButtonColor = Color(0xFFDC2626),
+            onConfirm = {
+                onDeleteTransaction(rec)
+                recordToDelete = null
+            },
+            onDismiss = {
+                recordToDelete = null
+            }
+        )
+    }
+
     val totalIncome = records.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }
     val totalExpenses = records.filter { it.type == FinanceType.EXPENSE }.sumOf { it.amount }
     val netProfit = totalIncome - totalExpenses
@@ -236,7 +262,7 @@ fun FinanceScreen(
                             IconButton(onClick = { onEditTransaction(rec) }) {
                                 Icon(Icons.Filled.Edit, contentDescription = "Edit")
                             }
-                            IconButton(onClick = { onDeleteTransaction(rec) }) {
+                            IconButton(onClick = { recordToDelete = rec }) {
                                 Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF991B1B))
                             }
                         }

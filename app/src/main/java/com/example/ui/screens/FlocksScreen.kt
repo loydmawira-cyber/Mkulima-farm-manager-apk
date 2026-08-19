@@ -345,6 +345,24 @@ fun DisposeAnimalDialog(
     var notesText by remember { mutableStateOf("") }
     var dateText by remember { mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showConfirmDialog) {
+        val amount = amountText.toDoubleOrNull() ?: 0.0
+        com.example.ui.components.ConfirmDeleteDialog(
+            title = "Confirm Animal Disposal",
+            message = "Are you sure you want to record the disposal of $animalName ($tagNumber) as '$reason'${if (reason == "Sold" && amount > 0) " for KSh %,.2f".format(amount) else ""}? This record will be archived.",
+            confirmButtonText = "Confirm Disposal",
+            confirmButtonColor = Color(0xFFDC2626),
+            onConfirm = {
+                showConfirmDialog = false
+                onConfirmDispose(reason, amount, notesText, dateText)
+            },
+            onDismiss = {
+                showConfirmDialog = false
+            }
+        )
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -475,7 +493,7 @@ fun DisposeAnimalDialog(
                                 errorMessage = "Please enter a valid sale price (> 0)."
                                 return@Button
                             }
-                            onConfirmDispose(reason, amount, notesText, dateText)
+                            showConfirmDialog = true
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
@@ -502,6 +520,25 @@ fun DisposeFlockDialog(
     var notesText by remember { mutableStateOf("") }
     var dateText by remember { mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showConfirmDialog) {
+        val qty = qtyText.toIntOrNull() ?: 0
+        val amount = amountText.toDoubleOrNull() ?: 0.0
+        com.example.ui.components.ConfirmDeleteDialog(
+            title = "Confirm Flock Disposal",
+            message = "Are you sure you want to dispose $qty birds from $flockName as '$reason'${if (amount > 0) " for KSh %,.2f".format(amount) else ""}? This will update the active flock size.",
+            confirmButtonText = "Confirm Disposal",
+            confirmButtonColor = Color(0xFFDC2626),
+            onConfirm = {
+                showConfirmDialog = false
+                onConfirmDisposeFlock(qty, reason, amount, notesText, dateText)
+            },
+            onDismiss = {
+                showConfirmDialog = false
+            }
+        )
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -686,7 +723,7 @@ fun DisposeFlockDialog(
                                 errorMessage = "Please enter a valid sale price (> 0)."
                                 return@Button
                             }
-                            onConfirmDisposeFlock(qty, reason, amount, notesText, dateText)
+                            showConfirmDialog = true
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
@@ -791,12 +828,12 @@ fun FlocksScreen(
             
             val eval = CattleLifecycleEngine.evaluateCattleStage(animalDetail, emptyList(), cowLogs)
             
-            // Only update status if it was set to ACTIVE (default), otherwise keep manual override
-            val newStatus = if (animalDetail.status == "ACTIVE") eval.stage.displayName else animalDetail.status
+            // Keep unit healthStatus if specified, otherwise fall back to lifecycle evaluation
+            val newStatus = if (animalDetail.status.isBlank() || animalDetail.status.equals("ACTIVE", ignoreCase = true)) eval.stage.displayName else animalDetail.status
             
             animalDetail.copy(
                 status = newStatus,
-                breedingStatus = eval.breedingStatusText
+                breedingStatus = if (animalDetail.breedingStatus.isBlank() || animalDetail.breedingStatus.equals("HEALTHY", ignoreCase = true)) eval.breedingStatusText else animalDetail.breedingStatus
             )
         }
     }
@@ -857,11 +894,27 @@ fun FlocksScreen(
         }
     }
 
-    LaunchedEffect(units, deletedSet) {
-        val existingNames = mutableAnimals.map { it.name.lowercase() }.toSet()
-        initialAnimals.forEach { initItem ->
-            if (!existingNames.contains(initItem.name.lowercase()) && !deletedSet.contains(initItem.id) && !deletedSet.contains(initItem.name.lowercase())) {
-                mutableAnimals.add(initItem)
+    LaunchedEffect(units, deletedSet, roomAnimals) {
+        roomAnimals.forEach { rAnimal ->
+            if (!deletedSet.contains(rAnimal.id) && !deletedSet.contains(rAnimal.name.lowercase())) {
+                val idx = mutableAnimals.indexOfFirst { it.id == rAnimal.id }
+                if (idx >= 0) {
+                    mutableAnimals[idx] = rAnimal
+                } else {
+                    val nameIdx = mutableAnimals.indexOfFirst { it.name.equals(rAnimal.name, ignoreCase = true) }
+                    if (nameIdx >= 0) {
+                        mutableAnimals[nameIdx] = rAnimal
+                    } else {
+                        mutableAnimals.add(rAnimal)
+                    }
+                }
+            }
+        }
+        mutableAnimals.removeAll { deletedSet.contains(it.id) || deletedSet.contains(it.name.lowercase()) }
+        if (selectedAnimal != null) {
+            val curr = mutableAnimals.find { it.id == selectedAnimal?.id || it.name.equals(selectedAnimal?.name, ignoreCase = true) }
+            if (curr != null) {
+                selectedAnimal = curr
             }
         }
     }
@@ -989,6 +1042,20 @@ fun FlocksScreen(
         }
         if (selectedAnimal?.id == animal.id) {
             selectedAnimal = updated
+        }
+        if (animal.id.startsWith("unit_")) {
+            val uId = animal.id.removePrefix("unit_").toLongOrNull()
+            if (uId != null) {
+                val matching = units.find { it.id == uId }
+                if (matching != null) {
+                    onUpdateUnit(matching.copy(healthStatus = "DISPOSED ($reason)"))
+                }
+            }
+        } else {
+            val matching = units.find { it.name.equals(animal.name, ignoreCase = true) }
+            if (matching != null) {
+                onUpdateUnit(matching.copy(healthStatus = "DISPOSED ($reason)"))
+            }
         }
         if (reason.equals("Sold", ignoreCase = true) && amount > 0) {
             onAddFinanceRecord(

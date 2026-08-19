@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,19 +15,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PostAdd
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -46,9 +56,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.EmployeeRequest
+import com.example.data.FarmTask
 import com.example.data.RequestStatus
+import com.example.data.TaskCategory
+import com.example.data.TaskPriority
+import com.example.ui.TaskStatusFilter
+import com.example.ui.components.TaskCard
 import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.theme.LineColor
+import com.example.ui.theme.Sage
+import com.example.ui.theme.Soil
+import com.example.ui.theme.SoilSoft
 import com.example.ui.theme.TagFinanceBg
 import com.example.ui.theme.TagFinanceText
 import com.example.ui.theme.TagHRBg
@@ -57,33 +76,50 @@ import com.example.ui.theme.TagLivestockBg
 import com.example.ui.theme.TagLivestockText
 import com.example.ui.theme.TagYieldBg
 import com.example.ui.theme.TagYieldText
+import com.example.ui.theme.Terracotta
 
 @Composable
 fun ApprovalRequestsScreen(
+    tasks: List<FarmTask> = emptyList(),
     requests: List<EmployeeRequest>,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
+    selectedCategory: TaskCategory? = null,
+    onCategorySelected: (TaskCategory?) -> Unit = {},
+    selectedStatus: TaskStatusFilter = TaskStatusFilter.ALL,
+    onStatusSelected: (TaskStatusFilter) -> Unit = {},
+    onCompleteTaskClick: (FarmTask) -> Unit = {},
+    onReopenTaskClick: (FarmTask) -> Unit = {},
+    onViewProofClick: (FarmTask) -> Unit = {},
+    onDeleteTaskClick: (FarmTask) -> Unit = {},
+    onAddTaskClick: () -> Unit = {},
     onUpdateRequestStatus: (EmployeeRequest, String) -> Unit,
     currency: String,
     modifier: Modifier = Modifier,
     userRole: String = "OWNER",
     onAddRequestClick: (() -> Unit)? = null
 ) {
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var primarySectionIndex by remember { mutableIntStateOf(0) } // 0: Daily Tasks, 1: Requests & Approvals
+    var selectedRequestTabIndex by remember { mutableIntStateOf(0) }
     val isOwner = userRole.equals("OWNER", ignoreCase = true)
 
-    val tabs = if (isOwner) {
-        listOf("PENDING (${requests.count { it.status == RequestStatus.PENDING }})", "APPROVED", "REJECTED")
+    val pendingTasksCount = remember(tasks) { tasks.count { !it.isCompleted } }
+    val pendingRequestsCount = remember(requests) { requests.count { it.status == RequestStatus.PENDING } }
+
+    val requestTabs = if (isOwner) {
+        listOf("PENDING ($pendingRequestsCount)", "APPROVED", "REJECTED")
     } else {
         listOf("ALL (${requests.size})", "PENDING", "APPROVED", "REJECTED")
     }
 
     val filteredRequests = if (isOwner) {
-        when (selectedTabIndex) {
+        when (selectedRequestTabIndex) {
             0 -> requests.filter { it.status == RequestStatus.PENDING }
             1 -> requests.filter { it.status == RequestStatus.APPROVED }
             else -> requests.filter { it.status == RequestStatus.REJECTED }
         }
     } else {
-        when (selectedTabIndex) {
+        when (selectedRequestTabIndex) {
             0 -> requests
             1 -> requests.filter { it.status == RequestStatus.PENDING }
             2 -> requests.filter { it.status == RequestStatus.APPROVED }
@@ -92,119 +128,411 @@ fun ApprovalRequestsScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // Top Main Segment Bar (Daily Tasks vs Worker Requests)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color.White,
+            shadowElevation = 2.dp
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (isOwner) "Approval Requests" else "My Requests",
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1C1D1F)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (isOwner) "Review leave and advance requests from workers." else "Track your leave applications and advance requests.",
-                    fontSize = 13.sp,
-                    color = Color(0xFF5C6470)
-                )
-            }
-
-            if (onAddRequestClick != null) {
-                Button(
-                    onClick = onAddRequestClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.testTag("btn_submit_request_top")
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.PostAdd, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isOwner) "Add Request" else "Apply Leave/Advance", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        TabRow(
-            selectedTabIndex = selectedTabIndex,
-            containerColor = Color.Transparent,
-            contentColor = ForestGreenPrimary,
-            indicator = { tabPositions ->
-                if (selectedTabIndex < tabPositions.size) {
-                    TabRowDefaults.SecondaryIndicator(
-                        Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                        color = ForestGreenPrimary,
-                        height = 3.dp
-                    )
-                }
-            },
-            modifier = Modifier.padding(horizontal = 8.dp)
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTabIndex == index,
-                    onClick = { selectedTabIndex = index },
-                    text = {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = title,
-                            fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium,
+                            text = if (primarySectionIndex == 0) "Farm Tasks & Operations" else if (isOwner) "Worker Requests" else "My Requests",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Soil
+                        )
+                        Text(
+                            text = if (primarySectionIndex == 0) "Assign, track and complete daily farm routines." else "Review employee leave and advance requests.",
                             fontSize = 12.sp,
-                            color = if (selectedTabIndex == index) ForestGreenPrimary else Color(0xFF5C6470)
+                            color = SoilSoft
                         )
                     }
-                )
-            }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (filteredRequests.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = if (isOwner) "No requests in this category." else "No requests submitted yet.",
-                        color = Color.Gray,
-                        fontSize = 14.sp
-                    )
-                    if (onAddRequestClick != null && !isOwner) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                    if (primarySectionIndex == 0) {
+                        Button(
+                            onClick = onAddTaskClick,
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("btn_add_task_header")
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("New Task", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else if (onAddRequestClick != null) {
                         Button(
                             onClick = onAddRequestClick,
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("btn_submit_request_top")
                         ) {
-                            Text("Submit Leave or Advance Request")
+                            Icon(Icons.Filled.PostAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isOwner) "Add Request" else "Apply", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
+
+                // Primary Segment Selector
+                TabRow(
+                    selectedTabIndex = primarySectionIndex,
+                    containerColor = Color.White,
+                    contentColor = ForestGreenPrimary,
+                    indicator = { tabPositions ->
+                        if (primarySectionIndex < tabPositions.size) {
+                            TabRowDefaults.SecondaryIndicator(
+                                Modifier.tabIndicatorOffset(tabPositions[primarySectionIndex]),
+                                color = ForestGreenPrimary,
+                                height = 3.dp
+                            )
+                        }
+                    }
+                ) {
+                    Tab(
+                        selected = primarySectionIndex == 0,
+                        onClick = { primarySectionIndex = 0 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Assignment, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Daily Tasks ($pendingTasksCount)", fontWeight = if (primarySectionIndex == 0) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp)
+                            }
+                        },
+                        modifier = Modifier.testTag("segment_tab_daily_tasks")
+                    )
+                    Tab(
+                        selected = primarySectionIndex == 1,
+                        onClick = { primarySectionIndex = 1 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.FactCheck, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Requests ($pendingRequestsCount)", fontWeight = if (primarySectionIndex == 1) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp)
+                            }
+                        },
+                        modifier = Modifier.testTag("segment_tab_requests")
+                    )
+                }
             }
-        } else {
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (primarySectionIndex == 0) {
+            // ================= DAILY TASKS SECTION =================
+            val displayedTasks = tasks.filter { task ->
+                val matchesStatus = when (selectedStatus) {
+                    TaskStatusFilter.PENDING -> !task.isCompleted
+                    TaskStatusFilter.COMPLETED -> task.isCompleted
+                    TaskStatusFilter.HIGH_PRIORITY -> !task.isCompleted && task.priority == TaskPriority.HIGH
+                    TaskStatusFilter.ALL -> true
+                    else -> true
+                }
+                val matchesCategory = selectedCategory == null || task.category == selectedCategory
+                val matchesSearch = searchQuery.isBlank() ||
+                        task.title.contains(searchQuery, ignoreCase = true) ||
+                        task.targetUnit.contains(searchQuery, ignoreCase = true) ||
+                        (task.assignedWorker?.contains(searchQuery, ignoreCase = true) == true)
+                matchesStatus && matchesCategory && matchesSearch
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(filteredRequests, key = { it.id }) { req ->
-                    ApprovalRequestCard(
-                        request = req,
-                        currency = currency,
-                        isOwner = isOwner,
-                        onApprove = { onUpdateRequestStatus(req, "APPROVED") },
-                        onReject = { onUpdateRequestStatus(req, "REJECTED") }
+                // Search Field
+                item {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("tasks_search_input"),
+                        placeholder = { Text("Search task name, unit, or worker...", fontSize = 13.sp, color = SoilSoft) },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = SoilSoft, modifier = Modifier.size(18.dp)) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchQueryChange("") }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Clear", tint = SoilSoft, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = ForestGreenPrimary,
+                            unfocusedBorderColor = LineColor
+                        )
                     )
                 }
 
+                // Status Filter Chips: Pending, All, Completed, High Priority
                 item {
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val pendingActive = selectedStatus == TaskStatusFilter.PENDING
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (pendingActive) ForestGreenPrimary else Color.White,
+                            border = BorderStroke(1.dp, if (pendingActive) ForestGreenPrimary else LineColor),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onStatusSelected(TaskStatusFilter.PENDING) }
+                                .testTag("filter_status_pending")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⏳ Pending (${tasks.count { !it.isCompleted }})",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (pendingActive) Color.White else Soil
+                                )
+                            }
+                        }
+
+                        val allActive = selectedStatus == TaskStatusFilter.ALL
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (allActive) ForestGreenPrimary else Color.White,
+                            border = BorderStroke(1.dp, if (allActive) ForestGreenPrimary else LineColor),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onStatusSelected(TaskStatusFilter.ALL) }
+                                .testTag("filter_status_all")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "📋 All (${tasks.size})",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (allActive) Color.White else Soil
+                                )
+                            }
+                        }
+
+                        val completedActive = selectedStatus == TaskStatusFilter.COMPLETED
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (completedActive) ForestGreenPrimary else Color.White,
+                            border = BorderStroke(1.dp, if (completedActive) ForestGreenPrimary else LineColor),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onStatusSelected(TaskStatusFilter.COMPLETED) }
+                                .testTag("filter_status_completed")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "✅ Done (${tasks.count { it.isCompleted }})",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (completedActive) Color.White else Soil
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Category Chips Row
+                item {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (selectedCategory == null) Soil else Color.White,
+                                border = BorderStroke(1.dp, if (selectedCategory == null) Soil else LineColor),
+                                modifier = Modifier.clickable { onCategorySelected(null) }
+                            ) {
+                                Text(
+                                    text = "All Categories",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selectedCategory == null) Color.White else SoilSoft,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                        items(TaskCategory.values()) { category ->
+                            val isCatSel = selectedCategory == category
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isCatSel) Soil else Color.White,
+                                border = BorderStroke(1.dp, if (isCatSel) Soil else LineColor),
+                                modifier = Modifier.clickable { onCategorySelected(if (isCatSel) null else category) }
+                            ) {
+                                Text(
+                                    text = category.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCatSel) Color.White else SoilSoft,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Task List Items
+                if (displayedTasks.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, LineColor)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("🌾", fontSize = 36.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = when (selectedStatus) {
+                                        TaskStatusFilter.PENDING -> "No pending tasks 🎉"
+                                        TaskStatusFilter.COMPLETED -> "No completed tasks yet"
+                                        TaskStatusFilter.HIGH_PRIORITY -> "No high priority tasks"
+                                        TaskStatusFilter.ALL -> "No tasks registered"
+                                        else -> "No tasks found"
+                                    },
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Soil
+                                )
+                                Text(
+                                    text = "Tap '+ New Task' above to schedule farm operations.",
+                                    fontSize = 12.sp,
+                                    color = SoilSoft
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(displayedTasks, key = { it.id }) { task ->
+                        TaskCard(
+                            task = task,
+                            onCompleteClick = onCompleteTaskClick,
+                            onReopenClick = onReopenTaskClick,
+                            onViewProofClick = onViewProofClick,
+                            onDeleteClick = onDeleteTaskClick
+                        )
+                    }
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(28.dp))
+                }
+            }
+        } else {
+            // ================= WORKER REQUESTS & APPROVALS SECTION =================
+            TabRow(
+                selectedTabIndex = selectedRequestTabIndex,
+                containerColor = Color.Transparent,
+                contentColor = ForestGreenPrimary,
+                indicator = { tabPositions ->
+                    if (selectedRequestTabIndex < tabPositions.size) {
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedRequestTabIndex]),
+                            color = ForestGreenPrimary,
+                            height = 3.dp
+                        )
+                    }
+                },
+                modifier = Modifier.padding(horizontal = 8.dp)
+            ) {
+                requestTabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedRequestTabIndex == index,
+                        onClick = { selectedRequestTabIndex = index },
+                        text = {
+                            Text(
+                                text = title,
+                                fontWeight = if (selectedRequestTabIndex == index) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp,
+                                color = if (selectedRequestTabIndex == index) ForestGreenPrimary else Color(0xFF5C6470)
+                            )
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (filteredRequests.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = if (isOwner) "No requests in this category." else "No requests submitted yet.",
+                            color = Color.Gray,
+                            fontSize = 14.sp
+                        )
+                        if (onAddRequestClick != null && !isOwner) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = onAddRequestClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Submit Leave or Advance Request")
+                            }
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(filteredRequests, key = { it.id }) { req ->
+                        ApprovalRequestCard(
+                            request = req,
+                            currency = currency,
+                            isOwner = isOwner,
+                            onApprove = { onUpdateRequestStatus(req, "APPROVED") },
+                            onReject = { onUpdateRequestStatus(req, "REJECTED") }
+                        )
+                    }
+
+                    item {
+                        Spacer(modifier = Modifier.height(28.dp))
+                    }
                 }
             }
         }
@@ -234,7 +562,7 @@ fun ApprovalRequestCard(
             .testTag("approval_request_card_${request.id}"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
@@ -348,7 +676,7 @@ fun ApprovalRequestCard(
                                 .weight(1f)
                                 .height(44.dp),
                             shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155))
+                            border = BorderStroke(1.dp, Color(0xFF334155))
                         ) {
                             Text("REJECT", fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), fontSize = 13.sp)
                         }
@@ -423,4 +751,5 @@ fun ApprovalRequestCard(
         }
     }
 }
+
 

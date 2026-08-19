@@ -60,5 +60,12 @@ val FarmGreenDarkPrimary = Color(0xFFFBBF24) // Bright Golden Amber for Dark mod
 val FarmGreenDarkSurface = Color(0xFF1C1917)
 val FarmGreenDarkContainer = Color(0xFF292524)
 
+// Standard UI & Earthy Palette
+val LineColor = Color(0xFFE2E8F0)
+val Sage = Color(0xFFE2E8F0)
+val Soil = Color(0xFF1E293B)
+val SoilSoft = Color(0xFF64748B)
+val Terracotta = Color(0xFFC2410C)
+
 
 

@@ -161,6 +161,14 @@ class AuthManager(
             putString("backup_owner_${farmId}_name", cleanName)
             putString("backup_owner_${farmId}_farm", cleanFarmName)
             putString("last_registered_owner", primaryContact)
+            // Long-term account store
+            putString("acc_owner_${primaryContact.lowercase()}_id", userId)
+            putString("acc_owner_${primaryContact.lowercase()}_farm_id", farmId)
+            putString("acc_owner_${primaryContact.lowercase()}_name", cleanName)
+            putString("acc_owner_${primaryContact.lowercase()}_farm_name", cleanFarmName)
+            putString("acc_owner_${primaryContact.lowercase()}_pass", password)
+            putString("acc_owner_${primaryContact.lowercase()}_phone", cleanPhone)
+            putString("acc_owner_${primaryContact.lowercase()}_country_code", countryCode)
             apply()
         }
 
@@ -198,7 +206,33 @@ class AuthManager(
         }
 
         // 1. Check if it's a Worker account
-        val worker = repository.getWorkerByLoginIdentifier(cleanIdentifier)
+        var worker = repository.getWorkerByLoginIdentifier(cleanIdentifier)
+        if (worker == null) {
+            val wId = prefs.getString("acc_worker_${cleanIdentifier.lowercase()}_id", null)
+            if (wId != null) {
+                val recoveredWorker = WorkerAccount(
+                    workerId = wId,
+                    farmId = prefs.getString("acc_worker_${cleanIdentifier.lowercase()}_farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT",
+                    name = prefs.getString("acc_worker_${cleanIdentifier.lowercase()}_name", "Farm Worker") ?: "Farm Worker",
+                    emailOrPhone = cleanIdentifier,
+                    password = prefs.getString("acc_worker_${cleanIdentifier.lowercase()}_pass", "pass1234") ?: "pass1234",
+                    role = "WORKER",
+                    isRevoked = false,
+                    canViewLivestock = true,
+                    canEditLivestock = true,
+                    canViewLogs = true,
+                    canEditLogs = true,
+                    canViewFinance = false,
+                    canEditFinance = false,
+                    canViewTasks = true,
+                    canCompleteTasks = true,
+                    canViewRequests = true
+                )
+                repository.insertWorker(recoveredWorker)
+                worker = recoveredWorker
+            }
+        }
+
         if (worker != null) {
             if (worker.password != password && password != "password123" && password != "admin") {
                 return@withContext AuthResult.Error("Incorrect password for worker account.")
@@ -224,7 +258,27 @@ class AuthManager(
         }
 
         // 2. Check if it's a registered Owner
-        val ownerFarm = repository.getFarmAccountByOwner(cleanIdentifier)
+        var ownerFarm = repository.getFarmAccountByOwner(cleanIdentifier)
+        if (ownerFarm == null) {
+            val ownerId = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_id", null)
+            if (ownerId != null) {
+                val farmId = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_farm_id", "FARM-001") ?: "FARM-001"
+                val recoveredFarm = FarmAccount(
+                    farmId = farmId,
+                    farmName = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_farm_name", "My Farm") ?: "My Farm",
+                    ownerId = ownerId,
+                    ownerName = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_name", "Farm Owner") ?: "Farm Owner",
+                    ownerEmailOrPhone = cleanIdentifier,
+                    password = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_pass", password) ?: password,
+                    countryCode = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_country_code", "+254") ?: "+254",
+                    phoneNumber = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_phone", "") ?: ""
+                )
+                repository.insertFarmAccount(recoveredFarm)
+                repository.seedNewFarmStarterData(farmId, recoveredFarm.farmName)
+                ownerFarm = recoveredFarm
+            }
+        }
+
         if (ownerFarm != null) {
             if (ownerFarm.password.isNotBlank() && ownerFarm.password != password && password != "password123" && password != "admin") {
                 return@withContext AuthResult.Error("Incorrect password. Please verify your credentials or tap 'Forgot Password'.")
@@ -335,7 +389,25 @@ class AuthManager(
     }
 
     fun logout() {
-        prefs.edit().clear().apply()
+        // Clear active session keys only, preserving saved account credentials across uninstalls/re-logins
+        prefs.edit().apply {
+            remove("user_id")
+            remove("user_name")
+            remove("email_or_phone")
+            remove("user_role")
+            remove("farm_id")
+            remove("farm_name")
+            remove("can_view_livestock")
+            remove("can_edit_livestock")
+            remove("can_view_logs")
+            remove("can_edit_logs")
+            remove("can_view_finance")
+            remove("can_edit_finance")
+            remove("can_view_tasks")
+            remove("can_complete_tasks")
+            remove("can_view_requests")
+            apply()
+        }
         _currentSession.value = null
         try {
             firebaseAuth?.signOut()
@@ -353,13 +425,16 @@ class AuthManager(
         val current = _currentSession.value
         val farmId = current?.farmId ?: "FARM-DEFAULT"
         val workerId = "WRK-${(1000..9999).random()}"
+        val cleanEmail = emailOrPhone.ifBlank { "worker_$workerId@mkulima.farm" }
+        val cleanPass = password.ifBlank { "pass1234" }
+        val cleanName = name.ifBlank { "Farm Worker" }
 
         val worker = WorkerAccount(
             workerId = workerId,
             farmId = farmId,
-            name = name.ifBlank { "Farm Worker" },
-            emailOrPhone = emailOrPhone.ifBlank { "worker_$workerId@mkulima.farm" },
-            password = password.ifBlank { "pass1234" },
+            name = cleanName,
+            emailOrPhone = cleanEmail,
+            password = cleanPass,
             role = "WORKER",
             isRevoked = false,
             canViewLivestock = permissions.canViewLivestock,
@@ -373,6 +448,16 @@ class AuthManager(
             canViewRequests = permissions.canViewRequests
         )
         repository.insertWorker(worker)
+
+        // Long-term worker account backup
+        prefs.edit().apply {
+            putString("acc_worker_${cleanEmail.lowercase()}_id", workerId)
+            putString("acc_worker_${cleanEmail.lowercase()}_farm_id", farmId)
+            putString("acc_worker_${cleanEmail.lowercase()}_name", cleanName)
+            putString("acc_worker_${cleanEmail.lowercase()}_pass", cleanPass)
+            apply()
+        }
+
         worker
     }
 

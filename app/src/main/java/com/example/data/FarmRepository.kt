@@ -72,8 +72,12 @@ class FarmRepository(private val farmDao: FarmDao) {
 
     // Farm operations
     suspend fun insertFarmAccount(farm: FarmAccount) = farmDao.insertFarmAccount(farm)
+    suspend fun updateFarmAccount(farm: FarmAccount) = farmDao.updateFarmAccount(farm)
     suspend fun getFarmAccount(farmId: String): FarmAccount? = farmDao.getFarmAccount(farmId)
     suspend fun getFarmAccountByOwner(emailOrPhone: String): FarmAccount? = farmDao.getFarmAccountByOwner(emailOrPhone)
+    suspend fun getAllFarmAccounts(): List<FarmAccount> = farmDao.getAllFarmAccounts()
+    suspend fun updateOwnerPassword(emailOrPhone: String, newPass: String) = farmDao.updateOwnerPassword(emailOrPhone, newPass)
+    suspend fun updateWorkerPassword(emailOrPhone: String, newPass: String) = farmDao.updateWorkerPassword(emailOrPhone, newPass)
 
     suspend fun seedNewFarmStarterData(farmId: String, farmName: String) {
         val initialUnits = listOf(

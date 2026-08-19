@@ -1651,19 +1651,21 @@ fun FlocksScreen(
                 }
             }
 
-            FloatingActionButton(
-                onClick = onAddUnitClick,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(20.dp)
-                    .testTag("add_animal_fab"),
-                containerColor = ForestGreenPrimary,
-                contentColor = Color.White
-            ) {
-                Row(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Icon(Icons.Filled.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("ADD ANIMAL", fontWeight = FontWeight.Bold)
+            if (userRole == "OWNER") {
+                FloatingActionButton(
+                    onClick = onAddUnitClick,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(20.dp)
+                        .testTag("add_animal_fab"),
+                    containerColor = ForestGreenPrimary,
+                    contentColor = Color.White
+                ) {
+                    Row(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("ADD ANIMAL", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

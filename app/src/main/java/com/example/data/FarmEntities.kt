@@ -70,6 +70,9 @@ data class FarmAccount(
     val ownerId: String,                     // Owner UID / identifier
     val ownerName: String,                   // Owner Full Name
     val ownerEmailOrPhone: String,           // Owner contact
+    val password: String = "password123",    // Owner password
+    val countryCode: String = "+254",        // Country code (e.g. +254)
+    val phoneNumber: String = "",            // Phone number
     val createdAt: Long = System.currentTimeMillis()
 )
 

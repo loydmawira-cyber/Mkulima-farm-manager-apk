@@ -1,7 +1,10 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,20 +28,27 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Agriculture
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,8 +82,34 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
+
+data class CountryCodeItem(
+    val countryName: String,
+    val dialCode: String,
+    val flagEmoji: String,
+    val samplePlaceholder: String
+)
+
+val DEFAULT_COUNTRY_CODES = listOf(
+    CountryCodeItem("Kenya", "+254", "🇰🇪", "712 345 678"),
+    CountryCodeItem("Tanzania", "+255", "🇹🇿", "712 345 678"),
+    CountryCodeItem("Uganda", "+256", "🇺🇬", "772 345 678"),
+    CountryCodeItem("Rwanda", "+250", "🇷🇼", "788 123 456"),
+    CountryCodeItem("Nigeria", "+234", "🇳🇬", "802 345 6789"),
+    CountryCodeItem("South Africa", "+27", "🇿🇦", "71 234 5678"),
+    CountryCodeItem("Ghana", "+233", "🇬🇭", "24 123 4567"),
+    CountryCodeItem("Ethiopia", "+251", "🇪🇹", "91 123 4567"),
+    CountryCodeItem("South Sudan", "+211", "🇸🇸", "92 123 4567"),
+    CountryCodeItem("Somalia", "+252", "🇸🇴", "61 123 4567"),
+    CountryCodeItem("United States", "+1", "🇺🇸", "415 555 2671"),
+    CountryCodeItem("United Kingdom", "+44", "🇬🇧", "7911 123456"),
+    CountryCodeItem("India", "+91", "🇮🇳", "98765 43210"),
+    CountryCodeItem("Australia", "+61", "🇦🇺", "412 345 678"),
+    CountryCodeItem("Canada", "+1", "🇨🇦", "416 555 0192")
+)
 
 enum class AuthMode {
     LOGIN,
@@ -79,12 +117,32 @@ enum class AuthMode {
     FORGOT_PASSWORD
 }
 
+@Composable
+fun getAuthFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color(0xFF0F172A),
+    unfocusedTextColor = Color(0xFF1E293B),
+    focusedLabelColor = ForestGreenPrimary,
+    unfocusedLabelColor = Color(0xFF475569),
+    focusedBorderColor = ForestGreenPrimary,
+    unfocusedBorderColor = Color(0xFF94A3B8),
+    cursorColor = ForestGreenPrimary,
+    focusedPlaceholderColor = Color(0xFF64748B),
+    unfocusedPlaceholderColor = Color(0xFF94A3B8),
+    focusedLeadingIconColor = ForestGreenPrimary,
+    unfocusedLeadingIconColor = Color(0xFF64748B),
+    focusedTrailingIconColor = ForestGreenPrimary,
+    unfocusedTrailingIconColor = Color(0xFF64748B),
+    focusedContainerColor = Color(0xFFF8FAFC),
+    unfocusedContainerColor = Color(0xFFF8FAFC)
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthScreen(
     onLogin: (emailOrPhone: String, pass: String, onError: (String) -> Unit) -> Unit,
-    onSignUp: (name: String, emailOrPhone: String, pass: String, farmName: String, onError: (String) -> Unit) -> Unit,
+    onSignUp: (name: String, emailOrPhone: String, pass: String, farmName: String, countryCode: String, phoneNumber: String, onError: (String) -> Unit) -> Unit,
     onForgotPassword: (emailOrPhone: String, onComplete: (String) -> Unit) -> Unit,
+    onCompletePasswordReset: (emailOrPhone: String, newPass: String, onResult: (Boolean) -> Unit) -> Unit = { _, _, cb -> cb(true) },
     previewFarmId: String = "FARM-82K9"
 ) {
     var mode by remember { mutableStateOf(AuthMode.LOGIN) }
@@ -92,6 +150,10 @@ fun AuthScreen(
 
     var name by remember { mutableStateOf("") }
     var emailOrPhone by remember { mutableStateOf("") }
+    var rawPhoneNumber by remember { mutableStateOf("") }
+    var selectedCountry by remember { mutableStateOf(DEFAULT_COUNTRY_CODES[0]) }
+    var showCountryPicker by remember { mutableStateOf(false) }
+
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var farmName by remember { mutableStateOf("") }
@@ -100,6 +162,12 @@ fun AuthScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
+
+    // Password reset step state
+    var resetStep by remember { mutableIntStateOf(1) } // 1: enter identifier, 2: enter OTP and new pass
+    var resetOtpCode by remember { mutableStateOf("") }
+    var newResetPassword by remember { mutableStateOf("") }
+    var confirmResetPassword by remember { mutableStateOf("") }
 
     val gradient = Brush.verticalGradient(
         colors = listOf(
@@ -111,6 +179,17 @@ fun AuthScreen(
         endY = 1200f
     )
 
+    if (showCountryPicker) {
+        CountryCodePickerDialog(
+            selectedCountry = selectedCountry,
+            onSelectCountry = { country ->
+                selectedCountry = country
+                showCountryPicker = false
+            },
+            onDismiss = { showCountryPicker = false }
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -120,10 +199,10 @@ fun AuthScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
             // Branding Header
             Surface(
@@ -142,7 +221,7 @@ fun AuthScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text(
                 text = "Mkulima Farm Manager",
@@ -155,10 +234,10 @@ fun AuthScreen(
             Text(
                 text = "Livestock, Yields & Workforce Management",
                 fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.85f)
+                color = Color.White.copy(alpha = 0.9f)
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Main Auth Card
             Card(
@@ -172,24 +251,27 @@ fun AuthScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (mode == AuthMode.FORGOT_PASSWORD) {
-                        // Forgot Password Subview
+                        // ==========================================
+                        // FORGOT PASSWORD / PASSWORD RESET FLOW
+                        // ==========================================
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(onClick = {
                                 mode = AuthMode.LOGIN
+                                resetStep = 1
                                 errorMessage = null
                                 successMessage = null
                             }) {
                                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Login", tint = ForestGreenPrimary)
                             }
                             Text(
-                                text = "Reset Password",
+                                text = if (resetStep == 1) "Reset Password" else "Create New Password",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)
@@ -198,68 +280,191 @@ fun AuthScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Text(
-                            text = "Enter your registered email address or phone number to receive verification and reset instructions.",
-                            fontSize = 13.sp,
-                            color = Color(0xFF64748B),
-                            lineHeight = 18.sp
-                        )
+                        if (resetStep == 1) {
+                            Text(
+                                text = "Enter your registered email address or phone number to receive your instant verification code.",
+                                fontSize = 13.sp,
+                                color = Color(0xFF475569),
+                                lineHeight = 18.sp
+                            )
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
-                        OutlinedTextField(
-                            value = emailOrPhone,
-                            onValueChange = {
-                                emailOrPhone = it
-                                errorMessage = null
-                            },
-                            label = { Text("Email or Phone Number") },
-                            leadingIcon = {
-                                Icon(
-                                    if (emailOrPhone.contains("@")) Icons.Filled.Email else Icons.Filled.Phone,
-                                    contentDescription = null,
-                                    tint = ForestGreenPrimary
-                                )
-                            },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("forgot_pass_input"),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                            OutlinedTextField(
+                                value = emailOrPhone,
+                                onValueChange = {
+                                    emailOrPhone = it
+                                    errorMessage = null
+                                },
+                                label = { Text("Registered Email or Phone Number") },
+                                placeholder = { Text("e.g. +254712345678 or owner@mkulima.farm") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (emailOrPhone.contains("@")) Icons.Filled.Email else Icons.Filled.Phone,
+                                        contentDescription = null
+                                    )
+                                },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("forgot_pass_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors()
+                            )
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(20.dp))
 
-                        Button(
-                            onClick = {
-                                if (emailOrPhone.isBlank()) {
-                                    errorMessage = "Please provide your email or phone number."
-                                    return@Button
+                            Button(
+                                onClick = {
+                                    if (emailOrPhone.isBlank()) {
+                                        errorMessage = "Please enter your email or phone number."
+                                        return@Button
+                                    }
+                                    isLoading = true
+                                    errorMessage = null
+                                    onForgotPassword(emailOrPhone) { msg ->
+                                        isLoading = false
+                                        successMessage = msg
+                                        resetStep = 2
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("send_reset_btn"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                enabled = !isLoading
+                            ) {
+                                if (isLoading) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Text("Send Verification Code", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
                                 }
-                                isLoading = true
-                                errorMessage = null
-                                onForgotPassword(emailOrPhone) { msg ->
-                                    isLoading = false
-                                    successMessage = msg
+                            }
+                        } else {
+                            // Step 2: Enter Verification Code & New Password
+                            Text(
+                                text = "Enter the verification code dispatched to $emailOrPhone and set your new password.",
+                                fontSize = 13.sp,
+                                color = Color(0xFF475569),
+                                lineHeight = 18.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            OutlinedTextField(
+                                value = resetOtpCode,
+                                onValueChange = {
+                                    resetOtpCode = it
+                                    errorMessage = null
+                                },
+                                label = { Text("6-Digit Verification Code") },
+                                placeholder = { Text("e.g. 123456") },
+                                leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("reset_otp_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors()
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            OutlinedTextField(
+                                value = newResetPassword,
+                                onValueChange = {
+                                    newResetPassword = it
+                                    errorMessage = null
+                                },
+                                label = { Text("New Password") },
+                                leadingIcon = { Icon(Icons.Filled.LockReset, contentDescription = null) },
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                        Icon(
+                                            if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                            contentDescription = "Toggle visibility"
+                                        )
+                                    }
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("new_password_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors()
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            OutlinedTextField(
+                                value = confirmResetPassword,
+                                onValueChange = {
+                                    confirmResetPassword = it
+                                    errorMessage = null
+                                },
+                                label = { Text("Confirm New Password") },
+                                leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null) },
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("confirm_new_password_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors()
+                            )
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            Button(
+                                onClick = {
+                                    if (newResetPassword.length < 6) {
+                                        errorMessage = "Password must be at least 6 characters."
+                                        return@Button
+                                    }
+                                    if (newResetPassword != confirmResetPassword) {
+                                        errorMessage = "Passwords do not match."
+                                        return@Button
+                                    }
+                                    isLoading = true
+                                    errorMessage = null
+                                    onCompletePasswordReset(emailOrPhone, newResetPassword) { success ->
+                                        isLoading = false
+                                        if (success) {
+                                            successMessage = "Password successfully reset! You can now sign in."
+                                            mode = AuthMode.LOGIN
+                                            resetStep = 1
+                                            password = newResetPassword
+                                        } else {
+                                            errorMessage = "Failed to update password. Please verify your contact identifier."
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("btn_save_new_pass"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                enabled = !isLoading
+                            ) {
+                                if (isLoading) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Text("Save New Password & Sign In", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
                                 }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .testTag("send_reset_btn"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                            enabled = !isLoading
-                        ) {
-                            if (isLoading) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Text("Send Reset Instructions", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             }
                         }
 
                     } else {
-                        // Login / Sign Up Tabs
+                        // ==========================================
+                        // LOGIN / SIGN UP TABS
+                        // ==========================================
                         TabRow(
                             selectedTabIndex = selectedTab,
                             containerColor = Color(0xFFF1F5F9),
@@ -313,7 +518,7 @@ fun AuthScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
 
                         if (selectedTab == 1) {
                             // SIGN UP (Farm Owner) Fields
@@ -322,12 +527,13 @@ fun AuthScreen(
                                 onValueChange = { name = it },
                                 label = { Text("Your Full Name") },
                                 placeholder = { Text("e.g. David Kimani") },
-                                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null, tint = ForestGreenPrimary) },
+                                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
                                 singleLine = true,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("signup_name_input"),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors()
                             )
 
                             Spacer(modifier = Modifier.height(12.dp))
@@ -337,15 +543,106 @@ fun AuthScreen(
                                 onValueChange = { farmName = it },
                                 label = { Text("Farm Enterprise Name") },
                                 placeholder = { Text("e.g. Green Pastures Farm") },
-                                leadingIcon = { Icon(Icons.Filled.Storefront, contentDescription = null, tint = ForestGreenPrimary) },
+                                leadingIcon = { Icon(Icons.Filled.Storefront, contentDescription = null) },
                                 singleLine = true,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("signup_farm_name_input"),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors()
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Phone Number with Country Code Selector
+                            Text(
+                                text = "Phone Number (with Country Code)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF334155),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 2.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Country Code Button
+                                Surface(
+                                    modifier = Modifier
+                                        .height(56.dp)
+                                        .clickable { showCountryPicker = true }
+                                        .testTag("country_code_selector"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF1F5F9),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF94A3B8))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${selectedCountry.flagEmoji} ${selectedCountry.dialCode}",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF0F172A)
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowDropDown,
+                                            contentDescription = "Select Country",
+                                            tint = Color(0xFF475569)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Phone number field
+                                OutlinedTextField(
+                                    value = rawPhoneNumber,
+                                    onValueChange = {
+                                        rawPhoneNumber = it
+                                        errorMessage = null
+                                    },
+                                    placeholder = { Text(selectedCountry.samplePlaceholder) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Phone,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("signup_phone_input"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = getAuthFieldColors()
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Optional Email input
+                            OutlinedTextField(
+                                value = emailOrPhone,
+                                onValueChange = {
+                                    emailOrPhone = it
+                                    errorMessage = null
+                                },
+                                label = { Text("Email Address (Optional)") },
+                                placeholder = { Text("owner@mkulima.farm") },
+                                leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Email,
+                                    imeAction = ImeAction.Next
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("signup_email_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors()
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             // Generated Farm ID Info Badge
                             Surface(
@@ -375,39 +672,40 @@ fun AuthScreen(
                                 }
                             }
 
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                        } else {
+                            // SIGN IN Fields (Owner or Worker)
+                            OutlinedTextField(
+                                value = emailOrPhone,
+                                onValueChange = {
+                                    emailOrPhone = it
+                                    errorMessage = null
+                                },
+                                label = { Text("Email, Phone (+Code) or Worker ID") },
+                                placeholder = { Text("e.g. +254712345678 or owner@mkulima.farm") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (emailOrPhone.contains("@")) Icons.Filled.Email else Icons.Filled.Phone,
+                                        contentDescription = null
+                                    )
+                                },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("auth_email_phone_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = if (emailOrPhone.contains("@")) KeyboardType.Email else KeyboardType.Phone,
+                                    imeAction = ImeAction.Next
+                                )
+                            )
+
                             Spacer(modifier = Modifier.height(12.dp))
                         }
 
-                        // EMAIL OR PHONE
-                        OutlinedTextField(
-                            value = emailOrPhone,
-                            onValueChange = {
-                                emailOrPhone = it
-                                errorMessage = null
-                            },
-                            label = { Text("Email or Phone Number") },
-                            placeholder = { Text(if (selectedTab == 0) "owner@mkulima.farm or worker login" else "e.g. owner@mkulima.farm") },
-                            leadingIcon = {
-                                Icon(
-                                    if (emailOrPhone.contains("@")) Icons.Filled.Email else Icons.Filled.Phone,
-                                    contentDescription = null,
-                                    tint = ForestGreenPrimary
-                                )
-                            },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("auth_email_phone_input"),
-                            shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = if (emailOrPhone.contains("@")) KeyboardType.Email else KeyboardType.Phone,
-                                imeAction = ImeAction.Next
-                            )
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // PASSWORD
+                        // PASSWORD FIELD
                         OutlinedTextField(
                             value = password,
                             onValueChange = {
@@ -415,7 +713,7 @@ fun AuthScreen(
                                 errorMessage = null
                             },
                             label = { Text("Password") },
-                            leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = ForestGreenPrimary) },
+                            leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null) },
                             trailingIcon = {
                                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                     Icon(
@@ -430,6 +728,7 @@ fun AuthScreen(
                                 .fillMaxWidth()
                                 .testTag("auth_password_input"),
                             shape = RoundedCornerShape(12.dp),
+                            colors = getAuthFieldColors(),
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Password,
                                 imeAction = if (selectedTab == 1) ImeAction.Next else ImeAction.Done
@@ -439,7 +738,7 @@ fun AuthScreen(
                         if (selectedTab == 1) {
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // CONFIRM PASSWORD
+                            // CONFIRM PASSWORD FIELD
                             OutlinedTextField(
                                 value = confirmPassword,
                                 onValueChange = {
@@ -447,13 +746,14 @@ fun AuthScreen(
                                     errorMessage = null
                                 },
                                 label = { Text("Confirm Password") },
-                                leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = ForestGreenPrimary) },
+                                leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null) },
                                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 singleLine = true,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("auth_confirm_password_input"),
                                 shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors(),
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Password,
                                     imeAction = ImeAction.Done
@@ -469,6 +769,7 @@ fun AuthScreen(
                                 TextButton(
                                     onClick = {
                                         mode = AuthMode.FORGOT_PASSWORD
+                                        resetStep = 1
                                         errorMessage = null
                                         successMessage = null
                                     },
@@ -488,7 +789,7 @@ fun AuthScreen(
                                 successMessage = null
                                 if (selectedTab == 0) {
                                     if (emailOrPhone.isBlank() || password.isBlank()) {
-                                        errorMessage = "Please enter both identifier and password."
+                                        errorMessage = "Please enter your identifier and password."
                                         return@Button
                                     }
                                     isLoading = true
@@ -501,8 +802,13 @@ fun AuthScreen(
                                         errorMessage = "Please enter your name."
                                         return@Button
                                     }
-                                    if (emailOrPhone.isBlank()) {
-                                        errorMessage = "Please enter an email or phone number."
+                                    val finalContact = if (rawPhoneNumber.isNotBlank()) {
+                                        "${selectedCountry.dialCode}${rawPhoneNumber.trim().removePrefix("0")}"
+                                    } else {
+                                        emailOrPhone.trim()
+                                    }
+                                    if (finalContact.isBlank()) {
+                                        errorMessage = "Please provide a phone number or email address."
                                         return@Button
                                     }
                                     if (password.length < 6) {
@@ -514,7 +820,14 @@ fun AuthScreen(
                                         return@Button
                                     }
                                     isLoading = true
-                                    onSignUp(name, emailOrPhone, password, farmName) { err ->
+                                    onSignUp(
+                                        name,
+                                        finalContact,
+                                        password,
+                                        farmName,
+                                        selectedCountry.dialCode,
+                                        rawPhoneNumber.trim()
+                                    ) { err ->
                                         isLoading = false
                                         errorMessage = err
                                     }
@@ -534,7 +847,8 @@ fun AuthScreen(
                                 Text(
                                     if (selectedTab == 0) "Sign In" else "Create Farm Account (Owner)",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
+                                    fontSize = 15.sp,
+                                    color = Color.White
                                 )
                             }
                         }
@@ -547,7 +861,8 @@ fun AuthScreen(
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFFEE2E2)
+                                color = Color(0xFFFEE2E2),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5))
                             ) {
                                 Text(
                                     text = msg,
@@ -567,7 +882,8 @@ fun AuthScreen(
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFDCFCE7)
+                                color = Color(0xFFDCFCE7),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC))
                             ) {
                                 Row(
                                     modifier = Modifier.padding(10.dp),
@@ -589,6 +905,118 @@ fun AuthScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun CountryCodePickerDialog(
+    selectedCountry: CountryCodeItem,
+    onSelectCountry: (CountryCodeItem) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredCountries = remember(searchQuery) {
+        if (searchQuery.isBlank()) {
+            DEFAULT_COUNTRY_CODES
+        } else {
+            DEFAULT_COUNTRY_CODES.filter {
+                it.countryName.contains(searchQuery, ignoreCase = true) ||
+                        it.dialCode.contains(searchQuery)
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(480.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            shadowElevation = 12.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Select Country Code",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = Color(0xFF0F172A)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color(0xFF64748B))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search country or dial code...") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = getAuthFieldColors()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(filteredCountries) { country ->
+                        val isSelected = country.dialCode == selectedCountry.dialCode && country.countryName == selectedCountry.countryName
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) Color(0xFFF0FDF4) else Color.Transparent)
+                                .clickable { onSelectCountry(country) }
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(text = country.flagEmoji, fontSize = 22.sp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = country.countryName,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF1E293B)
+                                    )
+                                    Text(
+                                        text = country.dialCode,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = "Selected",
+                                    tint = ForestGreenPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Divider(color = Color(0xFFF1F5F9))
+                    }
+                }
+            }
         }
     }
 }

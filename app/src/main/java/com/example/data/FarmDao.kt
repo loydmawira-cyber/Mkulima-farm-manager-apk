@@ -196,9 +196,21 @@ interface FarmDao {
     @Query("SELECT * FROM farm_accounts WHERE farmId = :farmId LIMIT 1")
     suspend fun getFarmAccount(farmId: String): FarmAccount?
 
-    @Query("SELECT * FROM farm_accounts WHERE ownerEmailOrPhone = :emailOrPhone LIMIT 1")
+    @Query("SELECT * FROM farm_accounts WHERE ownerEmailOrPhone = :emailOrPhone OR phoneNumber = :emailOrPhone LIMIT 1")
     suspend fun getFarmAccountByOwner(emailOrPhone: String): FarmAccount?
+
+    @Query("SELECT * FROM farm_accounts")
+    suspend fun getAllFarmAccounts(): List<FarmAccount>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFarmAccount(farm: FarmAccount)
+
+    @Update
+    suspend fun updateFarmAccount(farm: FarmAccount)
+
+    @Query("UPDATE farm_accounts SET password = :newPassword WHERE ownerEmailOrPhone = :emailOrPhone OR phoneNumber = :emailOrPhone")
+    suspend fun updateOwnerPassword(emailOrPhone: String, newPassword: String)
+
+    @Query("UPDATE worker_accounts SET password = :newPassword WHERE emailOrPhone = :emailOrPhone OR workerId = :emailOrPhone")
+    suspend fun updateWorkerPassword(emailOrPhone: String, newPassword: String)
 }

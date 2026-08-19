@@ -181,9 +181,18 @@ class FarmViewModel(
         }
     }
 
-    fun signUpOwner(name: String, emailOrPhone: String, pass: String, farmName: String, onError: (String) -> Unit, onSuccess: () -> Unit = {}) {
+    fun signUpOwner(
+        name: String,
+        emailOrPhone: String,
+        pass: String,
+        farmName: String,
+        countryCode: String = "+254",
+        phoneNumber: String = "",
+        onError: (String) -> Unit,
+        onSuccess: () -> Unit = {}
+    ) {
         viewModelScope.launch {
-            when (val result = authManager.signUpOwner(name, emailOrPhone, pass, farmName)) {
+            when (val result = authManager.signUpOwner(name, emailOrPhone, pass, farmName, countryCode, phoneNumber)) {
                 is AuthResult.Success -> onSuccess()
                 is AuthResult.Error -> onError(result.message)
             }
@@ -194,6 +203,13 @@ class FarmViewModel(
         viewModelScope.launch {
             val response = authManager.resetPassword(emailOrPhone)
             onComplete(response)
+        }
+    }
+
+    fun completePasswordReset(emailOrPhone: String, newPass: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val success = authManager.completePasswordReset(emailOrPhone, newPass)
+            onResult(success)
         }
     }
 

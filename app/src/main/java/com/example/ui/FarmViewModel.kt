@@ -1,4 +1,4 @@
-package com.example.ui
+9package com.example.ui
 
 import android.content.Context
 import android.net.Uri
@@ -294,7 +294,8 @@ class FarmViewModel(
             val unit = allUnits.value.find { it.id == unitId } ?: return@launch
             repository.updateUnit(unit.copy(headCount = newCount))
         }
-    } fun deleteUnit(id: Long) {
+    } 
+    fun deleteUnit(id: Long) {
         viewModelScope.launch {
             repository.deleteUnit(id)
         }

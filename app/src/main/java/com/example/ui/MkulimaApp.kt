@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.EmployeeRequest
 import com.example.data.FarmTask
+import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.RequestStatus
 import com.example.ui.components.AddEggLogDialog
@@ -153,6 +154,7 @@ fun MkulimaAppContent(
     var showAddMilkLogDialog by remember { mutableStateOf(false) }
     var showAddEggLogDialog by remember { mutableStateOf(false) }
     var showAddFinanceDialog by remember { mutableStateOf(false) }
+    var editingFinanceRecord by remember { mutableStateOf<FinanceRecord?>(null) }
     var showAddEmployeeRequestDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showWorkerManagementScreen by remember { mutableStateOf(false) }
@@ -484,6 +486,8 @@ fun MkulimaAppContent(
                     3 -> FinanceScreen(
                         records = financeRecords,
                         onAddTransactionClick = { showAddFinanceDialog = true },
+                        onEditTransaction = { editingFinanceRecord = it },
+                        onDeleteTransaction = { viewModel.deleteFinanceRecord(it) },
                         currency = farmSettings.currency
                     )
 
@@ -669,6 +673,19 @@ fun MkulimaAppContent(
             onSaveRecord = { type, category, amount, description ->
                 viewModel.addFinanceRecord(type, category, amount, description)
                 showAddFinanceDialog = false
+            }
+        )
+    }
+
+    // Edit Finance Record Dialog
+    if (editingFinanceRecord != null) {
+        AddFinanceRecordDialog(
+            existing = editingFinanceRecord,
+            onDismiss = { editingFinanceRecord = null },
+            onSaveRecord = { _, _, _, _ -> },
+            onUpdateRecord = { updated ->
+                viewModel.updateFinanceRecord(updated)
+                editingFinanceRecord = null
             }
         )
     }
@@ -1002,6 +1019,8 @@ fun MkulimaAppContent(
                     3 -> if (userRole == "OWNER") FinanceScreen(
                         records = financeRecords,
                         onAddTransactionClick = { showAddFinanceDialog = true },
+                        onEditTransaction = { editingFinanceRecord = it },
+                        onDeleteTransaction = { viewModel.deleteFinanceRecord(it) },
                         currency = farmSettings.currency
                     ) else { /* No-op for workers */ }
 

@@ -47,8 +47,8 @@ import com.example.ui.theme.ForestGreenPrimary
 fun FinanceScreen(
     records: List<FinanceRecord>,
     onAddTransactionClick: () -> Unit,
-    onEditTransaction: (FinanceRecord) -> Unit,
-    onDeleteTransaction: (FinanceRecord) -> Unit,
+    onEditTransaction: (FinanceRecord) -> Unit = {},
+    onDeleteTransaction: (FinanceRecord) -> Unit = {},
     currency: String = "KES",
     modifier: Modifier = Modifier
 ) {

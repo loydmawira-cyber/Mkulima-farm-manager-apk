@@ -119,21 +119,21 @@ enum class AuthMode {
 
 @Composable
 fun getAuthFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Color(0xFF0F172A),
-    unfocusedTextColor = Color(0xFF1E293B),
+    focusedTextColor = Color(0xFF000000),
+    unfocusedTextColor = Color(0xFF000000),
     focusedLabelColor = ForestGreenPrimary,
-    unfocusedLabelColor = Color(0xFF475569),
+    unfocusedLabelColor = Color(0xFF000000),
     focusedBorderColor = ForestGreenPrimary,
-    unfocusedBorderColor = Color(0xFF94A3B8),
-    cursorColor = ForestGreenPrimary,
-    focusedPlaceholderColor = Color(0xFF64748B),
-    unfocusedPlaceholderColor = Color(0xFF94A3B8),
+    unfocusedBorderColor = Color(0xFF334155),
+    cursorColor = Color(0xFF000000),
+    focusedPlaceholderColor = Color(0xFF475569),
+    unfocusedPlaceholderColor = Color(0xFF475569),
     focusedLeadingIconColor = ForestGreenPrimary,
-    unfocusedLeadingIconColor = Color(0xFF64748B),
+    unfocusedLeadingIconColor = Color(0xFF0F172A),
     focusedTrailingIconColor = ForestGreenPrimary,
-    unfocusedTrailingIconColor = Color(0xFF64748B),
-    focusedContainerColor = Color(0xFFF8FAFC),
-    unfocusedContainerColor = Color(0xFFF8FAFC)
+    unfocusedTrailingIconColor = Color(0xFF0F172A),
+    focusedContainerColor = Color.White,
+    unfocusedContainerColor = Color.White
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

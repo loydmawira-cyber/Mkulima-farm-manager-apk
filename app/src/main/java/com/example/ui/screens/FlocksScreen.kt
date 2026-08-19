@@ -1687,44 +1687,6 @@ fun AnimalDetailsView(
     modifier: Modifier = Modifier
 ) {
     val canEdit = userRole == "OWNER"
-    // ...
-    // And in the top bar:
-    // ...
-                    if (canEdit) {
-                        IconButton(
-                            onClick = onEditAnimal,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFECFDF5))
-                                .border(1.dp, ForestGreenPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                .testTag("edit_animal_topbar_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = "Edit Animal",
-                                tint = ForestGreenPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = onDeleteAnimal,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFFEF2F2))
-                                .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
-                                .testTag("delete_animal_topbar_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.DeleteForever,
-                                contentDescription = "Delete Animal",
-                                tint = Color(0xFFDC2626),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
 
     val unitId = animal.id.toLongOrNull() ?: 0L
     val dbEvents by viewModel.getCattleEventsFlow(unitId).collectAsStateWithLifecycle(initialValue = emptyList())

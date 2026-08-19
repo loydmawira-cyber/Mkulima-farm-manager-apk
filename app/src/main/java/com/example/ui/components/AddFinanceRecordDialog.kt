@@ -26,6 +26,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -57,13 +58,13 @@ fun AddFinanceRecordDialog(
     existing: FinanceRecord? = null
 ) {
     var selectedType by remember { mutableStateOf(existing?.type ?: FinanceType.INCOME) }
-    val incomeCategories = listOf("Milk Sale", "Egg Sale", "Crop Harvest Sale", "Cattle Sale", "Other Income")
-    val expenseCategories = listOf("Feeds & Supplies", "Vaccines & Vet", "Equipment & Repairs", "Other Expense")
+    val incomeCategories = listOf("Milk Sales", "Egg Sales", "Cattle Sales", "Crop Harvest Sales", "Other Income")
+    val expenseCategories = listOf("Feeds & Supplies", "Vaccines & Vet", "Equipment & Repairs", "Labor & Wages", "Other Expense")
     var categoryOptions by remember { mutableStateOf(if (selectedType == FinanceType.INCOME) incomeCategories else expenseCategories) }
 
     var expanded by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf(existing?.category ?: categoryOptions.first()) }
-    var amountText by remember { mutableStateOf(existing?.amount?.toString() ?: (existing?.amount?.toString() ?: "5000")) }
+    var amountText by remember { mutableStateOf(existing?.amount?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: "") }
     var descriptionText by remember { mutableStateOf(existing?.description ?: "") }
     var transactionDate by remember {
         mutableStateOf(existing?.date ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
@@ -154,20 +155,27 @@ fun AddFinanceRecordDialog(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 // Dropdown style category selector
-                Box {
+                Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedTextField(
                         value = selectedCategory,
                         onValueChange = {},
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { expanded = true },
+                        modifier = Modifier.fillMaxWidth(),
                         readOnly = true,
                         label = { Text("Category") },
-                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) }
+                        trailingIcon = {
+                            IconButton(onClick = { expanded = true }) {
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Category")
+                            }
+                        }
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { expanded = true }
                     )
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         (if (selectedType == FinanceType.INCOME) incomeCategories else expenseCategories).forEach { cat ->
-                            DropdownMenuItem(text = { Text(cat) }, onClick = {
+                            DropdownMenuItem(text = { Text(cat, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A)) }, onClick = {
                                 selectedCategory = cat
                                 expanded = false
                             })

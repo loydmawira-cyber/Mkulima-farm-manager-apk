@@ -289,7 +289,12 @@ class FarmViewModel(
         }
     }
 
-    fun deleteUnit(id: Long) {
+   fun updateUnitHeadCount(unitId: Long, newCount: Int) {
+        viewModelScope.launch {
+            val unit = allUnits.value.find { it.id == unitId } ?: return@launch
+            repository.updateUnit(unit.copy(headCount = newCount))
+        }
+    } fun deleteUnit(id: Long) {
         viewModelScope.launch {
             repository.deleteUnit(id)
         }

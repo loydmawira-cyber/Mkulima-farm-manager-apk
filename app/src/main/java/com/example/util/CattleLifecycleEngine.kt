@@ -329,9 +329,135 @@ object CattleLifecycleEngine {
                     calvingDateEst = calculateExpectedCalving(matchingAi.date)
                 }
             }
-        } else if (!isNegativePd && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
+        } else if (!isNegativePd && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
             isInCalf = true
             inCalfReason = "Breeding record marked In-Calf"
+        }
+
+        // 5. Explicit Manual Stage Overrides (When status is explicitly set in profile)
+        if (cleanStatus == "MILKING" || cleanStatus == "LACTATING") {
+            val lastAi = aiEvents.firstOrNull()
+            val breedingStatusMsg = if (cleanBreeding.isNotBlank() && cleanBreeding != "HEALTHY") animal.breedingStatus else if (lastAi != null) "SERVED AI (Pending PD)" else "OPEN (In Milk)"
+            return CattleStageEvaluation(
+                stage = CattleStage.MILKING,
+                stageKey = CattleStage.MILKING.key,
+                label = "Milking",
+                summaryReason = "Active lactation • Open/In Milk.",
+                breedingStatusText = breedingStatusMsg,
+                isInCalf = false,
+                isMilking = true,
+                badgeBgColor = Color(0xFFE0F2FE),
+                badgeTextColor = Color(0xFF0369A1),
+                lastEventSummary = calvingEvents.firstOrNull()?.title ?: "Active Daily Milking",
+                lastInseminationDate = aiEvents.firstOrNull()?.date
+            )
+        }
+
+        if (cleanStatus == "INCALF / MILKING" || cleanStatus == "INCALF_MILKING" || cleanStatus == "IN-CALF / MILKING" || (cleanStatus == "INCALF" && cleanBreeding.contains("MILKING"))) {
+            val dryOffEst = calculateExpectedDryOff(calvingDateEst)
+            return CattleStageEvaluation(
+                stage = CattleStage.INCALF_MILKING,
+                stageKey = CattleStage.INCALF_MILKING.key,
+                label = "In-Calf / Milking",
+                summaryReason = "Confirmed pregnant and actively milking.",
+                breedingStatusText = "IN-CALF & MILKING (Day $gestationEst of 283)",
+                isInCalf = true,
+                isMilking = true,
+                badgeBgColor = Color(0xFFDCFCE7),
+                badgeTextColor = Color(0xFF15803D),
+                gestationDays = gestationEst,
+                expectedCalvingDate = calvingDateEst,
+                expectedDryOffDate = dryOffEst,
+                lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
+                lastInseminationDate = aiEvents.firstOrNull()?.date
+            )
+        }
+
+        if (cleanStatus == "INCALF" || cleanStatus == "IN-CALF" || cleanStatus == "PREGNANT") {
+            val dryOffEst = calculateExpectedDryOff(calvingDateEst)
+            return CattleStageEvaluation(
+                stage = CattleStage.INCALF,
+                stageKey = CattleStage.INCALF.key,
+                label = "In-Calf",
+                summaryReason = "Confirmed pregnant • Resting / Pre-calving.",
+                breedingStatusText = "IN-CALF (Day $gestationEst of 283)",
+                isInCalf = true,
+                isMilking = false,
+                badgeBgColor = Color(0xFFFEF3C7),
+                badgeTextColor = Color(0xFFB45309),
+                gestationDays = gestationEst,
+                expectedCalvingDate = calvingDateEst,
+                expectedDryOffDate = dryOffEst,
+                lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
+                lastInseminationDate = aiEvents.firstOrNull()?.date
+            )
+        }
+
+        if (cleanStatus == "HEIFER" || cleanStatus == "OPEN HEIFER") {
+            val lastHeat = heatEvents.firstOrNull()
+            val lastAi = aiEvents.firstOrNull()
+            val heiferBreedingMsg = if (cleanBreeding.isNotBlank() && cleanBreeding != "HEALTHY") animal.breedingStatus else if (lastAi != null) "SERVED (Pending PD)" else if (lastHeat != null) "HEAT OBSERVED" else "OPEN HEIFER"
+            return CattleStageEvaluation(
+                stage = CattleStage.HEIFER,
+                stageKey = CattleStage.HEIFER.key,
+                label = "Heifer",
+                summaryReason = "Mature breeding female (${animal.age}) • Pre-calving stock.",
+                breedingStatusText = heiferBreedingMsg,
+                isInCalf = false,
+                isMilking = false,
+                badgeBgColor = Color(0xFFFEF9C3),
+                badgeTextColor = Color(0xFF854D0E),
+                lastEventSummary = lastAi?.title ?: (lastHeat?.title ?: "Ready for Breeding / AI"),
+                lastInseminationDate = aiEvents.firstOrNull()?.date
+            )
+        }
+
+        if (cleanStatus == "CALF" || cleanStatus == "WEANING CALF") {
+            return CattleStageEvaluation(
+                stage = CattleStage.CALF,
+                stageKey = CattleStage.CALF.key,
+                label = "Calf",
+                summaryReason = "Young stock (${animal.age}). Weaning & starter feed phase.",
+                breedingStatusText = if (cleanBreeding.isNotBlank() && cleanBreeding != "HEALTHY") animal.breedingStatus else "WEANING CALF",
+                isInCalf = false,
+                isMilking = false,
+                badgeBgColor = Color(0xFFF3E8FF),
+                badgeTextColor = Color(0xFF7E22CE),
+                lastInseminationDate = aiEvents.firstOrNull()?.date
+            )
+        }
+
+        if (cleanStatus == "DRY" || cleanStatus == "DRY OFF" || cleanStatus == "DRY COW") {
+            return CattleStageEvaluation(
+                stage = CattleStage.DRY,
+                stageKey = CattleStage.DRY.key,
+                label = "Dry",
+                summaryReason = "Completed lactation • Resting period before next breeding cycle.",
+                breedingStatusText = if (cleanBreeding.isNotBlank() && cleanBreeding != "HEALTHY") animal.breedingStatus else "DRY COW (Open)",
+                isInCalf = false,
+                isMilking = false,
+                badgeBgColor = Color(0xFFF1F5F9),
+                badgeTextColor = Color(0xFF475569),
+                lastEventSummary = dryOffEvents.firstOrNull()?.title ?: "Dry Off Logged",
+                lastInseminationDate = aiEvents.firstOrNull()?.date
+            )
+        }
+
+        if (cleanStatus == "INSEMINATED" || cleanStatus == "SERVED") {
+            val lastAi = aiEvents.firstOrNull()
+            return CattleStageEvaluation(
+                stage = CattleStage.INSEMINATED,
+                stageKey = CattleStage.INSEMINATED.key,
+                label = "Inseminated",
+                summaryReason = "Served/Inseminated on ${lastAi?.date ?: "recent date"} • Pending Pregnancy Diagnosis (PD).",
+                breedingStatusText = if (cleanBreeding.isNotBlank() && cleanBreeding != "HEALTHY") animal.breedingStatus else "SERVED AI (Pending PD)",
+                isInCalf = false,
+                isMilking = false,
+                badgeBgColor = Color(0xFFEDE9FE),
+                badgeTextColor = Color(0xFF6D28D9),
+                lastEventSummary = lastAi?.title ?: "Artificial Insemination Logged",
+                lastInseminationDate = aiEvents.firstOrNull()?.date
+            )
         }
 
         // Young Calf identification

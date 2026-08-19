@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Egg
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.SentimentSatisfied
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Button
@@ -960,6 +961,17 @@ fun FlocksScreen(
             selectedAnimal = updated
         }
 
+        // Keep the filter category matching if animal category was changed
+        if (category.equals("POULTRY", ignoreCase = true)) {
+            if (selectedFilterCategory == "CATTLE" && farmSettings.farmType.contains("Both", ignoreCase = true)) {
+                selectedFilterCategory = "POULTRY"
+            }
+        } else if (category.equals("CATTLE", ignoreCase = true)) {
+            if (selectedFilterCategory == "POULTRY" && farmSettings.farmType.contains("Both", ignoreCase = true)) {
+                selectedFilterCategory = "CATTLE"
+            }
+        }
+
         if (animalId.startsWith("unit_")) {
             val uId = animalId.removePrefix("unit_").toLongOrNull()
             if (uId != null) {
@@ -1086,6 +1098,14 @@ fun FlocksScreen(
             if (u != null) {
                 onUpdateUnit(u.copy(healthStatus = newStatus))
             }
+        } else {
+            val existing = mutableAnimals.find { it.id == animalId }
+            if (existing != null) {
+                val u = units.find { it.name.equals(existing.name, ignoreCase = true) }
+                if (u != null) {
+                    onUpdateUnit(u.copy(healthStatus = newStatus))
+                }
+            }
         }
     }
 
@@ -1125,35 +1145,29 @@ fun FlocksScreen(
         }
     }
 
-    // Cattle category stage breakdown calculations using automatic CattleLifecycleEngine
-    val cattleList = remember(mutableAnimals.toList()) {
-        mutableAnimals.filter { it.category.equals("CATTLE", ignoreCase = true) }
-    }
-    val poultryList = remember(mutableAnimals.toList()) {
-        mutableAnimals.filter { it.category.equals("POULTRY", ignoreCase = true) || it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true) }
-    }
+    // Cattle category stage breakdown calculations evaluated live from mutableAnimals
+    val cattleList = mutableAnimals.filter { it.category.equals("CATTLE", ignoreCase = true) }
+    val poultryList = mutableAnimals.filter { it.category.equals("POULTRY", ignoreCase = true) || it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true) }
 
-    val evaluatedCattleMap = remember(cattleList, allAnimalEventsMap.toMap(), milkLogs) {
-        cattleList.associate { animal ->
-            val evs = allAnimalEventsMap[animal.id] ?: emptyList()
-            animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, evs, milkLogs)
-        }
+    val evaluatedCattleMap = cattleList.associate { animal ->
+        val evs = allAnimalEventsMap[animal.id] ?: emptyList()
+        animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, evs, milkLogs)
     }
 
-    val inCalfMilkingCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF_MILKING } }
-    val inCalfCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF } }
-    val totalInCalfCount = remember(evaluatedCattleMap) { inCalfMilkingCount + inCalfCount }
-    val milkingCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.MILKING } }
-    val heiferCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.HEIFER } }
-    val calfCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.CALF } }
-    val dryCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.DRY } }
-    val inseminatedCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.INSEMINATED } }
-    val bullCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.BULL } }
-    val disposedCount = remember(evaluatedCattleMap) { evaluatedCattleMap.values.count { it.stage == CattleStage.DISPOSED } }
+    val inCalfMilkingCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF_MILKING }
+    val inCalfCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF }
+    val totalInCalfCount = inCalfMilkingCount + inCalfCount
+    val milkingCount = evaluatedCattleMap.values.count { it.stage == CattleStage.MILKING }
+    val heiferCount = evaluatedCattleMap.values.count { it.stage == CattleStage.HEIFER }
+    val calfCount = evaluatedCattleMap.values.count { it.stage == CattleStage.CALF }
+    val dryCount = evaluatedCattleMap.values.count { it.stage == CattleStage.DRY }
+    val inseminatedCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INSEMINATED }
+    val bullCount = evaluatedCattleMap.values.count { it.stage == CattleStage.BULL }
+    val disposedCount = evaluatedCattleMap.values.count { it.stage == CattleStage.DISPOSED }
 
-    val poultryFlocksCount = remember(poultryList) { poultryList.size }
-    val poultryLayingCount = remember(poultryList) { poultryList.count { it.status.contains("Laying", ignoreCase = true) || it.breedingStatus.contains("Laying", ignoreCase = true) || it.status.equals("ACTIVE", ignoreCase = true) } }
-    val poultryTotalBirds = remember(poultryList) { poultryList.sumOf { it.headCountInt } }
+    val poultryFlocksCount = poultryList.size
+    val poultryLayingCount = poultryList.count { it.status.contains("Laying", ignoreCase = true) || it.breedingStatus.contains("Laying", ignoreCase = true) || it.status.equals("ACTIVE", ignoreCase = true) }
+    val poultryTotalBirds = poultryList.sumOf { it.headCountInt }
 
     if (showCategoryGuideDialog) {
         Dialog(onDismissRequest = { showCategoryGuideDialog = false }) {
@@ -1327,6 +1341,7 @@ fun FlocksScreen(
         if (isPoultry) {
             FlockDetailsView(
                 flock = selectedAnimal!!,
+                userRole = userRole,
                 eggLogs = eggLogs,
                 financeRecords = financeRecords,
                 onBackClick = { selectedAnimal = null },
@@ -1670,7 +1685,7 @@ fun FlocksScreen(
                                         )
                                     } else {
                                         Text(
-                                            text = "💡 Long press to Edit / Delete",
+                                            text = if (userRole == "OWNER") "💡 Long press to Edit / Delete" else "💡 Tap to view full details",
                                             fontSize = 10.sp,
                                             color = Color(0xFF94A3B8)
                                         )
@@ -1695,18 +1710,20 @@ fun FlocksScreen(
                                     )
                                 }
 
-                                IconButton(
-                                    onClick = { animalForOptions = animal },
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .testTag("more_options_${animal.id}")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.MoreVert,
-                                        contentDescription = "Animal options",
-                                        tint = Color(0xFF64748B),
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                if (userRole == "OWNER") {
+                                    IconButton(
+                                        onClick = { animalForOptions = animal },
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .testTag("more_options_${animal.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.MoreVert,
+                                            contentDescription = "Animal options",
+                                            tint = Color(0xFF64748B),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1790,9 +1807,9 @@ fun AnimalDetailsView(
         } else null
     }
 
-    // Keep animal status in sync with calculated stage if cattle
+    // Keep animal status in sync with calculated stage if cattle and status is default/empty
     LaunchedEffect(cattleEval) {
-        if (cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true)) {
+        if (cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true) && (animal.status.isBlank() || animal.status.equals("ACTIVE", ignoreCase = true))) {
             currentStatus = cattleEval.stage.displayName
             onUpdateAnimalStage(cattleEval.stage.displayName, cattleEval.breedingStatusText)
         }
@@ -2117,54 +2134,104 @@ fun AnimalDetailsView(
                     )
                 }
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (canEdit) {
-                        IconButton(
+                if (canEdit) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Edit Animal Button
+                        Surface(
                             onClick = onEditAnimal,
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFECFDF5))
-                                .border(1.dp, ForestGreenPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .height(36.dp)
                                 .testTag("edit_animal_topbar_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = "Edit Animal",
-                                tint = ForestGreenPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Edit,
+                                    contentDescription = "Edit Animal",
+                                    tint = ForestGreenPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Edit",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ForestGreenPrimary
+                                )
+                            }
                         }
 
-                        IconButton(
+                        // Dispose Animal Button
+                        if (!currentStatus.contains("DISPOSED", ignoreCase = true)) {
+                            Surface(
+                                onClick = { showDisposeDialog = true },
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFFFFBEB),
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .testTag("dispose_animal_topbar_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.RemoveCircleOutline,
+                                        contentDescription = "Dispose Animal",
+                                        tint = Color(0xFFB45309),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Dispose",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFB45309)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Delete Animal Button
+                        Surface(
                             onClick = onDeleteAnimal,
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFFEF2F2),
+                            border = BorderStroke(1.dp, Color(0xFFFECACA)),
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFFEF2F2))
-                                .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                                .height(36.dp)
                                 .testTag("delete_animal_topbar_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.DeleteForever,
-                                contentDescription = "Delete Animal",
-                                tint = Color(0xFFDC2626),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    if (!currentStatus.contains("DISPOSED", ignoreCase = true)) {
-                        Button(
-                            onClick = { showDisposeDialog = true },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text("🚫 DISPOSE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.DeleteForever,
+                                    contentDescription = "Delete Animal",
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Delete",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFDC2626)
+                                )
+                            }
                         }
                     }
                 }
@@ -2949,6 +3016,7 @@ data class PoultryVaccineItem(
 @Composable
 fun FlockDetailsView(
     flock: AnimalDetailData,
+    userRole: String = "OWNER",
     eggLogs: List<EggLog>,
     financeRecords: List<FinanceRecord>,
     onBackClick: () -> Unit,
@@ -2959,6 +3027,7 @@ fun FlockDetailsView(
     onDeleteFlock: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val canEdit = userRole == "OWNER"
     var showFeedDialog by remember { mutableStateOf(false) }
     var showMortalityDialog by remember { mutableStateOf(false) }
     var showEggSaleDialog by remember { mutableStateOf(false) }
@@ -3173,53 +3242,105 @@ fun FlockDetailsView(
                         }
                     }
 
+                if (canEdit) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
+                        // Edit Flock Button
+                        Surface(
                             onClick = onEditFlock,
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFECFDF5))
-                                .border(1.dp, ForestGreenPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .height(36.dp)
                                 .testTag("edit_flock_topbar_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Edit,
-                                contentDescription = "Edit Flock",
-                                tint = ForestGreenPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Edit,
+                                    contentDescription = "Edit Flock",
+                                    tint = ForestGreenPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Edit",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ForestGreenPrimary
+                                )
+                            }
                         }
 
-                        IconButton(
-                            onClick = onDeleteFlock,
+                        // Dispose Flock Button
+                        Surface(
+                            onClick = { showDisposeFlockDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A)),
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFFEF2F2))
-                                .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp))
+                                .height(36.dp)
+                                .testTag("dispose_flock_topbar_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.RemoveCircleOutline,
+                                    contentDescription = "Dispose Flock",
+                                    tint = Color(0xFFB45309),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Dispose",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB45309)
+                                )
+                            }
+                        }
+
+                        // Delete Flock Button
+                        Surface(
+                            onClick = onDeleteFlock,
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFFEF2F2),
+                            border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                            modifier = Modifier
+                                .height(36.dp)
                                 .testTag("delete_flock_topbar_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.DeleteForever,
-                                contentDescription = "Delete Flock",
-                                tint = Color(0xFFDC2626),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        Button(
-                            onClick = { showDisposeFlockDialog = true },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("🏷️ DISPOSE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.DeleteForever,
+                                    contentDescription = "Delete Flock",
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Delete",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFDC2626)
+                                )
+                            }
                         }
                     }
+                }
                 }
             }
 

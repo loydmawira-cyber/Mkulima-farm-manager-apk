@@ -88,7 +88,7 @@ fun AddUnitDialog(
     var currentWeight by remember { mutableStateOf("450 kg") }
     var sire by remember { mutableStateOf("Thunder #045") }
     var dam by remember { mutableStateOf("Bessie #102") }
-    var status by remember { mutableStateOf("MILKING") }
+    var status by remember { mutableStateOf("HEIFER") }
     var location by remember { mutableStateOf("Barn A - Pen 2") }
 
     // Poultry state
@@ -308,13 +308,13 @@ fun AddUnitDialog(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         val cattleStages = listOf(
+                            "HEIFER" to "🌾 Heifer",
                             "MILKING" to "🥛 Milking",
                             "INCALF" to "🤰 In-calf",
-                            "HEIFER" to "🌾 Heifer",
                             "CALF" to "🍼 Calf",
-                            "BULL" to "🐂 Bull",
                             "DRY" to "🍂 Dry",
                             "INSEMINATED" to "💉 Inseminated",
+                            "BULL" to "🐂 Bull",
                             "DISPOSED" to "🚫 Disposed"
                         )
 

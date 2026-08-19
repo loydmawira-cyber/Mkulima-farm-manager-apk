@@ -188,8 +188,16 @@ object CattleLifecycleEngine {
         events: List<CattleEventItem>,
         milkLogs: List<MilkLog> = emptyList()
     ): CattleStageEvaluation {
+        val cleanStatus = animal.status.trim().uppercase()
+        val cleanBreed = animal.breed.trim().uppercase()
+        val cleanName = animal.name.trim().uppercase()
+        val cleanBreeding = animal.breedingStatus.trim().uppercase()
+
         // 1. Check Disposed
-        if (animal.status.contains("DISPOSED", ignoreCase = true) ||
+        if (cleanStatus.contains("DISPOSED") ||
+            cleanStatus.contains("SOLD") ||
+            cleanStatus.contains("DEAD") ||
+            cleanStatus.contains("CULLED") ||
             animal.disposalDate.isNotBlank() ||
             animal.disposalReason.isNotBlank()
         ) {
@@ -207,10 +215,10 @@ object CattleLifecycleEngine {
         }
 
         // 2. Check Bull
-        if (animal.status.equals("BULL", ignoreCase = true) ||
-            animal.breed.contains("Bull", ignoreCase = true) ||
-            animal.name.contains("Bull", ignoreCase = true) ||
-            animal.breed.contains("Boran Giant", ignoreCase = true)
+        if (cleanStatus == "BULL" ||
+            cleanBreed.contains("BULL") ||
+            cleanName.contains("BULL") ||
+            cleanBreed.contains("BORAN GIANT")
         ) {
             return CattleStageEvaluation(
                 stage = CattleStage.BULL,
@@ -241,7 +249,6 @@ object CattleLifecycleEngine {
         }
 
         // 4. Analyze Breeding & Reproduction Log Events
-        // Sort events chronologically (newest first based on list order or date)
         val sortedEvents = events
 
         val pdEvents = sortedEvents.filter {
@@ -312,7 +319,6 @@ object CattleLifecycleEngine {
         if (isPositivePd && !calvedAfterPd) {
             isInCalf = true
             inCalfReason = "Confirmed positive PD on ${latestPd?.date ?: "recent check"}"
-            // If there was an AI event, calculate gestation days from AI date
             val matchingAi = aiEvents.firstOrNull()
             if (matchingAi != null) {
                 val dAi = parseDateOrNull(matchingAi.date)
@@ -323,47 +329,125 @@ object CattleLifecycleEngine {
                     calvingDateEst = calculateExpectedCalving(matchingAi.date)
                 }
             }
-        } else if (!isNegativePd && (animal.status.equals("PREGNANT", ignoreCase = true) || animal.breedingStatus.contains("PREGNANT", ignoreCase = true) || animal.breedingStatus.contains("IN-CALF", ignoreCase = true))) {
+        } else if (!isNegativePd && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
             isInCalf = true
             inCalfReason = "Breeding record marked In-Calf"
         }
 
+        // Young Calf identification
+        val isYoungCalf = cleanStatus == "CALF" ||
+            cleanBreed.contains("CALF") ||
+            cleanName.contains("JOEY") ||
+            animal.age.contains("month", ignoreCase = true) ||
+            animal.age.contains("week", ignoreCase = true) ||
+            animal.age.contains("day", ignoreCase = true)
+
+        if (isYoungCalf && calvingEvents.isEmpty() && !cleanStatus.contains("MILKING")) {
+            return CattleStageEvaluation(
+                stage = CattleStage.CALF,
+                stageKey = CattleStage.CALF.key,
+                label = "Calf",
+                summaryReason = "Young stock (${animal.age}). Weaning & starter feed phase.",
+                breedingStatusText = "WEANING CALF",
+                isInCalf = false,
+                isMilking = false,
+                badgeBgColor = Color(0xFFF3E8FF),
+                badgeTextColor = Color(0xFF7E22CE),
+                lastInseminationDate = aiEvents.firstOrNull()?.date
+            )
+        }
+
+        // Explicit Heifer designation (or young female who hasn't calved yet)
+        val isExplicitHeifer = cleanStatus == "HEIFER" ||
+            cleanStatus.contains("OPEN HEIFER") ||
+            cleanBreed.contains("HEIFER") ||
+            cleanBreeding.contains("OPEN HEIFER") ||
+            cleanBreeding == "HEIFER"
+
         // Determine milk production activity
-        val cleanAnimal = animal.name.lowercase()
+        val cleanAnimal = animal.name.lowercase().trim()
         val cleanTag = animal.tagNumber.lowercase().replace("#", "").trim()
         val recentCowMilkLogs = milkLogs.filter { log ->
-            val logName = log.cowName.lowercase()
+            val logName = log.cowName.lowercase().trim()
             (logName.contains(cleanAnimal) || cleanAnimal.contains(logName) || (cleanTag.isNotEmpty() && logName.contains(cleanTag)))
         }
 
         val hasRecentMilkYield = recentCowMilkLogs.any { it.litres > 0.0 }
-        val hasActiveMilkText = animal.lastMilk.isNotBlank() &&
-            !animal.lastMilk.equals("N/A", ignoreCase = true) &&
-            !animal.lastMilk.startsWith("0") &&
+        val hasExplicitLitreText = animal.lastMilk.isNotBlank() &&
+            !animal.lastMilk.contains("No data", ignoreCase = true) &&
+            !animal.lastMilk.contains("N/A", ignoreCase = true) &&
             !animal.lastMilk.contains("0L", ignoreCase = true) &&
-            !animal.lastMilk.contains("Birds", ignoreCase = true)
+            !animal.lastMilk.contains("0.0L", ignoreCase = true) &&
+            !animal.lastMilk.contains("Birds", ignoreCase = true) &&
+            !animal.lastMilk.contains("Eggs", ignoreCase = true) &&
+            Regex("""\b\d+(\.\d+)?\s*L\b""", RegexOption.IGNORE_CASE).containsMatchIn(animal.lastMilk)
 
         val latestDryOff = dryOffEvents.firstOrNull()
-        val isDriedOff = latestDryOff != null
+        val isDriedOff = latestDryOff != null || cleanStatus == "DRY" || cleanStatus.contains("DRY OFF")
 
-        val isCurrentlyMilking = (hasRecentMilkYield || hasActiveMilkText) && !isDriedOff
-
-        // Age / DOB parsing to identify Calf / Heifer
-        val isYoungCalf = animal.breed.contains("Calf", ignoreCase = true) ||
-            animal.name.contains("Joey", ignoreCase = true) ||
-            animal.age.contains("month", ignoreCase = true) ||
-            animal.status.equals("CALF", ignoreCase = true)
-
-        val isHeiferCandidate = animal.breed.contains("Heifer", ignoreCase = true) ||
-            animal.name.contains("Star", ignoreCase = true) ||
-            animal.status.equals("HEIFER", ignoreCase = true) ||
-            (animal.age.contains("1y", ignoreCase = true) && !hasActiveMilkText && calvingEvents.isEmpty())
-
-        // 5. Compute the Final Automatic Stage!
         val lastInseminationDate = aiEvents.firstOrNull()?.date
+
+        // Heifer rules: A heifer has never calved. If confirmed pregnant, she is In-Calf (Heifer In-Calf).
+        if (isExplicitHeifer && calvingEvents.isEmpty()) {
+            if (isInCalf) {
+                val dryOffEst = calculateExpectedDryOff(calvingDateEst)
+                return CattleStageEvaluation(
+                    stage = CattleStage.INCALF,
+                    stageKey = CattleStage.INCALF.key,
+                    label = "In-Calf Heifer",
+                    summaryReason = "$inCalfReason • Pre-calving rest (Expected: $calvingDateEst)",
+                    breedingStatusText = "IN-CALF HEIFER (Day $gestationEst of 283)",
+                    isInCalf = true,
+                    isMilking = false,
+                    badgeBgColor = Color(0xFFFEF3C7),
+                    badgeTextColor = Color(0xFFB45309),
+                    gestationDays = gestationEst,
+                    expectedCalvingDate = calvingDateEst,
+                    expectedDryOffDate = dryOffEst,
+                    lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
+                    lastInseminationDate = lastInseminationDate
+                )
+            } else if (aiEvents.isNotEmpty() && !isNegativePd) {
+                val lastAi = aiEvents.firstOrNull()
+                return CattleStageEvaluation(
+                    stage = CattleStage.INSEMINATED,
+                    stageKey = CattleStage.INSEMINATED.key,
+                    label = "Inseminated",
+                    summaryReason = "Served/Inseminated on ${lastAi?.date ?: "recent date"} • Pending Pregnancy Diagnosis (PD).",
+                    breedingStatusText = "SERVED AI (Pending PD)",
+                    isInCalf = false,
+                    isMilking = false,
+                    badgeBgColor = Color(0xFFEDE9FE),
+                    badgeTextColor = Color(0xFF6D28D9),
+                    lastEventSummary = lastAi?.title ?: "Artificial Insemination Logged",
+                    lastInseminationDate = lastInseminationDate
+                )
+            } else {
+                val lastHeat = heatEvents.firstOrNull()
+                val heiferBreedingMsg = if (lastHeat != null) "HEAT OBSERVED" else "OPEN HEIFER"
+                return CattleStageEvaluation(
+                    stage = CattleStage.HEIFER,
+                    stageKey = CattleStage.HEIFER.key,
+                    label = "Heifer",
+                    summaryReason = "Mature breeding female (${animal.age}) • Pre-calving stock.",
+                    breedingStatusText = heiferBreedingMsg,
+                    isInCalf = false,
+                    isMilking = false,
+                    badgeBgColor = Color(0xFFFEF9C3),
+                    badgeTextColor = Color(0xFF854D0E),
+                    lastEventSummary = lastHeat?.title ?: "Ready for Breeding / AI",
+                    lastInseminationDate = lastInseminationDate
+                )
+            }
+        }
+
+        // Active milking determination (only for cows with active milk logs or explicit milking status)
+        val isCurrentlyMilking = !isDriedOff && (hasRecentMilkYield || cleanStatus == "MILKING" || (hasExplicitLitreText && (calvingEvents.isNotEmpty() || cleanStatus.contains("MILKING"))))
+
+        // In-Calf evaluation
         if (isInCalf) {
             val dryOffEst = calculateExpectedDryOff(calvingDateEst)
-            return if (isCurrentlyMilking && !isHeiferCandidate) {
+            return if (isCurrentlyMilking) {
                 CattleStageEvaluation(
                     stage = CattleStage.INCALF_MILKING,
                     stageKey = CattleStage.INCALF_MILKING.key,
@@ -400,22 +484,7 @@ object CattleLifecycleEngine {
             }
         }
 
-        // Cow is NOT In-Calf:
-        if (isYoungCalf) {
-            return CattleStageEvaluation(
-                stage = CattleStage.CALF,
-                stageKey = CattleStage.CALF.key,
-                label = "Calf",
-                summaryReason = "Young stock (${animal.age}). Weaning & starter feed phase.",
-                breedingStatusText = "WEANING CALF",
-                isInCalf = false,
-                isMilking = false,
-                badgeBgColor = Color(0xFFF3E8FF),
-                badgeTextColor = Color(0xFF7E22CE),
-                lastInseminationDate = lastInseminationDate
-            )
-        }
-
+        // Milking Cow
         if (isCurrentlyMilking) {
             val lastAi = aiEvents.firstOrNull()
             val breedingStatusMsg = if (lastAi != null) "SERVED AI (Pending PD)" else "OPEN (In Milk)"
@@ -434,7 +503,8 @@ object CattleLifecycleEngine {
             )
         }
 
-        if (animal.status.equals("INSEMINATED", ignoreCase = true) || (aiEvents.isNotEmpty() && !isInCalf && isDriedOff)) {
+        // Inseminated Cow
+        if (cleanStatus == "INSEMINATED" || (aiEvents.isNotEmpty() && !isInCalf && !isDriedOff)) {
             val lastAi = aiEvents.firstOrNull()
             return CattleStageEvaluation(
                 stage = CattleStage.INSEMINATED,
@@ -451,7 +521,8 @@ object CattleLifecycleEngine {
             )
         }
 
-        if (isDriedOff || animal.status.equals("DRY", ignoreCase = true)) {
+        // Dry Cow
+        if (isDriedOff || cleanStatus == "DRY" || calvingEvents.isNotEmpty()) {
             return CattleStageEvaluation(
                 stage = CattleStage.DRY,
                 stageKey = CattleStage.DRY.key,
@@ -467,7 +538,7 @@ object CattleLifecycleEngine {
             )
         }
 
-        // Default female not calved & not milking -> Heifer
+        // Default female that has not calved -> Heifer
         val lastHeat = heatEvents.firstOrNull()
         val lastAi = aiEvents.firstOrNull()
         val heiferBreedingMsg = if (lastAi != null) "SERVED (Pending PD)" else if (lastHeat != null) "HEAT OBSERVED" else "OPEN HEIFER"

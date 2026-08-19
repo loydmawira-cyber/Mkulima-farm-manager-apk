@@ -1688,7 +1688,9 @@ fun AnimalDetailsView(
 ) {
     val canEdit = userRole == "OWNER"
 
-    val unitId = animal.id.toLongOrNull() ?: 0L
+    val unitId = remember(animal.id) {
+        animal.id.removePrefix("unit_").toLongOrNull() ?: ((animal.id.hashCode().toLong() and 0x7FFFFFFF) + 10000L)
+    }
     val dbEvents by viewModel.getCattleEventsFlow(unitId).collectAsStateWithLifecycle(initialValue = emptyList())
     val animalEvents = remember(dbEvents) {
         dbEvents.map {
@@ -2800,11 +2802,11 @@ fun AnimalDetailsView(
     if (showAddCattleEventDialog) {
         AddCattleEventDialog(
             animalName = animal.name,
-            unitId = animal.id.toLongOrNull() ?: 0L,
+            unitId = unitId,
             onDismiss = { showAddCattleEventDialog = false },
             onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String ->
                 viewModel.addCattleEvent(
-                    unitId = animal.id.toLongOrNull() ?: 0L,
+                    unitId = unitId,
                     category = type,
                     title = title,
                     date = date,

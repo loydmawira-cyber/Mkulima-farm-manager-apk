@@ -142,7 +142,6 @@ fun isMilkingCow(
     val b = breed.uppercase()
     val n = name.uppercase()
     val bs = breedingStatus.uppercase()
-    val lm = lastMilk.uppercase()
 
     // 1. Disqualify disposed, sold, dead, culled
     if (s.contains("DISPOSED") || s.contains("SOLD") || s.contains("DEAD") || s.contains("CULLED") || bs.contains("DISPOSED")) return false
@@ -150,28 +149,11 @@ fun isMilkingCow(
     // 2. Disqualify bulls, sires, steers
     if (s.contains("BULL") || b.contains("BULL") || n.contains("BULL") || s.contains("SIRE") || b.contains("SIRE") || bs.contains("BULL") || bs.contains("SIRE")) return false
 
-    // 3. Disqualify calves, weaners
-    if (s.contains("CALF") || b.contains("CALF") || n.contains("CALF") || s.contains("WEAN") || b.contains("WEAN") || bs.contains("CALF") || bs.contains("WEAN")) return false
+    // 3. Disqualify young calves
+    if (s.contains("CALF") || b.contains("CALF") || n.contains("CALF")) return false
 
-    // 4. Disqualify heifers (open heifers / yearling heifers not in milk)
-    if (s == "HEIFER" || s.contains("OPEN HEIFER") || b.contains("HEIFER") || bs.contains("HEIFER") || bs.contains("OPEN HEIFER")) return false
-
-    // 5. Disqualify dry cows (dry off / resting)
-    if (s.contains("DRY") || s.contains("DRY OFF") || s.contains("DRIED OFF") || bs.contains("DRY")) return false
-
-    // 6. Disqualify poultry, crops, greenhouses
+    // 4. Disqualify poultry, crops, greenhouses
     if (b.contains("POULTRY") || b.contains("LAYER") || b.contains("BROILER") || n.contains("FLOCK") || b.contains("KIENYEJI") || b.contains("GREENHOUSE") || b.contains("FIELD") || b.contains("PLOT")) return false
-
-    // 7. Explicit positive matches: Milking, or In-Calf & Milking, or Pregnant with active lactation
-    if (s == "MILKING" || bs.contains("MILKING") || s.contains("MILKING")) return true
-    if (s.contains("INCALF_MILKING") || s.contains("IN-CALF / MILKING") || s.contains("IN-CALF & MILKING")) return true
-    if ((s.contains("PREGNANT") || s.contains("INCALF") || bs.contains("PREGNANT") || bs.contains("IN-CALF")) && (!lm.startsWith("0") && lm.isNotBlank() && !lm.contains("N/A"))) return true
-
-    // General active cattle in milk
-    if (s == "ACTIVE" || s == "HEALTHY" || s.isBlank()) {
-        if (lm.startsWith("0") || lm.contains("N/A")) return false
-        return true
-    }
 
     return true
 }
@@ -445,16 +427,19 @@ fun MilkLogScreen(
         }
     }
 
-    // Registered Milking Cow Database dynamically built strictly from active farm livestock list (Room units + mockAnimals)
-    // Filtered strictly to ONLY MILKING & IN-CALF MILKING COWS on the farm (excluding Bulls, Calves, Heifers, Dry Cows, Disposed, and animals not on the farm)
-    val cowsList = remember(units, deletedSet) {
+    // Registered Milking Cow Database dynamically built strictly from active farm livestock list (Room units + mockAnimals + milkLogs)
+    val cowsList = remember(units, milkLogs, deletedSet) {
         val result = mutableListOf<AnimalCowItem>()
 
         // 1. From Room units (registered farm livestock)
         units.filter {
-            (it.type.equals("Cattle", ignoreCase = true) || it.type.equals("CATTLE", ignoreCase = true)) &&
+            (it.type.equals("Cattle", ignoreCase = true) || it.type.equals("CATTLE", ignoreCase = true) || !it.type.contains("POULTRY", ignoreCase = true)) &&
             !deletedSet.contains("unit_${it.id}") && !deletedSet.contains(it.name.lowercase()) &&
-            isMilkingCow(name = it.name, breed = it.breed, status = it.healthStatus, tag = it.tagNumber)
+            !it.healthStatus.contains("DISPOSED", ignoreCase = true) &&
+            !it.healthStatus.contains("BULL", ignoreCase = true) &&
+            !it.breed.contains("BULL", ignoreCase = true) &&
+            !it.breed.contains("POULTRY", ignoreCase = true) &&
+            !it.breed.contains("LAYER", ignoreCase = true)
         }.forEach { unit ->
             val tag = unit.tagNumber.ifBlank { "#${unit.id + 100}" }
             val displayName = if (unit.name.contains(tag)) unit.name else "${unit.name} ($tag)"
@@ -472,14 +457,9 @@ fun MilkLogScreen(
         mockAnimals.filter {
             it.category.equals("CATTLE", ignoreCase = true) &&
             !deletedSet.contains(it.id) && !deletedSet.contains(it.name.lowercase()) &&
-            isMilkingCow(
-                name = it.name,
-                breed = it.breed,
-                status = it.status,
-                tag = it.tagNumber,
-                lastMilk = it.lastMilk,
-                breedingStatus = it.breedingStatus
-            )
+            !it.status.contains("DISPOSED", ignoreCase = true) &&
+            !it.status.contains("BULL", ignoreCase = true) &&
+            !it.breed.contains("BULL", ignoreCase = true)
         }.forEach { animal ->
             val tag = animal.tagNumber.ifBlank { "#100" }
             val displayName = if (animal.name.contains(tag)) animal.name else "${animal.name} ($tag)"
@@ -491,6 +471,22 @@ fun MilkLogScreen(
                     lactationDay = 90
                 )
             )
+        }
+
+        // 3. Any cows from milkLogs that might not be in the list yet
+        milkLogs.map { it.cowName.trim() }.filter { it.isNotBlank() }.distinct().forEach { logCowName ->
+            val alreadyExists = result.any { isLogForCow(MilkLog(cowName = logCowName, litres = 0.0, session = "", fatPercentage = 0.0, date = "", loggedAt = ""), it) }
+            if (!alreadyExists) {
+                val tag = if (logCowName.contains("#")) "#" + logCowName.substringAfter("#").substringBefore(" ").substringBefore(")") else "#${(100..999).random()}"
+                result.add(
+                    AnimalCowItem(
+                        tagId = tag,
+                        name = logCowName,
+                        breed = "Dairy Cow",
+                        lactationDay = 90
+                    )
+                )
+            }
         }
 
         // Deduplicate by normalized base name
@@ -537,6 +533,17 @@ fun MilkLogScreen(
 
     // --- PER COW ANALYTICS STATE ---
     var perCowSelectedCow by remember { mutableStateOf<AnimalCowItem>(cowsList.firstOrNull() ?: AnimalCowItem("#102", "Unknown", "Friesian", 120)) }
+
+    LaunchedEffect(cowsList) {
+        if (cowsList.isNotEmpty()) {
+            if (selectedCow == null || cowsList.none { it.tagId == selectedCow?.tagId || it.name == selectedCow?.name }) {
+                selectedCow = cowsList.first()
+            }
+            if (perCowSelectedCow.name == "Unknown" || cowsList.none { it.tagId == perCowSelectedCow.tagId || it.name == perCowSelectedCow.name }) {
+                perCowSelectedCow = cowsList.first()
+            }
+        }
+    }
     val currentCal = remember { java.util.Calendar.getInstance() }
     val defaultMonthName = remember { SimpleDateFormat("MMMM", Locale.getDefault()).format(currentCal.time) } // e.g. "August"
     val defaultYearName = remember { SimpleDateFormat("yyyy", Locale.getDefault()).format(currentCal.time) } // e.g. "2026"

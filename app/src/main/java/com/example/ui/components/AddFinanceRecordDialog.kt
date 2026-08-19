@@ -218,7 +218,7 @@ fun AddFinanceRecordDialog(
                     Button(
                         onClick = {
                             val amt = amountText.toDoubleOrNull() ?: 0.0
-                            val finalDescription = if (descriptionText.isNotBlank()) "[$transactionDate] $descriptionText" else "[$transactionDate]"
+                            val finalDescription = descriptionText.ifBlank { "Recorded on $transactionDate" }
                             if (existing != null && onUpdateRecord != null) {
                                 onUpdateRecord(existing.copy(
                                     type = selectedType,

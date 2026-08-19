@@ -79,6 +79,7 @@ import com.example.data.FinanceType
 import com.example.data.MilkLog
 import com.example.data.RequestStatus
 import com.example.data.TaskCategory
+import com.example.data.TaskPriority
 import com.example.ui.TaskStatusFilter
 import com.example.ui.components.TaskCard
 import com.example.ui.theme.ForestGreenPrimary
@@ -282,25 +283,30 @@ fun DashboardScreen(
     val totalIncome = remember(financeRecords) {
         financeRecords.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }
     }
-    val milkIncome = remember(financeRecords) {
-        financeRecords.filter { it.type == FinanceType.INCOME && it.category.contains("Milk", ignoreCase = true) }.sumOf { it.amount }
+    val totalExpense = remember(financeRecords) {
+        financeRecords.filter { it.type == FinanceType.EXPENSE }.sumOf { it.amount }
     }
-    val eggIncome = remember(financeRecords) {
-        financeRecords.filter { it.type == FinanceType.INCOME && it.category.contains("Egg", ignoreCase = true) }.sumOf { it.amount }
-    }
-    val feedExpense = remember(financeRecords) {
-        financeRecords.filter { it.type == FinanceType.EXPENSE && it.category.contains("Feed", ignoreCase = true) }.sumOf { it.amount }
-    }
-    val vetExpense = remember(financeRecords) {
-        financeRecords.filter { it.type == FinanceType.EXPENSE && (it.category.contains("Vet", ignoreCase = true) || it.category.contains("Vaccine", ignoreCase = true)) }.sumOf { it.amount }
-    }
-    val netRevenue = totalIncome - (feedExpense + vetExpense) // Wait, totalIncome includes both milk and egg.
+    val netRevenue = totalIncome - totalExpense
 
-    // Attention / Urgent items
+    val incomeByCategory = remember(financeRecords) {
+        financeRecords.filter { it.type == FinanceType.INCOME }
+            .groupBy { it.category }
+            .mapValues { entry -> entry.value.sumOf { it.amount } }
+    }
+    val expenseByCategory = remember(financeRecords) {
+        financeRecords.filter { it.type == FinanceType.EXPENSE }
+            .groupBy { it.category }
+            .mapValues { entry -> entry.value.sumOf { it.amount } }
+    }
+
+    // Attention / Urgent items (only active/pending items)
     val pendingRequests = remember(employeeRequests) {
         employeeRequests.filter { it.status == RequestStatus.PENDING }
     }
-    val urgentCount = pendingRequests.size
+    val pendingTasks = remember(tasks) {
+        tasks.filter { !it.isCompleted }
+    }
+    val urgentCount = pendingRequests.size + pendingTasks.size
 
     Box(
         modifier = modifier
@@ -470,50 +476,42 @@ fun DashboardScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Urgent Items List
-                                if (isCattleMode) {
-                                    UrgentItemRow(
-                                        title = "Bessie #102 — Pregnancy Check due",
-                                        subtitle = "30 days post-AI milestone",
-                                        onClick = { onNavigateToTab(1) }
-                                    )
-                                } else {
-                                    UrgentItemRow(
-                                        title = "Flock B — ND3 vaccine overdue",
-                                        subtitle = "2 days past due",
-                                        onClick = { onNavigateToTab(1) }
-                                    )
+                                // Dynamic Urgent Items List (Only Active / Incomplete)
+                                val urgentItems = mutableListOf<@Composable (isLast: Boolean) -> Unit>()
+
+                                pendingRequests.take(2).forEach { req ->
+                                    urgentItems.add { isLast ->
+                                        UrgentItemRow(
+                                            title = "${req.employeeName} — ${req.requestType.lowercase().replaceFirstChar { it.uppercase() }}",
+                                            subtitle = "Pending approval (${farmSettings.currency} ${"%.0f".format(req.amount)})",
+                                            onClick = { onNavigateToTab(4) },
+                                            isLast = isLast
+                                        )
+                                    }
                                 }
 
-                                if (pendingRequests.isNotEmpty()) {
-                                    val req = pendingRequests.first()
-                                    UrgentItemRow(
-                                        title = "${req.employeeName} — ${req.requestType.lowercase()}",
-                                        subtitle = "Pending your approval (${farmSettings.currency} ${"%.0f".format(req.amount)})",
-                                        onClick = { onNavigateToTab(4) }
-                                    )
-                                } else {
-                                    UrgentItemRow(
-                                        title = "James — leave request",
-                                        subtitle = "Pending your approval",
-                                        onClick = { onNavigateToTab(4) }
-                                    )
+                                pendingTasks.take(3).forEach { task ->
+                                    urgentItems.add { isLast ->
+                                        UrgentItemRow(
+                                            title = task.title,
+                                            subtitle = "${task.category.name} • ${task.targetUnit.ifBlank { "General" }} • ${task.scheduledTime}",
+                                            onClick = { onCompleteTaskClick(task) },
+                                            isLast = isLast
+                                        )
+                                    }
                                 }
 
-                                if (isCattleMode) {
+                                if (urgentItems.isEmpty()) {
                                     UrgentItemRow(
-                                        title = "Heifers Pen 2 — Deworming scheduled",
-                                        subtitle = "Scheduled for tomorrow",
-                                        onClick = { onNavigateToTab(1) },
+                                        title = "All clear! No urgent tasks pending 🎉",
+                                        subtitle = "All assigned tasks completed. Tap to add a new task.",
+                                        onClick = { onAddTaskClick() },
                                         isLast = true
                                     )
                                 } else {
-                                    UrgentItemRow(
-                                        title = "Flock A — feed change tomorrow",
-                                        subtitle = "Starter → Grower at 3 weeks",
-                                        onClick = { onNavigateToTab(1) },
-                                        isLast = true
-                                    )
+                                    urgentItems.forEachIndexed { idx, itemComposable ->
+                                        itemComposable(idx == urgentItems.lastIndex)
+                                    }
                                 }
                             }
                         }
@@ -757,29 +755,44 @@ fun DashboardScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable { onNavigateToTab(3) }
                             .shadow(6.dp, RoundedCornerShape(20.dp)),
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(containerColor = Soil)
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
-                            Text(
-                                text = "THIS MONTH AT A GLANCE",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFC9B7A3),
-                                letterSpacing = 1.5.sp
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "THIS MONTH AT A GLANCE",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFC9B7A3),
+                                    letterSpacing = 1.5.sp
+                                )
+                                Text(
+                                    text = "View Ledger ›",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = DawnTop
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            if (!isPoultryMode) {
-                                ReceiptLineItem(label = "Milk sales", amount = "+ ${farmSettings.currency} ${"%,.0f".format(milkIncome)}", isPositive = true)
+                            if (financeRecords.isEmpty()) {
+                                ReceiptLineItem(label = "No transactions logged yet", amount = "${farmSettings.currency} 0", isPositive = true)
+                            } else {
+                                incomeByCategory.forEach { (cat, amt) ->
+                                    ReceiptLineItem(label = cat, amount = "+ ${farmSettings.currency} ${"%,.0f".format(amt)}", isPositive = true)
+                                }
+                                expenseByCategory.forEach { (cat, amt) ->
+                                    ReceiptLineItem(label = cat, amount = "− ${farmSettings.currency} ${"%,.0f".format(amt)}", isPositive = false)
+                                }
                             }
-                            if (!isCattleMode) {
-                                ReceiptLineItem(label = "Egg sales", amount = "+ ${farmSettings.currency} ${"%,.0f".format(eggIncome)}", isPositive = true)
-                            }
-                            ReceiptLineItem(label = "Feed & supplies", amount = "− ${farmSettings.currency} ${"%,.0f".format(feedExpense)}", isPositive = false)
-                            ReceiptLineItem(label = "Vaccines & vet", amount = "− ${farmSettings.currency} ${"%,.0f".format(vetExpense)}", isPositive = false)
 
                             Spacer(modifier = Modifier.height(8.dp))
 
@@ -809,10 +822,10 @@ fun DashboardScreen(
                                     color = Straw
                                 )
                                 Text(
-                                    text = "+ ${farmSettings.currency} ${"%,.0f".format(netRevenue)}",
+                                    text = if (netRevenue >= 0) "+ ${farmSettings.currency} ${"%,.0f".format(netRevenue)}" else "− ${farmSettings.currency} ${"%,.0f".format(-netRevenue)}",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFA8C99A)
+                                    color = if (netRevenue >= 0) Color(0xFFA8C99A) else Color(0xFFFF8A80)
                                 )
                             }
                         }
@@ -948,6 +961,260 @@ fun DashboardScreen(
                                 .testTag("qa_approvals"),
                             onClick = { onNavigateToTab(4) }
                         )
+                    }
+                }
+            }
+
+            // 4. DAILY FARM TASKS & ACTIVITIES (INTERACTIVE)
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 14.dp)
+                ) {
+                    // Header Row with Task Counts and Add Task Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "📋 Daily Tasks & Operations",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Soil
+                                )
+                                val pendingCount = tasks.count { !it.isCompleted }
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (pendingCount > 0) Terracotta else Sage
+                                ) {
+                                    Text(
+                                        text = "$pendingCount pending",
+                                        color = Color.White,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Track, complete and log verification proof",
+                                fontSize = 11.5.sp,
+                                color = SoilSoft
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = ForestGreenPrimary,
+                            modifier = Modifier
+                                .clickable { onAddTaskClick() }
+                                .testTag("dashboard_add_task_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = "Add Task", tint = Color.White, modifier = Modifier.size(16.dp))
+                                Text("New Task", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Task Status Filter Chips: Pending, All, Completed
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val pendingActive = selectedStatus == TaskStatusFilter.PENDING
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (pendingActive) ForestGreenPrimary else Color.White,
+                            border = BorderStroke(1.dp, if (pendingActive) ForestGreenPrimary else LineColor),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onStatusSelected(TaskStatusFilter.PENDING) }
+                                .testTag("filter_status_pending")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⏳ Pending (${tasks.count { !it.isCompleted }})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (pendingActive) Color.White else Soil
+                                )
+                            }
+                        }
+
+                        val allActive = selectedStatus == TaskStatusFilter.ALL
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (allActive) ForestGreenPrimary else Color.White,
+                            border = BorderStroke(1.dp, if (allActive) ForestGreenPrimary else LineColor),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onStatusSelected(TaskStatusFilter.ALL) }
+                                .testTag("filter_status_all")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "📋 All (${tasks.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (allActive) Color.White else Soil
+                                )
+                            }
+                        }
+
+                        val completedActive = selectedStatus == TaskStatusFilter.COMPLETED
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (completedActive) ForestGreenPrimary else Color.White,
+                            border = BorderStroke(1.dp, if (completedActive) ForestGreenPrimary else LineColor),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onStatusSelected(TaskStatusFilter.COMPLETED) }
+                                .testTag("filter_status_completed")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "✅ Done (${tasks.count { it.isCompleted }})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (completedActive) Color.White else Soil
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Task Category Quick Filter Chips
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (selectedCategory == null) Soil else Color.White,
+                                border = BorderStroke(1.dp, if (selectedCategory == null) Soil else LineColor),
+                                modifier = Modifier.clickable { onCategorySelected(null) }
+                            ) {
+                                Text(
+                                    text = "All Categories",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selectedCategory == null) Color.White else SoilSoft,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                        items(TaskCategory.values()) { category ->
+                            val isCatSel = selectedCategory == category
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isCatSel) Soil else Color.White,
+                                border = BorderStroke(1.dp, if (isCatSel) Soil else LineColor),
+                                modifier = Modifier.clickable { onCategorySelected(if (isCatSel) null else category) }
+                            ) {
+                                Text(
+                                    text = category.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCatSel) Color.White else SoilSoft,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Render Tasks List with TaskCard
+                    val displayedTasks = tasks.filter { task ->
+                        val matchesStatus = when (selectedStatus) {
+                            TaskStatusFilter.PENDING -> !task.isCompleted
+                            TaskStatusFilter.COMPLETED -> task.isCompleted
+                            TaskStatusFilter.HIGH_PRIORITY -> !task.isCompleted && task.priority == TaskPriority.HIGH
+                            TaskStatusFilter.ALL -> true
+                            else -> true
+                        }
+                        val matchesCategory = selectedCategory == null || task.category == selectedCategory
+                        val matchesSearch = searchQuery.isBlank() ||
+                                task.title.contains(searchQuery, ignoreCase = true) ||
+                                task.targetUnit.contains(searchQuery, ignoreCase = true) ||
+                                (task.assignedWorker?.contains(searchQuery, ignoreCase = true) == true)
+                        matchesStatus && matchesCategory && matchesSearch
+                    }
+
+                    if (displayedTasks.isEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, LineColor)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("🌾", fontSize = 32.sp)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = when (selectedStatus) {
+                                        TaskStatusFilter.PENDING -> "No pending tasks 🎉"
+                                        TaskStatusFilter.COMPLETED -> "No completed tasks yet"
+                                        TaskStatusFilter.HIGH_PRIORITY -> "No high priority tasks"
+                                        TaskStatusFilter.ALL -> "No tasks registered"
+                                        else -> "No tasks found"
+                                    },
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Soil
+                                )
+                                Text(
+                                    text = "Tap + New Task to assign farm operations.",
+                                    fontSize = 11.5.sp,
+                                    color = SoilSoft
+                                )
+                            }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            displayedTasks.forEach { task ->
+                                TaskCard(
+                                    task = task,
+                                    onCompleteClick = onCompleteTaskClick,
+                                    onReopenClick = onReopenTaskClick,
+                                    onViewProofClick = onViewProofClick,
+                                    onDeleteClick = onDeleteTaskClick
+                                )
+                            }
+                        }
                     }
                 }
             }

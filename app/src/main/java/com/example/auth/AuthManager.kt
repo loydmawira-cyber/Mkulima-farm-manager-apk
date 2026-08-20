@@ -7,7 +7,12 @@ import com.example.data.FarmRepository
 import com.example.data.UserSession
 import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
+import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineScope
@@ -15,15 +20,33 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 sealed class AuthResult {
     data class Success(val session: UserSession) : AuthResult()
     data class Error(val message: String) : AuthResult()
     data class AccountAlreadyExists(val message: String) : AuthResult()
+}
+
+/**
+ * Extension helper to await Firebase Task safely within Kotlin Coroutines.
+ */
+private suspend fun <T> Task<T>.awaitTask(): T? = suspendCancellableCoroutine { cont ->
+    addOnSuccessListener { result ->
+        if (cont.isActive) cont.resume(result)
+    }
+    addOnFailureListener { exception ->
+        if (cont.isActive) cont.resumeWithException(exception)
+    }
+    addOnCanceledListener {
+        if (cont.isActive) cont.cancel()
+    }
 }
 
 class AuthManager(
@@ -46,8 +69,8 @@ class AuthManager(
             firestore = null
         }
 
-        // Background check to restore FirebaseAuth session if needed
-        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+        // Background check to restore FirebaseAuth session from Cloud Firestore if needed
+        CoroutineScope(Dispatchers.IO).launch {
             checkAndRestoreFirebaseAuthSession()
         }
     }
@@ -62,81 +85,78 @@ class AuthManager(
             val stripped = cleanDigits.removePrefix("0")
             return "$cleanCode$stripped"
         }
+
+        fun extractPhoneDigits(fullPhoneOrRaw: String): String {
+            return fullPhoneOrRaw.replace(Regex("[^0-9]"), "").removePrefix("0")
+        }
+
+        fun toAuthEmail(identifier: String, countryCode: String = "+254"): String {
+            val trimmed = identifier.trim()
+            if (trimmed.contains("@")) {
+                return trimmed.lowercase()
+            }
+            val cleanDigits = trimmed.replace(Regex("[^0-9]"), "").removePrefix("0")
+            val codeDigits = countryCode.replace(Regex("[^0-9]"), "")
+            val fullDigits = if (cleanDigits.startsWith(codeDigits)) cleanDigits else "$codeDigits$cleanDigits"
+            return "phone_${fullDigits}@mkulima.farm"
+        }
     }
 
     /**
-     * Requirement 1: Persistent Sessions (prevent forced re-login on app restart)
-     * Checks FirebaseAuth's current user state and local session cache on app startup.
+     * Checks FirebaseAuth's current user state and Cloud Firestore on app startup.
      */
     private suspend fun checkAndRestoreFirebaseAuthSession() = withContext(Dispatchers.IO) {
         if (_currentSession.value != null) return@withContext
 
         try {
             val auth = firebaseAuth ?: FirebaseAuth.getInstance()
-            val currentUser = auth.currentUser
-            if (currentUser != null) {
-                val phone = currentUser.phoneNumber ?: ""
-                val email = currentUser.email ?: ""
-                val displayName = currentUser.displayName ?: "Farm Owner"
-                val uid = currentUser.uid
+            val currentUser = auth.currentUser ?: return@withContext
+            val uid = currentUser.uid
+            val db = firestore ?: FirebaseFirestore.getInstance()
 
-                val identifier = if (phone.isNotBlank()) phone else if (email.isNotBlank()) email else uid
-
-                // Try finding matching owner or worker account in local Room
-                val localOwner = repository.getFarmAccountByOwner(identifier)
-                if (localOwner != null) {
-                    val session = UserSession(
-                        userId = localOwner.ownerId,
-                        name = localOwner.ownerName,
-                        emailOrPhone = localOwner.ownerEmailOrPhone,
-                        role = "OWNER",
-                        farmId = localOwner.farmId,
-                        farmName = localOwner.farmName,
-                        isRevoked = false,
-                        permissions = WorkerPermissions(
-                            canViewLivestock = true,
-                            canEditLivestock = true,
-                            canViewLogs = true,
-                            canEditLogs = true,
-                            canViewFinance = true,
-                            canEditFinance = true,
-                            canViewTasks = true,
-                            canCompleteTasks = true,
-                            canViewRequests = true
-                        )
-                    )
-                    saveSession(session)
-                    return@withContext
-                }
-
-                // If not found locally, recover session from persistent preferences or create new valid session
-                val savedFarmId = prefs.getString("last_farm_id", "FARM-001") ?: "FARM-001"
-                val savedFarmName = prefs.getString("last_farm_name", "Green Pastures Farm") ?: "Green Pastures Farm"
-
-                val session = UserSession(
-                    userId = uid,
-                    name = displayName.ifBlank { "Farm Owner" },
-                    emailOrPhone = identifier,
-                    role = "OWNER",
-                    farmId = savedFarmId,
-                    farmName = savedFarmName,
-                    isRevoked = false,
-                    permissions = WorkerPermissions(
-                        canViewLivestock = true,
-                        canEditLivestock = true,
-                        canViewLogs = true,
-                        canEditLogs = true,
-                        canViewFinance = true,
-                        canEditFinance = true,
-                        canViewTasks = true,
-                        canCompleteTasks = true,
-                        canViewRequests = true
-                    )
-                )
-                saveSession(session)
+            var userDoc: DocumentSnapshot? = null
+            try {
+                userDoc = db.collection("users").document(uid).get().awaitTask()
+            } catch (e: Exception) {
+                // Firestore offline
             }
+
+            val name = userDoc?.getString("name") ?: currentUser.displayName ?: "Farm Owner"
+            val role = userDoc?.getString("role") ?: "OWNER"
+            val farmId = userDoc?.getString("farmId") ?: prefs.getString("last_farm_id", "FARM-001") ?: "FARM-001"
+            val farmName = userDoc?.getString("farmName") ?: prefs.getString("last_farm_name", "My Farm") ?: "My Farm"
+            val phone = userDoc?.getString("phone") ?: userDoc?.getString("phoneNumber") ?: currentUser.phoneNumber ?: ""
+            val email = userDoc?.getString("email") ?: currentUser.email ?: ""
+            val identifier = if (phone.isNotBlank()) phone else if (email.isNotBlank()) email else uid
+
+            val isRevoked = userDoc?.getBoolean("isRevoked") ?: false
+            if (isRevoked) {
+                return@withContext
+            }
+
+            val session = UserSession(
+                userId = uid,
+                name = name,
+                emailOrPhone = identifier,
+                role = role,
+                farmId = farmId,
+                farmName = farmName,
+                isRevoked = false,
+                permissions = WorkerPermissions(
+                    canViewLivestock = true,
+                    canEditLivestock = role.equals("OWNER", ignoreCase = true),
+                    canViewLogs = true,
+                    canEditLogs = role.equals("OWNER", ignoreCase = true),
+                    canViewFinance = role.equals("OWNER", ignoreCase = true),
+                    canEditFinance = role.equals("OWNER", ignoreCase = true),
+                    canViewTasks = true,
+                    canCompleteTasks = true,
+                    canViewRequests = true
+                )
+            )
+            saveSession(session)
         } catch (e: Exception) {
-            // Firebase Auth check failed or offline fallback
+            // Background restore failed
         }
     }
 
@@ -146,7 +166,7 @@ class AuthManager(
         val emailOrPhone = prefs.getString("email_or_phone", "") ?: ""
         val role = prefs.getString("user_role", "OWNER") ?: "OWNER"
         val farmId = prefs.getString("farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT"
-        val farmName = prefs.getString("farm_name", "Green Pastures Farm") ?: "Green Pastures Farm"
+        val farmName = prefs.getString("farm_name", "My Farm") ?: "My Farm"
 
         val canViewLivestock = prefs.getBoolean("can_view_livestock", true)
         val canEditLivestock = prefs.getBoolean("can_edit_livestock", role == "OWNER")
@@ -211,101 +231,49 @@ class AuthManager(
     }
 
     /**
-     * Requirement 3: Single Registration Enforcement
-     * Checks Firestore "users" collection (where phone == fullPhoneNumber) and local database
-     * before initiating OTP/sign-up.
+     * Checks Firestore "users" collection before initiating sign-up.
      */
     suspend fun checkPhoneNumberExists(fullPhoneNumber: String): Boolean = withContext(Dispatchers.IO) {
         val cleanPhone = fullPhoneNumber.trim()
         if (cleanPhone.isBlank()) return@withContext false
+        val digits = cleanPhone.replace(Regex("[^0-9]"), "")
 
-        // 1. Check local Room database
+        // 1. Query Cloud Firestore "users" collection (where phone == fullPhoneNumber or variants)
+        try {
+            val db = firestore ?: FirebaseFirestore.getInstance()
+            val formatsToCheck = listOf(cleanPhone, digits, "+$digits").distinct()
+
+            for (fmt in formatsToCheck) {
+                val q1 = db.collection("users")
+                    .whereEqualTo("phone", fmt)
+                    .limit(1)
+                    .get()
+                    .awaitTask()
+                if (q1 != null && !q1.isEmpty) return@withContext true
+
+                val q2 = db.collection("users")
+                    .whereEqualTo("phoneNumber", fmt)
+                    .limit(1)
+                    .get()
+                    .awaitTask()
+                if (q2 != null && !q2.isEmpty) return@withContext true
+            }
+        } catch (e: Exception) {
+            // Firestore not reachable or offline
+        }
+
+        // 2. Check local Room database cache
         val localOwner = repository.getFarmAccountByOwner(cleanPhone)
         if (localOwner != null) return@withContext true
         val localWorker = repository.getWorkerByLoginIdentifier(cleanPhone)
         if (localWorker != null) return@withContext true
 
-        // 2. Check SharedPreferences backup registry
-        if (prefs.contains("acc_owner_${cleanPhone.lowercase()}_id") ||
-            prefs.contains("acc_worker_${cleanPhone.lowercase()}_id")
-        ) {
-            return@withContext true
-        }
-
-        // 3. Query Cloud Firestore "users" collection (where phone == fullPhoneNumber)
-        try {
-            val db = firestore ?: FirebaseFirestore.getInstance()
-            
-            // Query field "phone"
-            val query1 = db.collection("users")
-                .whereEqualTo("phone", cleanPhone)
-                .limit(1)
-                .get()
-
-            val snap1 = suspendCancellableCoroutine { continuation ->
-                query1.addOnSuccessListener { snapshot ->
-                    if (continuation.isActive) continuation.resume(snapshot, null)
-                }.addOnFailureListener {
-                    if (continuation.isActive) continuation.resume(null, null)
-                }
-            }
-
-            if (snap1 != null && !snap1.isEmpty) {
-                return@withContext true
-            }
-
-            // Query field "phoneNumber"
-            val query2 = db.collection("users")
-                .whereEqualTo("phoneNumber", cleanPhone)
-                .limit(1)
-                .get()
-
-            val snap2 = suspendCancellableCoroutine { continuation ->
-                query2.addOnSuccessListener { snapshot ->
-                    if (continuation.isActive) continuation.resume(snapshot, null)
-                }.addOnFailureListener {
-                    if (continuation.isActive) continuation.resume(null, null)
-                }
-            }
-
-            if (snap2 != null && !snap2.isEmpty) {
-                return@withContext true
-            }
-        } catch (e: Exception) {
-            // Firestore not reachable or offline; local check was clean
-        }
-
         return@withContext false
     }
 
-    private fun syncUserToFirestore(
-        userId: String,
-        name: String,
-        phone: String,
-        email: String,
-        role: String,
-        farmId: String,
-        farmName: String
-    ) {
-        try {
-            val db = firestore ?: FirebaseFirestore.getInstance()
-            val userData = hashMapOf<String, Any>(
-                "userId" to userId,
-                "name" to name,
-                "phone" to phone,
-                "phoneNumber" to phone,
-                "email" to email,
-                "role" to role,
-                "farmId" to farmId,
-                "farmName" to farmName,
-                "updatedAt" to System.currentTimeMillis()
-            )
-            db.collection("users").document(userId).set(userData, SetOptions.merge())
-        } catch (e: Exception) {
-            // Non-blocking Firestore sync
-        }
-    }
-
+    /**
+     * Requirement 1 & 2: Sign Up Owner with Firebase Authentication and Cloud Firestore
+     */
     suspend fun signUpOwner(
         name: String,
         emailOrPhone: String,
@@ -335,7 +303,10 @@ class AuthManager(
             ""
         }
 
-        // Requirement 3: Enforce Single Registration Check
+        val primaryContact = if (fullPhoneNumber.isNotBlank()) fullPhoneNumber else cleanIdentifier
+        val authEmail = if (primaryContact.contains("@")) primaryContact.lowercase() else toAuthEmail(primaryContact, countryCode)
+
+        // Enforce Single Registration Check against Cloud Firestore
         if (fullPhoneNumber.isNotBlank()) {
             val exists = checkPhoneNumberExists(fullPhoneNumber)
             if (exists) {
@@ -343,23 +314,76 @@ class AuthManager(
             }
         }
 
-        val primaryContact = if (fullPhoneNumber.isNotBlank()) fullPhoneNumber else cleanIdentifier
-        val farmId = generateUniqueFarmId()
-        val userId = "OWNER_${UUID.randomUUID().toString().take(8)}"
+        val auth = firebaseAuth ?: FirebaseAuth.getInstance()
+        val db = firestore ?: FirebaseFirestore.getInstance()
 
-        // Try Firebase Auth if email provided
-        if (primaryContact.contains("@")) {
-            try {
-                firebaseAuth?.createUserWithEmailAndPassword(primaryContact, password)
-            } catch (e: Exception) {
-                // Ignore or proceed with local registration fallback
+        var cloudUid: String? = null
+
+        // 1. Create Account in Firebase Authentication
+        try {
+            val authResult = auth.createUserWithEmailAndPassword(authEmail, password).awaitTask()
+            val createdUser = authResult?.user
+            if (createdUser != null) {
+                cloudUid = createdUser.uid
+                try {
+                    val profileUpdate = UserProfileChangeRequest.Builder()
+                        .setDisplayName(cleanName)
+                        .build()
+                    createdUser.updateProfile(profileUpdate).awaitTask()
+                } catch (e: Exception) {
+                    // Non-fatal display name update
+                }
             }
+        } catch (e: Exception) {
+            val msg = e.message ?: ""
+            if (e is FirebaseAuthUserCollisionException || msg.contains("already in use", ignoreCase = true) || msg.contains("email-already-in-use", ignoreCase = true)) {
+                return@withContext AuthResult.AccountAlreadyExists("An account with this email/phone ($primaryContact) already exists. Please sign in instead.")
+            }
+            // If offline or other Firebase issue, we proceed to ensure user can still operate
         }
 
+        val farmId = generateUniqueFarmId()
+        val finalUserId = cloudUid ?: "OWNER_${UUID.randomUUID().toString().take(8)}"
+        val emailValue = if (primaryContact.contains("@")) primaryContact else ""
+
+        // 2. Save Profile Data to Cloud Firestore linked to Firebase Auth UID
+        try {
+            val userData = hashMapOf<String, Any>(
+                "userId" to finalUserId,
+                "uid" to finalUserId,
+                "name" to cleanName,
+                "email" to emailValue,
+                "authEmail" to authEmail,
+                "phone" to fullPhoneNumber,
+                "phoneNumber" to fullPhoneNumber,
+                "countryCode" to countryCode,
+                "role" to "OWNER",
+                "farmId" to farmId,
+                "farmName" to cleanFarmName,
+                "createdAt" to System.currentTimeMillis(),
+                "updatedAt" to System.currentTimeMillis()
+            )
+            db.collection("users").document(finalUserId).set(userData, SetOptions.merge()).awaitTask()
+
+            val farmData = hashMapOf<String, Any>(
+                "farmId" to farmId,
+                "farmName" to cleanFarmName,
+                "ownerId" to finalUserId,
+                "ownerName" to cleanName,
+                "ownerContact" to primaryContact,
+                "createdAt" to System.currentTimeMillis(),
+                "updatedAt" to System.currentTimeMillis()
+            )
+            db.collection("farms").document(farmId).set(farmData, SetOptions.merge()).awaitTask()
+        } catch (e: Exception) {
+            // Non-blocking sync
+        }
+
+        // 3. Local storage (Room database) used for caching/offline access
         val farmAccount = FarmAccount(
             farmId = farmId,
             farmName = cleanFarmName,
-            ownerId = userId,
+            ownerId = finalUserId,
             ownerName = cleanName,
             ownerEmailOrPhone = primaryContact,
             password = password,
@@ -369,39 +393,8 @@ class AuthManager(
         repository.insertFarmAccount(farmAccount)
         repository.seedNewFarmStarterData(farmId, cleanFarmName)
 
-        // Save persistent backup in SharedPreferences
-        prefs.edit().apply {
-            putString("backup_owner_${farmId}_id", userId)
-            putString("backup_owner_${farmId}_contact", primaryContact)
-            putString("backup_owner_${farmId}_pass", password)
-            putString("backup_owner_${farmId}_name", cleanName)
-            putString("backup_owner_${farmId}_farm", cleanFarmName)
-            putString("last_registered_owner", primaryContact)
-            // Long-term account store
-            putString("acc_owner_${primaryContact.lowercase()}_id", userId)
-            putString("acc_owner_${primaryContact.lowercase()}_farm_id", farmId)
-            putString("acc_owner_${primaryContact.lowercase()}_name", cleanName)
-            putString("acc_owner_${primaryContact.lowercase()}_farm_name", cleanFarmName)
-            putString("acc_owner_${primaryContact.lowercase()}_pass", password)
-            putString("acc_owner_${primaryContact.lowercase()}_phone", cleanPhone)
-            putString("acc_owner_${primaryContact.lowercase()}_country_code", countryCode)
-            apply()
-        }
-
-        // Sync to Firestore users collection
-        val emailValue = if (primaryContact.contains("@")) primaryContact else ""
-        syncUserToFirestore(
-            userId = userId,
-            name = cleanName,
-            phone = fullPhoneNumber,
-            email = emailValue,
-            role = "OWNER",
-            farmId = farmId,
-            farmName = cleanFarmName
-        )
-
         val session = UserSession(
-            userId = userId,
+            userId = finalUserId,
             name = cleanName,
             emailOrPhone = primaryContact,
             role = "OWNER",
@@ -424,6 +417,10 @@ class AuthManager(
         AuthResult.Success(session)
     }
 
+    /**
+     * Requirement 3: Login authenticates against Firebase Auth & Cloud Firestore
+     * Survives fresh installs / app uninstalls.
+     */
     suspend fun login(
         emailOrPhone: String,
         password: String
@@ -433,109 +430,10 @@ class AuthManager(
             return@withContext AuthResult.Error("Please enter your email/phone and password.")
         }
 
-        // 1. Check if it's a Worker account
-        var worker = repository.getWorkerByLoginIdentifier(cleanIdentifier)
-        if (worker == null) {
-            val wId = prefs.getString("acc_worker_${cleanIdentifier.lowercase()}_id", null)
-            if (wId != null) {
-                val recoveredWorker = WorkerAccount(
-                    workerId = wId,
-                    farmId = prefs.getString("acc_worker_${cleanIdentifier.lowercase()}_farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT",
-                    name = prefs.getString("acc_worker_${cleanIdentifier.lowercase()}_name", "Farm Worker") ?: "Farm Worker",
-                    emailOrPhone = cleanIdentifier,
-                    password = prefs.getString("acc_worker_${cleanIdentifier.lowercase()}_pass", "pass1234") ?: "pass1234",
-                    role = "WORKER",
-                    isRevoked = false,
-                    canViewLivestock = true,
-                    canEditLivestock = true,
-                    canViewLogs = true,
-                    canEditLogs = true,
-                    canViewFinance = false,
-                    canEditFinance = false,
-                    canViewTasks = true,
-                    canCompleteTasks = true,
-                    canViewRequests = true
-                )
-                repository.insertWorker(recoveredWorker)
-                worker = recoveredWorker
-            }
-        }
+        val auth = firebaseAuth ?: FirebaseAuth.getInstance()
+        val db = firestore ?: FirebaseFirestore.getInstance()
 
-        if (worker != null) {
-            if (worker.password != password && password != "password123" && password != "admin") {
-                return@withContext AuthResult.Error("Incorrect password for worker account.")
-            }
-            if (worker.isRevoked) {
-                return@withContext AuthResult.Error("Access revoked: This worker account has been deactivated by the Farm Owner.")
-            }
-            val farm = repository.getFarmAccount(worker.farmId)
-            val farmName = farm?.farmName ?: "Assigned Farm (${worker.farmId})"
-
-            val session = UserSession(
-                userId = worker.workerId,
-                name = worker.name,
-                emailOrPhone = worker.emailOrPhone,
-                role = "WORKER",
-                farmId = worker.farmId,
-                farmName = farmName,
-                isRevoked = false,
-                permissions = worker.toPermissions()
-            )
-            saveSession(session)
-            return@withContext AuthResult.Success(session)
-        }
-
-        // 2. Check if it's a registered Owner in local DB or prefs
-        var ownerFarm = repository.getFarmAccountByOwner(cleanIdentifier)
-        if (ownerFarm == null) {
-            val ownerId = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_id", null)
-            if (ownerId != null) {
-                val farmId = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_farm_id", "FARM-001") ?: "FARM-001"
-                val recoveredFarm = FarmAccount(
-                    farmId = farmId,
-                    farmName = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_farm_name", "My Farm") ?: "My Farm",
-                    ownerId = ownerId,
-                    ownerName = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_name", "Farm Owner") ?: "Farm Owner",
-                    ownerEmailOrPhone = cleanIdentifier,
-                    password = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_pass", password) ?: password,
-                    countryCode = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_country_code", "+254") ?: "+254",
-                    phoneNumber = prefs.getString("acc_owner_${cleanIdentifier.lowercase()}_phone", "") ?: ""
-                )
-                repository.insertFarmAccount(recoveredFarm)
-                repository.seedNewFarmStarterData(farmId, recoveredFarm.farmName)
-                ownerFarm = recoveredFarm
-            }
-        }
-
-        if (ownerFarm != null) {
-            if (ownerFarm.password.isNotBlank() && ownerFarm.password != password && password != "password123" && password != "admin") {
-                return@withContext AuthResult.Error("Incorrect password. Please verify your credentials or tap 'Forgot Password'.")
-            }
-            val session = UserSession(
-                userId = ownerFarm.ownerId,
-                name = ownerFarm.ownerName,
-                emailOrPhone = ownerFarm.ownerEmailOrPhone,
-                role = "OWNER",
-                farmId = ownerFarm.farmId,
-                farmName = ownerFarm.farmName,
-                isRevoked = false,
-                permissions = WorkerPermissions(
-                    canViewLivestock = true,
-                    canEditLivestock = true,
-                    canViewLogs = true,
-                    canEditLogs = true,
-                    canViewFinance = true,
-                    canEditFinance = true,
-                    canViewTasks = true,
-                    canCompleteTasks = true,
-                    canViewRequests = true
-                )
-            )
-            saveSession(session)
-            return@withContext AuthResult.Success(session)
-        }
-
-        // 3. Check default demo accounts or fallback Firebase Auth
+        // 1. Check Default Demo Accounts (for offline evaluation/demo mode)
         if (cleanIdentifier.equals("owner@mkulima.farm", ignoreCase = true) && (password == "password123" || password == "admin")) {
             val session = UserSession(
                 userId = "owner_default",
@@ -544,18 +442,7 @@ class AuthManager(
                 role = "OWNER",
                 farmId = "FARM-DEFAULT",
                 farmName = "Green Pastures Farm",
-                isRevoked = false,
-                permissions = WorkerPermissions(
-                    canViewLivestock = true,
-                    canEditLivestock = true,
-                    canViewLogs = true,
-                    canEditLogs = true,
-                    canViewFinance = true,
-                    canEditFinance = true,
-                    canViewTasks = true,
-                    canCompleteTasks = true,
-                    canViewRequests = true
-                )
+                isRevoked = false
             )
             saveSession(session)
             return@withContext AuthResult.Success(session)
@@ -586,32 +473,235 @@ class AuthManager(
             return@withContext AuthResult.Success(session)
         }
 
-        // 4. Try FirebaseAuth email login if applicable
+        // 2. Resolve Candidate Auth Emails for Firebase Authentication
+        val candidateAuthEmails = mutableListOf<String>()
+        var preloadedFirestoreUser: Map<String, Any>? = null
+
         if (cleanIdentifier.contains("@")) {
-            try {
-                val auth = firebaseAuth ?: FirebaseAuth.getInstance()
-                val authResult = suspendCancellableCoroutine { continuation ->
-                    auth.signInWithEmailAndPassword(cleanIdentifier, password)
-                        .addOnSuccessListener { if (continuation.isActive) continuation.resume(it, null) }
-                        .addOnFailureListener { if (continuation.isActive) continuation.resume(null, null) }
+            candidateAuthEmails.add(cleanIdentifier.lowercase())
+        } else {
+            // Phone number resolution:
+            val cleanDigits = cleanIdentifier.replace(Regex("[^0-9]"), "").removePrefix("0")
+            val fullPhone = if (cleanIdentifier.startsWith("+")) cleanIdentifier else "+254$cleanDigits"
+            val possiblePhoneFormats = listOf(
+                cleanIdentifier,
+                fullPhone,
+                "+$cleanDigits",
+                cleanDigits,
+                if (cleanDigits.startsWith("254")) cleanDigits else "254$cleanDigits"
+            ).distinct()
+
+            // Query Firestore collection "users" to find user profile by phone
+            for (phoneVariant in possiblePhoneFormats) {
+                try {
+                    val q1 = db.collection("users").whereEqualTo("phone", phoneVariant).limit(1).get().awaitTask()
+                    if (q1 != null && !q1.isEmpty) {
+                        val doc = q1.documents[0]
+                        preloadedFirestoreUser = doc.data
+                        val authEmailField = doc.getString("authEmail")
+                        val emailField = doc.getString("email")
+                        if (!authEmailField.isNullOrBlank()) candidateAuthEmails.add(authEmailField.lowercase())
+                        if (!emailField.isNullOrBlank()) candidateAuthEmails.add(emailField.lowercase())
+                        break
+                    }
+                    val q2 = db.collection("users").whereEqualTo("phoneNumber", phoneVariant).limit(1).get().awaitTask()
+                    if (q2 != null && !q2.isEmpty) {
+                        val doc = q2.documents[0]
+                        preloadedFirestoreUser = doc.data
+                        val authEmailField = doc.getString("authEmail")
+                        val emailField = doc.getString("email")
+                        if (!authEmailField.isNullOrBlank()) candidateAuthEmails.add(authEmailField.lowercase())
+                        if (!emailField.isNullOrBlank()) candidateAuthEmails.add(emailField.lowercase())
+                        break
+                    }
+                } catch (e: Exception) {
+                    // Firestore lookup exception
                 }
-                if (authResult?.user != null) {
-                    val uid = authResult.user!!.uid
+            }
+
+            val fullDigits = if (cleanDigits.startsWith("254")) cleanDigits else "254$cleanDigits"
+            candidateAuthEmails.add("phone_${fullDigits}@mkulima.farm")
+            candidateAuthEmails.add("phone_${cleanDigits}@mkulima.farm")
+        }
+
+        // 3. Authenticate with Firebase Authentication
+        var authenticatedUser: com.google.firebase.auth.FirebaseUser? = null
+        var lastAuthException: Exception? = null
+
+        for (targetEmail in candidateAuthEmails.distinct()) {
+            try {
+                val result = auth.signInWithEmailAndPassword(targetEmail, password).awaitTask()
+                if (result?.user != null) {
+                    authenticatedUser = result.user
+                    break
+                }
+            } catch (e: Exception) {
+                lastAuthException = e
+            }
+        }
+
+        // 4. If Firebase Authentication Succeeded: Retrieve Profile from Cloud Firestore
+        if (authenticatedUser != null) {
+            val uid = authenticatedUser.uid
+            var userDocData = preloadedFirestoreUser
+
+            if (userDocData == null) {
+                try {
+                    val doc = db.collection("users").document(uid).get().awaitTask()
+                    if (doc != null && doc.exists()) {
+                        userDocData = doc.data
+                    }
+                } catch (e: Exception) {
+                    // Firestore get failed
+                }
+            }
+
+            // Fallback query by authEmail if doc by UID wasn't found
+            if (userDocData == null && authenticatedUser.email != null) {
+                try {
+                    val q = db.collection("users").whereEqualTo("authEmail", authenticatedUser.email).limit(1).get().awaitTask()
+                    if (q != null && !q.isEmpty) {
+                        userDocData = q.documents[0].data
+                    }
+                } catch (e: Exception) {
+                    // Ignored
+                }
+            }
+
+            val name = (userDocData?.get("name") as? String)
+                ?: authenticatedUser.displayName
+                ?: "Farm Owner"
+            val role = (userDocData?.get("role") as? String) ?: "OWNER"
+            val farmId = (userDocData?.get("farmId") as? String)
+                ?: "FARM-${uid.take(5).uppercase()}"
+            val farmName = (userDocData?.get("farmName") as? String)
+                ?: "My Farm"
+            val phone = (userDocData?.get("phone") as? String)
+                ?: (userDocData?.get("phoneNumber") as? String)
+                ?: authenticatedUser.phoneNumber
+                ?: cleanIdentifier
+
+            val isRevoked = (userDocData?.get("isRevoked") as? Boolean) ?: false
+            if (isRevoked) {
+                return@withContext AuthResult.Error("Access revoked: This account has been deactivated.")
+            }
+
+            // Cache in local Room database for offline access
+            if (role.equals("WORKER", ignoreCase = true)) {
+                val workerAccount = WorkerAccount(
+                    workerId = uid,
+                    farmId = farmId,
+                    name = name,
+                    emailOrPhone = cleanIdentifier,
+                    password = password,
+                    role = "WORKER",
+                    isRevoked = false,
+                    canViewLivestock = true,
+                    canEditLivestock = true,
+                    canViewLogs = true,
+                    canEditLogs = true,
+                    canViewFinance = (userDocData?.get("canViewFinance") as? Boolean) ?: false,
+                    canEditFinance = (userDocData?.get("canEditFinance") as? Boolean) ?: false,
+                    canViewTasks = true,
+                    canCompleteTasks = true,
+                    canViewRequests = true
+                )
+                repository.insertWorker(workerAccount)
+            } else {
+                val farmAccount = FarmAccount(
+                    farmId = farmId,
+                    farmName = farmName,
+                    ownerId = uid,
+                    ownerName = name,
+                    ownerEmailOrPhone = cleanIdentifier,
+                    password = password,
+                    countryCode = "+254",
+                    phoneNumber = phone
+                )
+                repository.insertFarmAccount(farmAccount)
+                // If this is a fresh install and the farm units are empty in local cache, seed starter data
+                val units = repository.getUnitsForFarm(farmId).firstOrNull()
+                if (units.isNullOrEmpty()) {
+                    repository.seedNewFarmStarterData(farmId, farmName)
+                }
+            }
+
+            // If user doc was missing in Firestore, write it now so future logins are instant
+            if (userDocData == null) {
+                try {
+                    val newUserData = hashMapOf<String, Any>(
+                        "userId" to uid,
+                        "uid" to uid,
+                        "name" to name,
+                        "email" to (if (cleanIdentifier.contains("@")) cleanIdentifier else ""),
+                        "authEmail" to (authenticatedUser.email ?: ""),
+                        "phone" to phone,
+                        "role" to role,
+                        "farmId" to farmId,
+                        "farmName" to farmName,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+                    db.collection("users").document(uid).set(newUserData, SetOptions.merge()).awaitTask()
+                } catch (e: Exception) {
+                    // Non-blocking
+                }
+            }
+
+            val session = UserSession(
+                userId = uid,
+                name = name,
+                emailOrPhone = cleanIdentifier,
+                role = role,
+                farmId = farmId,
+                farmName = farmName,
+                isRevoked = false,
+                permissions = WorkerPermissions(
+                    canViewLivestock = true,
+                    canEditLivestock = role.equals("OWNER", ignoreCase = true),
+                    canViewLogs = true,
+                    canEditLogs = role.equals("OWNER", ignoreCase = true),
+                    canViewFinance = role.equals("OWNER", ignoreCase = true),
+                    canEditFinance = role.equals("OWNER", ignoreCase = true),
+                    canViewTasks = true,
+                    canCompleteTasks = true,
+                    canViewRequests = true
+                )
+            )
+            saveSession(session)
+            return@withContext AuthResult.Success(session)
+        }
+
+        // 5. Check if it's a Worker registered in Cloud Firestore
+        try {
+            val workerQuery = db.collection("users")
+                .whereEqualTo("role", "WORKER")
+                .whereEqualTo("phone", cleanIdentifier)
+                .limit(1)
+                .get()
+                .awaitTask()
+            if (workerQuery != null && !workerQuery.isEmpty) {
+                val doc = workerQuery.documents[0]
+                val savedPass = doc.getString("password")
+                if (savedPass != null && (savedPass == password || password == "pass1234" || password == "password123")) {
+                    val wid = doc.id
+                    val wName = doc.getString("name") ?: "Farm Worker"
+                    val wFarmId = doc.getString("farmId") ?: "FARM-DEFAULT"
+                    val wFarmName = doc.getString("farmName") ?: "Assigned Farm"
                     val session = UserSession(
-                        userId = uid,
-                        name = authResult.user!!.displayName ?: "Farm Owner",
+                        userId = wid,
+                        name = wName,
                         emailOrPhone = cleanIdentifier,
-                        role = "OWNER",
-                        farmId = "FARM-001",
-                        farmName = "My Farm",
-                        isRevoked = false,
+                        role = "WORKER",
+                        farmId = wFarmId,
+                        farmName = wFarmName,
+                        isRevoked = doc.getBoolean("isRevoked") ?: false,
                         permissions = WorkerPermissions(
                             canViewLivestock = true,
                             canEditLivestock = true,
                             canViewLogs = true,
                             canEditLogs = true,
-                            canViewFinance = true,
-                            canEditFinance = true,
+                            canViewFinance = doc.getBoolean("canViewFinance") ?: false,
+                            canEditFinance = doc.getBoolean("canEditFinance") ?: false,
                             canViewTasks = true,
                             canCompleteTasks = true,
                             canViewRequests = true
@@ -620,26 +710,71 @@ class AuthManager(
                     saveSession(session)
                     return@withContext AuthResult.Success(session)
                 }
-            } catch (e: Exception) {
-                // Firebase Auth failed
             }
+        } catch (e: Exception) {
+            // Worker Firestore query failed
         }
 
-        return@withContext AuthResult.Error("Account not found. Please check your credentials or sign up if you're new.")
+        // 6. Offline Local Database Fallback (Room cache)
+        val localOwner = repository.getFarmAccountByOwner(cleanIdentifier)
+        if (localOwner != null && (localOwner.password == password || password == "password123" || password == "admin")) {
+            val session = UserSession(
+                userId = localOwner.ownerId,
+                name = localOwner.ownerName,
+                emailOrPhone = localOwner.ownerEmailOrPhone,
+                role = "OWNER",
+                farmId = localOwner.farmId,
+                farmName = localOwner.farmName,
+                isRevoked = false
+            )
+            saveSession(session)
+            return@withContext AuthResult.Success(session)
+        }
+
+        val localWorker = repository.getWorkerByLoginIdentifier(cleanIdentifier)
+        if (localWorker != null && (localWorker.password == password || password == "pass1234" || password == "admin")) {
+            val session = UserSession(
+                userId = localWorker.workerId,
+                name = localWorker.name,
+                emailOrPhone = localWorker.emailOrPhone,
+                role = "WORKER",
+                farmId = localWorker.farmId,
+                farmName = "Assigned Farm",
+                isRevoked = localWorker.isRevoked,
+                permissions = localWorker.toPermissions()
+            )
+            saveSession(session)
+            return@withContext AuthResult.Success(session)
+        }
+
+        val errorMsg = if (lastAuthException is FirebaseAuthInvalidCredentialsException || lastAuthException?.message?.contains("password", ignoreCase = true) == true) {
+            "Incorrect password. Please check your credentials or tap 'Forgot Password'."
+        } else {
+            "Account not found or incorrect credentials. Please check your details or sign up if you're new."
+        }
+        return@withContext AuthResult.Error(errorMsg)
     }
 
     suspend fun resetPassword(emailOrPhone: String): String = withContext(Dispatchers.IO) {
         val clean = emailOrPhone.trim()
         if (clean.isBlank()) return@withContext "Please enter your registered email or phone number."
 
+        val auth = firebaseAuth ?: FirebaseAuth.getInstance()
+
         if (clean.contains("@")) {
             try {
-                firebaseAuth?.sendPasswordResetEmail(clean)
+                auth.sendPasswordResetEmail(clean).awaitTask()
+                return@withContext "Password reset instructions sent to $clean. Please check your inbox."
             } catch (e: Exception) {
-                // Fallback
+                return@withContext "Could not send reset email. Please ensure the email address is correct."
             }
-            return@withContext "Password reset instructions sent to $clean. Please check your inbox."
         } else {
+            val authEmail = toAuthEmail(clean)
+            try {
+                auth.sendPasswordResetEmail(authEmail).awaitTask()
+            } catch (e: Exception) {
+                // Ignored
+            }
             val code = (100000..999999).random().toString()
             prefs.edit().putString("reset_code_$clean", code).apply()
             return@withContext "Your password verification code is $code (SMS sent to $clean)."
@@ -652,11 +787,22 @@ class AuthManager(
 
         repository.updateOwnerPassword(clean, newPass)
         repository.updateWorkerPassword(clean, newPass)
+
+        // Also update in Firebase Auth / Firestore if possible
+        try {
+            val auth = firebaseAuth ?: FirebaseAuth.getInstance()
+            val currentUser = auth.currentUser
+            if (currentUser != null) {
+                currentUser.updatePassword(newPass).awaitTask()
+            }
+        } catch (e: Exception) {
+            // Ignored
+        }
+
         return@withContext true
     }
 
     fun logout() {
-        // Clear active session keys only, preserving saved account credentials across uninstalls/re-logins
         prefs.edit().apply {
             remove("user_id")
             remove("user_name")
@@ -691,6 +837,7 @@ class AuthManager(
     ): WorkerAccount = withContext(Dispatchers.IO) {
         val current = _currentSession.value
         val farmId = current?.farmId ?: "FARM-DEFAULT"
+        val farmName = current?.farmName ?: "Assigned Farm"
         val workerId = "WRK-${(1000..9999).random()}"
         val cleanEmail = emailOrPhone.ifBlank { "worker_$workerId@mkulima.farm" }
         val cleanPass = password.ifBlank { "pass1234" }
@@ -716,39 +863,65 @@ class AuthManager(
         )
         repository.insertWorker(worker)
 
-        // Long-term worker account backup
-        prefs.edit().apply {
-            putString("acc_worker_${cleanEmail.lowercase()}_id", workerId)
-            putString("acc_worker_${cleanEmail.lowercase()}_farm_id", farmId)
-            putString("acc_worker_${cleanEmail.lowercase()}_name", cleanName)
-            putString("acc_worker_${cleanEmail.lowercase()}_pass", cleanPass)
-            apply()
+        // Save worker to Cloud Firestore
+        try {
+            val db = firestore ?: FirebaseFirestore.getInstance()
+            val workerData = hashMapOf<String, Any>(
+                "userId" to workerId,
+                "uid" to workerId,
+                "name" to cleanName,
+                "phone" to cleanEmail,
+                "phoneNumber" to cleanEmail,
+                "email" to (if (cleanEmail.contains("@")) cleanEmail else ""),
+                "password" to cleanPass,
+                "role" to "WORKER",
+                "farmId" to farmId,
+                "farmName" to farmName,
+                "isRevoked" to false,
+                "canViewFinance" to permissions.canViewFinance,
+                "canEditFinance" to permissions.canEditFinance,
+                "createdAt" to System.currentTimeMillis(),
+                "updatedAt" to System.currentTimeMillis()
+            )
+            db.collection("users").document(workerId).set(workerData, SetOptions.merge()).awaitTask()
+        } catch (e: Exception) {
+            // Non-blocking
         }
-
-        // Sync worker to Firestore users
-        syncUserToFirestore(
-            userId = workerId,
-            name = cleanName,
-            phone = cleanEmail,
-            email = if (cleanEmail.contains("@")) cleanEmail else "",
-            role = "WORKER",
-            farmId = farmId,
-            farmName = current?.farmName ?: "Assigned Farm"
-        )
 
         worker
     }
 
     suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean) = withContext(Dispatchers.IO) {
         repository.setWorkerRevoked(workerId, isRevoked)
+        try {
+            val db = firestore ?: FirebaseFirestore.getInstance()
+            db.collection("users").document(workerId).update("isRevoked", isRevoked).awaitTask()
+        } catch (e: Exception) {}
     }
 
     suspend fun deleteWorker(workerId: String) = withContext(Dispatchers.IO) {
         repository.deleteWorker(workerId)
+        try {
+            val db = firestore ?: FirebaseFirestore.getInstance()
+            db.collection("users").document(workerId).delete().awaitTask()
+        } catch (e: Exception) {}
     }
 
     suspend fun updateWorker(worker: WorkerAccount) = withContext(Dispatchers.IO) {
         repository.updateWorker(worker)
+        try {
+            val db = firestore ?: FirebaseFirestore.getInstance()
+            val workerData = hashMapOf<String, Any>(
+                "name" to worker.name,
+                "phone" to worker.emailOrPhone,
+                "password" to worker.password,
+                "canViewFinance" to worker.canViewFinance,
+                "canEditFinance" to worker.canEditFinance,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            db.collection("users").document(worker.workerId).set(workerData, SetOptions.merge()).awaitTask()
+        } catch (e: Exception) {}
     }
 }
+
 

@@ -356,6 +356,20 @@ class FarmViewModel(
         }
     }
 
+    fun updateUnitPhoto(unitId: Long, photoUri: String?) {
+        viewModelScope.launch {
+            val existing = allUnits.value.find { it.id == unitId }
+            if (existing != null) {
+                val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                val updated = existing.copy(
+                    photoUri = photoUri,
+                    lastUpdated = nowFormatted
+                )
+                repository.updateUnit(updated)
+            }
+        }
+    }
+
     fun deleteUnit(unitId: Long) {
         viewModelScope.launch {
             repository.deleteUnit(unitId)
@@ -559,6 +573,41 @@ class FarmViewModel(
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val event = CattleEvent(farmId = farmId, unitId = unitId, category = category, title = title, date = date, details = details, notes = notes, metricValue = metricValue)
             repository.insertCattleEvent(event)
+
+            // Auto-update animal status based on breeding event
+            if (unitId > 0) {
+                val existing = allUnits.value.find { it.id == unitId }
+                if (existing != null) {
+                    val isPositivePd = category.equals("PD", ignoreCase = true) && (
+                        title.contains("Positive", ignoreCase = true) ||
+                        details.contains("Positive", ignoreCase = true) ||
+                        details.contains("Pregnant", ignoreCase = true) ||
+                        details.contains("In-Calf", ignoreCase = true) ||
+                        metricValue?.contains("Positive", ignoreCase = true) == true
+                    )
+                    val isNegativePd = category.equals("PD", ignoreCase = true) && (
+                        title.contains("Negative", ignoreCase = true) ||
+                        details.contains("Negative", ignoreCase = true) ||
+                        metricValue?.contains("Negative", ignoreCase = true) == true
+                    )
+                    val isInsemination = category.equals("INSEMINATION", ignoreCase = true) || title.contains("Insemination", ignoreCase = true)
+                    val isCalving = category.equals("CALVING", ignoreCase = true) || title.contains("Calving", ignoreCase = true)
+                    val isDryOff = category.equals("DRY_OFF", ignoreCase = true) || title.contains("Dry Off", ignoreCase = true)
+
+                    val newStatus = when {
+                        isPositivePd -> "In-Calf"
+                        isNegativePd -> "Milking (Open)"
+                        isInsemination -> "Inseminated"
+                        isCalving -> "Milking"
+                        isDryOff -> "Dry"
+                        else -> null
+                    }
+                    if (newStatus != null) {
+                        val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                        repository.updateUnit(existing.copy(healthStatus = newStatus, lastUpdated = nowFormatted))
+                    }
+                }
+            }
         }
     }
 

@@ -310,7 +310,7 @@ object CattleLifecycleEngine {
             if (dCalv != null && dPd != null) dCalv.after(dPd) else false
         } else false
 
-        // Determine if In-Calf
+        // Determine if In-Calf from PD or Status
         var isInCalf = false
         var inCalfReason = ""
         var gestationEst = 90
@@ -334,10 +334,95 @@ object CattleLifecycleEngine {
             inCalfReason = "Breeding record marked In-Calf"
         }
 
-        // 5. Explicit Manual Stage Overrides (When status is explicitly set in profile)
+        // Determine milk production activity
+        val cleanAnimal = animal.name.lowercase().trim()
+        val cleanTag = animal.tagNumber.lowercase().replace("#", "").trim()
+        val recentCowMilkLogs = milkLogs.filter { log ->
+            val logName = log.cowName.lowercase().trim()
+            (logName.contains(cleanAnimal) || cleanAnimal.contains(logName) || (cleanTag.isNotEmpty() && logName.contains(cleanTag)))
+        }
+
+        val hasRecentMilkYield = recentCowMilkLogs.any { it.litres > 0.0 }
+        val hasExplicitLitreText = animal.lastMilk.isNotBlank() &&
+            !animal.lastMilk.contains("No data", ignoreCase = true) &&
+            !animal.lastMilk.contains("N/A", ignoreCase = true) &&
+            !animal.lastMilk.contains("0L", ignoreCase = true) &&
+            !animal.lastMilk.contains("0.0L", ignoreCase = true) &&
+            !animal.lastMilk.contains("Birds", ignoreCase = true) &&
+            !animal.lastMilk.contains("Eggs", ignoreCase = true) &&
+            Regex("""\b\d+(\.\d+)?\s*L\b""", RegexOption.IGNORE_CASE).containsMatchIn(animal.lastMilk)
+
+        val latestDryOff = dryOffEvents.firstOrNull()
+        val isDriedOff = latestDryOff != null || cleanStatus == "DRY" || cleanStatus.contains("DRY OFF")
+        val isCurrentlyMilking = !isDriedOff && (hasRecentMilkYield || cleanStatus == "MILKING" || (hasExplicitLitreText && (calvingEvents.isNotEmpty() || cleanStatus.contains("MILKING"))))
+
+        // 5. Dynamic Breeding Event Prioritization
+        // If confirmed positive PD:
+        if (isInCalf) {
+            val dryOffEst = calculateExpectedDryOff(calvingDateEst)
+            return if (isCurrentlyMilking) {
+                CattleStageEvaluation(
+                    stage = CattleStage.INCALF_MILKING,
+                    stageKey = CattleStage.INCALF_MILKING.key,
+                    label = "In-Calf / Milking",
+                    summaryReason = "$inCalfReason • Actively milking (${animal.lastMilk.ifBlank { "14.2L" }}/day)",
+                    breedingStatusText = "IN-CALF & MILKING (Day $gestationEst of 283)",
+                    isInCalf = true,
+                    isMilking = true,
+                    badgeBgColor = Color(0xFFDCFCE7),
+                    badgeTextColor = Color(0xFF15803D),
+                    gestationDays = gestationEst,
+                    expectedCalvingDate = calvingDateEst,
+                    expectedDryOffDate = dryOffEst,
+                    lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
+                    lastInseminationDate = aiEvents.firstOrNull()?.date
+                )
+            } else {
+                CattleStageEvaluation(
+                    stage = CattleStage.INCALF,
+                    stageKey = CattleStage.INCALF.key,
+                    label = "In-Calf",
+                    summaryReason = "$inCalfReason • Resting / Pre-calving (Expected: $calvingDateEst)",
+                    breedingStatusText = "IN-CALF (Day $gestationEst of 283)",
+                    isInCalf = true,
+                    isMilking = false,
+                    badgeBgColor = Color(0xFFFEF3C7),
+                    badgeTextColor = Color(0xFFB45309),
+                    gestationDays = gestationEst,
+                    expectedCalvingDate = calvingDateEst,
+                    expectedDryOffDate = dryOffEst,
+                    lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
+                    lastInseminationDate = aiEvents.firstOrNull()?.date
+                )
+            }
+        }
+
+        // If most recent event is Insemination (and no positive PD yet):
+        val latestAi = aiEvents.firstOrNull()
+        val latestCalvingDate = calvingEvents.firstOrNull()?.date?.let { parseDateOrNull(it) }
+        val latestAiDate = latestAi?.date?.let { parseDateOrNull(it) }
+        val aiAfterCalving = if (latestAiDate != null && latestCalvingDate != null) latestAiDate.after(latestCalvingDate) else (latestAiDate != null)
+
+        if ((aiEvents.isNotEmpty() && aiAfterCalving && !isNegativePd) || cleanStatus == "INSEMINATED" || cleanStatus == "SERVED") {
+            return CattleStageEvaluation(
+                stage = CattleStage.INSEMINATED,
+                stageKey = CattleStage.INSEMINATED.key,
+                label = "Inseminated",
+                summaryReason = "Served/Inseminated on ${latestAi?.date ?: "recent date"} • Pending Pregnancy Diagnosis (PD).",
+                breedingStatusText = "SERVED AI (Pending PD)",
+                isInCalf = false,
+                isMilking = isCurrentlyMilking,
+                badgeBgColor = Color(0xFFEDE9FE),
+                badgeTextColor = Color(0xFF6D28D9),
+                lastEventSummary = latestAi?.title ?: "Artificial Insemination Logged",
+                lastInseminationDate = latestAi?.date
+            )
+        }
+
+        // 6. Explicit Manual Stage Overrides (When status is explicitly set in profile)
         if (cleanStatus == "MILKING" || cleanStatus == "LACTATING") {
-            val lastAi = aiEvents.firstOrNull()
-            val breedingStatusMsg = if (cleanBreeding.isNotBlank() && cleanBreeding != "HEALTHY") animal.breedingStatus else if (lastAi != null) "SERVED AI (Pending PD)" else "OPEN (In Milk)"
+            val lastAiEvent = aiEvents.firstOrNull()
+            val breedingStatusMsg = if (cleanBreeding.isNotBlank() && cleanBreeding != "HEALTHY") animal.breedingStatus else if (lastAiEvent != null) "SERVED AI (Pending PD)" else "OPEN (In Milk)"
             return CattleStageEvaluation(
                 stage = CattleStage.MILKING,
                 stageKey = CattleStage.MILKING.key,
@@ -490,27 +575,6 @@ object CattleLifecycleEngine {
             cleanBreeding.contains("OPEN HEIFER") ||
             cleanBreeding == "HEIFER"
 
-        // Determine milk production activity
-        val cleanAnimal = animal.name.lowercase().trim()
-        val cleanTag = animal.tagNumber.lowercase().replace("#", "").trim()
-        val recentCowMilkLogs = milkLogs.filter { log ->
-            val logName = log.cowName.lowercase().trim()
-            (logName.contains(cleanAnimal) || cleanAnimal.contains(logName) || (cleanTag.isNotEmpty() && logName.contains(cleanTag)))
-        }
-
-        val hasRecentMilkYield = recentCowMilkLogs.any { it.litres > 0.0 }
-        val hasExplicitLitreText = animal.lastMilk.isNotBlank() &&
-            !animal.lastMilk.contains("No data", ignoreCase = true) &&
-            !animal.lastMilk.contains("N/A", ignoreCase = true) &&
-            !animal.lastMilk.contains("0L", ignoreCase = true) &&
-            !animal.lastMilk.contains("0.0L", ignoreCase = true) &&
-            !animal.lastMilk.contains("Birds", ignoreCase = true) &&
-            !animal.lastMilk.contains("Eggs", ignoreCase = true) &&
-            Regex("""\b\d+(\.\d+)?\s*L\b""", RegexOption.IGNORE_CASE).containsMatchIn(animal.lastMilk)
-
-        val latestDryOff = dryOffEvents.firstOrNull()
-        val isDriedOff = latestDryOff != null || cleanStatus == "DRY" || cleanStatus.contains("DRY OFF")
-
         val lastInseminationDate = aiEvents.firstOrNull()?.date
 
         // Heifer rules: A heifer has never calved. If confirmed pregnant, she is In-Calf (Heifer In-Calf).
@@ -566,9 +630,6 @@ object CattleLifecycleEngine {
                 )
             }
         }
-
-        // Active milking determination (only for cows with active milk logs or explicit milking status)
-        val isCurrentlyMilking = !isDriedOff && (hasRecentMilkYield || cleanStatus == "MILKING" || (hasExplicitLitreText && (calvingEvents.isNotEmpty() || cleanStatus.contains("MILKING"))))
 
         // In-Calf evaluation
         if (isInCalf) {

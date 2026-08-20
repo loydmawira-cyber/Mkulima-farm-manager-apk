@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
         WorkerAccount::class,
         FarmAccount::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {

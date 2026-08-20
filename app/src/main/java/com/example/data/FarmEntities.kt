@@ -134,7 +134,8 @@ data class FarmUnit(
     val weightAtBirth: String = "",
     val currentWeight: String = "",
     val sire: String = "",
-    val dam: String = ""
+    val dam: String = "",
+    val photoUri: String? = null
 )
 
 @Entity(tableName = "milk_logs")

@@ -87,6 +87,16 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material3.AlertDialog
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
+import com.example.ui.util.ImageStorageUtils
+import com.example.ui.components.CameraCaptureDialog
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -150,7 +160,8 @@ data class AnimalDetailData(
     val disposalDate: String = "",
     val disposalNotes: String = "",
     val headCountInt: Int = 1,
-    val manuallySetStatus: String? = null
+    val manuallySetStatus: String? = null,
+    val photoUri: String? = null
 )
 
 data class FlockDisposalLogItem(
@@ -792,10 +803,23 @@ fun FlocksScreen(
         )
     }
 
-    val roomAnimals = remember(units, milkLogs) {
+    val allDbCattleEvents by viewModel.allCattleEvents.collectAsStateWithLifecycle(initialValue = emptyList())
+
+    val roomAnimals = remember(units, milkLogs, allDbCattleEvents) {
         units.map { unit ->
             val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true)
             val cowLogs = milkLogs.filter { it.cowName.equals(unit.name, ignoreCase = true) }
+            val unitDbEvents = allDbCattleEvents.filter { it.unitId == unit.id }.map {
+                CattleEventItem(
+                    id = it.id.toString(),
+                    category = it.category,
+                    title = it.title,
+                    date = it.date,
+                    details = it.details,
+                    notes = it.notes ?: "",
+                    metricValue = it.metricValue ?: ""
+                )
+            }
             val lastMilkStr = if (isPoultry) {
                 "${unit.headCount} Birds"
             } else if (cowLogs.isNotEmpty()) {
@@ -824,17 +848,18 @@ fun FlocksScreen(
                 weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
                 sire = unit.sire.ifBlank { "N/A" },
                 dam = unit.dam.ifBlank { "N/A" },
-                headCountInt = unit.headCount
+                headCountInt = unit.headCount,
+                photoUri = unit.photoUri
             )
-            
-            val eval = CattleLifecycleEngine.evaluateCattleStage(animalDetail, emptyList(), cowLogs)
-            
-            // Keep unit healthStatus if specified, otherwise fall back to lifecycle evaluation
-            val newStatus = if (animalDetail.status.isBlank() || animalDetail.status.equals("ACTIVE", ignoreCase = true)) eval.stage.displayName else animalDetail.status
-            
+
+            val eval = CattleLifecycleEngine.evaluateCattleStage(animalDetail, unitDbEvents, cowLogs)
+
+            // Dynamic Stage Update
+            val newStatus = if (unitDbEvents.isNotEmpty() || animalDetail.status.isBlank() || animalDetail.status.equals("ACTIVE", ignoreCase = true)) eval.stage.displayName else animalDetail.status
+
             animalDetail.copy(
                 status = newStatus,
-                breedingStatus = if (animalDetail.breedingStatus.isBlank() || animalDetail.breedingStatus.equals("HEALTHY", ignoreCase = true)) eval.breedingStatusText else animalDetail.breedingStatus
+                breedingStatus = if (unitDbEvents.isNotEmpty() || animalDetail.breedingStatus.isBlank() || animalDetail.breedingStatus.equals("HEALTHY", ignoreCase = true)) eval.breedingStatusText else animalDetail.breedingStatus
             )
         }
     }
@@ -934,7 +959,8 @@ fun FlocksScreen(
         currentWeight: String,
         sire: String,
         dam: String,
-        headCount: Int
+        headCount: Int,
+        photoUri: String? = null
     ) {
         val existing = mutableAnimals.find { it.id == animalId } ?: return
         val updated = existing.copy(
@@ -951,6 +977,7 @@ fun FlocksScreen(
             sire = sire,
             dam = dam,
             headCountInt = headCount,
+            photoUri = if (photoUri != null) photoUri else existing.photoUri,
             lastMilk = if (category.equals("POULTRY", ignoreCase = true)) "$headCount Birds" else existing.lastMilk
         )
         val idx = mutableAnimals.indexOfFirst { it.id == animalId }
@@ -990,7 +1017,8 @@ fun FlocksScreen(
                         weightAtBirth = weightAtBirth,
                         currentWeight = currentWeight,
                         sire = sire,
-                        dam = dam
+                        dam = dam,
+                        photoUri = if (photoUri != null) photoUri else matching.photoUri
                     )
                     onUpdateUnit(updatedUnit)
                 }
@@ -1011,7 +1039,8 @@ fun FlocksScreen(
                     weightAtBirth = weightAtBirth,
                     currentWeight = currentWeight,
                     sire = sire,
-                    dam = dam
+                    dam = dam,
+                    photoUri = if (photoUri != null) photoUri else matching.photoUri
                 )
                 onUpdateUnit(updatedUnit)
             }
@@ -1291,7 +1320,7 @@ fun FlocksScreen(
         EditAnimalDialog(
             animal = animalToEdit!!,
             onDismiss = { animalToEdit = null },
-            onSaveAnimal = { name, tagNumber, breed, category, status, breedingStatus, age, dob, weightAtBirth, currentWeight, sire, dam, headCount ->
+            onSaveAnimal = { name, tagNumber, breed, category, status, breedingStatus, age, dob, weightAtBirth, currentWeight, sire, dam, headCount, photoUri ->
                 handleModifyAnimal(
                     animalId = animalToEdit!!.id,
                     name = name,
@@ -1306,7 +1335,8 @@ fun FlocksScreen(
                     currentWeight = currentWeight,
                     sire = sire,
                     dam = dam,
-                    headCount = headCount
+                    headCount = headCount,
+                    photoUri = photoUri
                 )
                 animalToEdit = null
             }
@@ -1352,6 +1382,25 @@ fun FlocksScreen(
                 },
                 onEditFlock = { animalToEdit = selectedAnimal },
                 onDeleteFlock = { animalToDelete = selectedAnimal },
+                onUpdatePhoto = { newPhoto ->
+                    handleModifyAnimal(
+                        animalId = selectedAnimal!!.id,
+                        name = selectedAnimal!!.name,
+                        tagNumber = selectedAnimal!!.tagNumber,
+                        breed = selectedAnimal!!.breed,
+                        category = selectedAnimal!!.category,
+                        status = selectedAnimal!!.status,
+                        breedingStatus = selectedAnimal!!.breedingStatus,
+                        age = selectedAnimal!!.age,
+                        dob = selectedAnimal!!.dateOfBirth,
+                        weightAtBirth = selectedAnimal!!.weightAtBirth,
+                        currentWeight = selectedAnimal!!.weight,
+                        sire = selectedAnimal!!.sire,
+                        dam = selectedAnimal!!.dam,
+                        headCount = selectedAnimal!!.headCountInt,
+                        photoUri = newPhoto
+                    )
+                },
                 modifier = modifier
             )
         } else {
@@ -1370,6 +1419,25 @@ fun FlocksScreen(
                 },
                 onEditAnimal = { animalToEdit = selectedAnimal },
                 onDeleteAnimal = { animalToDelete = selectedAnimal },
+                onUpdatePhoto = { newPhoto ->
+                    handleModifyAnimal(
+                        animalId = selectedAnimal!!.id,
+                        name = selectedAnimal!!.name,
+                        tagNumber = selectedAnimal!!.tagNumber,
+                        breed = selectedAnimal!!.breed,
+                        category = selectedAnimal!!.category,
+                        status = selectedAnimal!!.status,
+                        breedingStatus = selectedAnimal!!.breedingStatus,
+                        age = selectedAnimal!!.age,
+                        dob = selectedAnimal!!.dateOfBirth,
+                        weightAtBirth = selectedAnimal!!.weightAtBirth,
+                        currentWeight = selectedAnimal!!.weight,
+                        sire = selectedAnimal!!.sire,
+                        dam = selectedAnimal!!.dam,
+                        headCount = selectedAnimal!!.headCountInt,
+                        photoUri = newPhoto
+                    )
+                },
                 modifier = modifier
             )
         }
@@ -1648,17 +1716,30 @@ fun FlocksScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Surface(
-                                    shape = CircleShape,
-                                    color = Color(0xFFF1F5F9),
-                                    modifier = Modifier.size(46.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (animal.category == "POULTRY") Color(0xFFFEF3C7) else Color(0xFFE8F5E9),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, if (animal.category == "POULTRY") Color(0xFFFDE68A) else Color(0xFFC8E6C9)),
+                                    modifier = Modifier.size(50.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = if (animal.category == "POULTRY") Icons.Filled.Egg else Icons.Filled.Pets,
-                                            contentDescription = null,
-                                            tint = ForestGreenPrimary,
-                                            modifier = Modifier.size(22.dp)
-                                        )
+                                        if (!animal.photoUri.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(context)
+                                                    .data(animal.photoUri)
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = "${animal.name} Photo",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = if (animal.category == "POULTRY") Icons.Filled.Egg else Icons.Filled.Pets,
+                                                contentDescription = if (animal.category == "POULTRY") "Poultry Icon" else "Cattle Icon",
+                                                tint = if (animal.category == "POULTRY") Color(0xFFD97706) else ForestGreenPrimary,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
                                     }
                                 }
 
@@ -1765,6 +1846,7 @@ fun AnimalDetailsView(
     onDisposeAnimal: (reason: String, amount: Double, notes: String, date: String) -> Unit = { _, _, _, _ -> },
     onEditAnimal: () -> Unit = {},
     onDeleteAnimal: () -> Unit = {},
+    onUpdatePhoto: (String?) -> Unit = {},
     milkLogs: List<MilkLog> = emptyList(),
     eggLogs: List<EggLog> = emptyList(),
     onUpdateAnimalStage: (newStatus: String, newBreedingStatus: String) -> Unit = { _, _ -> },
@@ -2295,6 +2377,184 @@ fun AnimalDetailsView(
                         )
                     }
                 }
+            }
+        }
+
+        // Animal Photo Header / Avatar Card
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            var showPhotoSourceDialog by remember { mutableStateOf(false) }
+            var showCameraCaptureDialog by remember { mutableStateOf(false) }
+            val photoGalleryLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetContent()
+            ) { uri: Uri? ->
+                if (uri != null) {
+                    val saved = ImageStorageUtils.saveImageToInternalStorage(context, uri) ?: uri.toString()
+                    onUpdatePhoto(saved)
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Animal Photo Avatar / Fallback Icon
+                        Box(
+                            modifier = Modifier
+                                .size(88.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isPoultry) Color(0xFFFEF3C7) else Color(0xFFE8F5E9))
+                                .border(
+                                    1.dp,
+                                    if (isPoultry) Color(0xFFFDE68A) else Color(0xFFC8E6C9),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable { showPhotoSourceDialog = true }
+                                .testTag("animal_photo_avatar_box"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (!animal.photoUri.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(animal.photoUri)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = "${animal.name} Photo",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isPoultry) Icons.Filled.Egg else Icons.Filled.Pets,
+                                        contentDescription = "Generic Animal Icon",
+                                        tint = if (isPoultry) Color(0xFFD97706) else ForestGreenPrimary,
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("No Photo", fontSize = 9.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+
+                        // Info & Photo Upload Trigger
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = animal.name,
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = "Tag: ${animal.tagNumber}  •  ${animal.breed}",
+                                fontSize = 12.sp,
+                                color = Color(0xFF64748B)
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Button(
+                                    onClick = { showPhotoSourceDialog = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .testTag("upload_animal_photo_button")
+                                ) {
+                                    Icon(
+                                        imageVector = if (animal.photoUri.isNullOrBlank()) Icons.Filled.AddPhotoAlternate else Icons.Filled.CameraAlt,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (animal.photoUri.isNullOrBlank()) "Add Photo" else "Change",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                if (!animal.photoUri.isNullOrBlank()) {
+                                    OutlinedButton(
+                                        onClick = { onUpdatePhoto(null) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                        modifier = Modifier
+                                            .height(34.dp)
+                                            .testTag("remove_animal_photo_button")
+                                    ) {
+                                        Text("Remove", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (showPhotoSourceDialog) {
+                AlertDialog(
+                    onDismissRequest = { showPhotoSourceDialog = false },
+                    title = { Text("Update Animal Photo", fontWeight = FontWeight.Bold, fontSize = 17.sp) },
+                    text = { Text("Choose a photo from your camera or gallery to identify ${animal.name}. If no photo is uploaded, a generic icon is displayed.") },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showPhotoSourceDialog = false
+                                showCameraCaptureDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                        ) {
+                            Icon(Icons.Filled.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Use Camera")
+                        }
+                    },
+                    dismissButton = {
+                        OutlinedButton(
+                            onClick = {
+                                showPhotoSourceDialog = false
+                                photoGalleryLauncher.launch("image/*")
+                            }
+                        ) {
+                            Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("From Gallery")
+                        }
+                    }
+                )
+            }
+
+            if (showCameraCaptureDialog) {
+                CameraCaptureDialog(
+                    onDismiss = { showCameraCaptureDialog = false },
+                    onPhotoCaptured = { uri ->
+                        showCameraCaptureDialog = false
+                        val saved = ImageStorageUtils.saveImageToInternalStorage(context, uri) ?: uri.toString()
+                        onUpdatePhoto(saved)
+                    }
+                )
             }
         }
 
@@ -2948,6 +3208,17 @@ fun AnimalDetailsView(
                     notes = notes,
                     metricValue = metricValue
                 )
+                val immediateStage = when (type.uppercase()) {
+                    "PD" -> if (title.contains("Positive", ignoreCase = true) || details.contains("Positive", ignoreCase = true) || metricValue.contains("Positive", ignoreCase = true) || metricValue.contains("In-Calf", ignoreCase = true)) "INCALF" else "ACTIVE"
+                    "INSEMINATION" -> "INSEMINATED"
+                    "CALVING" -> "MILKING"
+                    "DRY_OFF" -> "DRY"
+                    else -> null
+                }
+                if (immediateStage != null) {
+                    currentStatus = immediateStage
+                    onUpdateAnimalStage(immediateStage, if (immediateStage == "INCALF") "Confirmed Pregnant" else immediateStage)
+                }
                 showAddCattleEventDialog = false
             }
         )
@@ -3025,6 +3296,7 @@ fun FlockDetailsView(
     onDisposeFlock: (quantity: Int, reason: String, amount: Double, notes: String, date: String) -> Unit = { _, _, _, _, _ -> },
     onEditFlock: () -> Unit = {},
     onDeleteFlock: () -> Unit = {},
+    onUpdatePhoto: (String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val canEdit = userRole == "OWNER"
@@ -3341,6 +3613,180 @@ fun FlockDetailsView(
                         }
                     }
                 }
+                }
+            }
+
+            // Flock Photo Header / Avatar Card
+            item {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                var showPhotoSourceDialog by remember { mutableStateOf(false) }
+                var showCameraCaptureDialog by remember { mutableStateOf(false) }
+                val photoGalleryLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.GetContent()
+                ) { uri: Uri? ->
+                    if (uri != null) {
+                        val saved = ImageStorageUtils.saveImageToInternalStorage(context, uri) ?: uri.toString()
+                        onUpdatePhoto(saved)
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            // Flock Photo Avatar / Fallback Icon
+                            Box(
+                                modifier = Modifier
+                                    .size(88.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color(0xFFFEF3C7))
+                                    .border(1.dp, Color(0xFFFDE68A), RoundedCornerShape(14.dp))
+                                    .clickable { showPhotoSourceDialog = true }
+                                    .testTag("flock_photo_avatar_box"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (!flock.photoUri.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context)
+                                            .data(flock.photoUri)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = "${flock.name} Photo",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Egg,
+                                            contentDescription = "Generic Poultry Icon",
+                                            tint = Color(0xFFD97706),
+                                            modifier = Modifier.size(40.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text("No Photo", fontSize = 9.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+
+                            // Info & Photo Upload Trigger
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = flock.name,
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = "Tag: ${flock.tagNumber}  •  ${flock.breed}",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF64748B)
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = { showPhotoSourceDialog = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                        modifier = Modifier
+                                            .height(34.dp)
+                                            .testTag("upload_flock_photo_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (flock.photoUri.isNullOrBlank()) Icons.Filled.AddPhotoAlternate else Icons.Filled.CameraAlt,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (flock.photoUri.isNullOrBlank()) "Add Photo" else "Change",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    if (!flock.photoUri.isNullOrBlank()) {
+                                        OutlinedButton(
+                                            onClick = { onUpdatePhoto(null) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                            modifier = Modifier
+                                                .height(34.dp)
+                                                .testTag("remove_flock_photo_button")
+                                        ) {
+                                            Text("Remove", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (showPhotoSourceDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showPhotoSourceDialog = false },
+                        title = { Text("Update Flock Photo", fontWeight = FontWeight.Bold, fontSize = 17.sp) },
+                        text = { Text("Choose a photo from your camera or gallery to identify ${flock.name}. If no photo is uploaded, a generic chicken/egg icon is displayed.") },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showPhotoSourceDialog = false
+                                    showCameraCaptureDialog = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                            ) {
+                                Icon(Icons.Filled.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Use Camera")
+                            }
+                        },
+                        dismissButton = {
+                            OutlinedButton(
+                                onClick = {
+                                    showPhotoSourceDialog = false
+                                    photoGalleryLauncher.launch("image/*")
+                                }
+                            ) {
+                                Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("From Gallery")
+                            }
+                        }
+                    )
+                }
+
+                if (showCameraCaptureDialog) {
+                    CameraCaptureDialog(
+                        onDismiss = { showCameraCaptureDialog = false },
+                        onPhotoCaptured = { uri ->
+                            showCameraCaptureDialog = false
+                            val saved = ImageStorageUtils.saveImageToInternalStorage(context, uri) ?: uri.toString()
+                            onUpdatePhoto(saved)
+                        }
+                    )
                 }
             }
 

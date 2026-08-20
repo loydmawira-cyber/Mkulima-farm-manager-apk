@@ -200,15 +200,21 @@ fun CameraCaptureDialog(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(20.dp),
-                            color = Color.Black.copy(alpha = 0.6f)
+                            color = Color.Black.copy(alpha = 0.7f)
                         ) {
-                            Text(
-                                text = "Photo Captured",
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = Color(0xFF4ADE80), modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Photo Captured - Review",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
 
                         IconButton(
@@ -221,45 +227,62 @@ fun CameraCaptureDialog(
                         }
                     }
 
-                    // Bottom Controls (Retake / Use Photo)
+                    // Bottom Controls (Retake / Confirm & Save Photo)
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth(),
-                        color = Color.Black.copy(alpha = 0.8f)
+                        color = Color.Black.copy(alpha = 0.88f)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
-                                .padding(horizontal = 24.dp, vertical = 20.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 18.dp)
                         ) {
-                            Button(
-                                onClick = { capturedImageUri = null },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
-                                modifier = Modifier.testTag("retake_photo_button")
+                            Text(
+                                text = "Accept this photo or retake if blurry",
+                                color = Color(0xFFCBD5E1),
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Retake")
-                            }
+                                Button(
+                                    onClick = { capturedImageUri = null },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("retake_photo_button")
+                                ) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Retake", fontWeight = FontWeight.SemiBold)
+                                }
 
-                            Button(
-                                onClick = {
-                                    capturedImageUri?.let { uri ->
-                                        onPhotoCaptured(uri)
-                                        onDismiss()
-                                    }
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                                modifier = Modifier.testTag("use_photo_button")
-                            ) {
-                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Use Photo", fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = {
+                                        capturedImageUri?.let { uri ->
+                                            onPhotoCaptured(uri)
+                                            onDismiss()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                    modifier = Modifier
+                                        .weight(1.5f)
+                                        .height(48.dp)
+                                        .testTag("confirm_save_photo_button")
+                                        .testTag("use_photo_button")
+                                ) {
+                                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Confirm & Save", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
                             }
                         }
                     }

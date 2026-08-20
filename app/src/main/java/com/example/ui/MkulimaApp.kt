@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -158,6 +159,29 @@ fun MkulimaAppContent(
     var showAddEmployeeRequestDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showWorkerManagementScreen by remember { mutableStateOf(false) }
+
+    // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
+    val hasOpenOverlay = showWorkerManagementScreen || showSettingsDialog || showAddTaskDialog ||
+            showAddUnitDialog || showAddMilkLogDialog || showAddEggLogDialog ||
+            showAddFinanceDialog || (editingFinanceRecord != null) || showAddEmployeeRequestDialog ||
+            (proofUploadTaskTarget != null) || (proofModalTaskTarget != null)
+
+    BackHandler(enabled = hasOpenOverlay || selectedTab != 0) {
+        when {
+            showWorkerManagementScreen -> showWorkerManagementScreen = false
+            showSettingsDialog -> showSettingsDialog = false
+            proofModalTaskTarget != null -> proofModalTaskTarget = null
+            proofUploadTaskTarget != null -> proofUploadTaskTarget = null
+            showAddTaskDialog -> showAddTaskDialog = false
+            showAddUnitDialog -> showAddUnitDialog = false
+            showAddMilkLogDialog -> showAddMilkLogDialog = false
+            showAddEggLogDialog -> showAddEggLogDialog = false
+            showAddFinanceDialog -> showAddFinanceDialog = false
+            editingFinanceRecord != null -> editingFinanceRecord = null
+            showAddEmployeeRequestDialog -> showAddEmployeeRequestDialog = false
+            selectedTab != 0 -> selectedTab = 0
+        }
+    }
 
     // Proof Upload Dialog
     proofUploadTaskTarget?.let { task ->

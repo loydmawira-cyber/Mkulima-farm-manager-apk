@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -781,6 +782,21 @@ fun FlocksScreen(
     var selectedFilterCategory by remember(farmSettings.farmType) { mutableStateOf(initialCategory) }
     var selectedCattleStage by remember { mutableStateOf("ALL") }
     var showCategoryGuideDialog by remember { mutableStateOf(false) }
+
+    val hasFlocksOverlay = (selectedAnimal != null) || (animalForOptions != null) ||
+            (animalToEdit != null) || (animalToDelete != null) || (animalToDispose != null) ||
+            showCategoryGuideDialog
+
+    BackHandler(enabled = hasFlocksOverlay) {
+        when {
+            animalForOptions != null -> animalForOptions = null
+            animalToEdit != null -> animalToEdit = null
+            animalToDelete != null -> animalToDelete = null
+            animalToDispose != null -> animalToDispose = null
+            showCategoryGuideDialog -> showCategoryGuideDialog = false
+            selectedAnimal != null -> selectedAnimal = null
+        }
+    }
 
     LaunchedEffect(farmSettings.farmType) {
         if (farmSettings.farmType.equals("Poultry Only", ignoreCase = true)) {

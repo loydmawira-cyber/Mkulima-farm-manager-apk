@@ -57,15 +57,47 @@ class AuthManager(
     private var firebaseAuth: FirebaseAuth? = null
     private var firestore: FirebaseFirestore? = null
 
+    private fun getFirebaseAuth(): FirebaseAuth? {
+        return try {
+            if (firebaseAuth != null) return firebaseAuth
+            try {
+                if (com.google.firebase.FirebaseApp.getApps(context).isEmpty()) {
+                    com.google.firebase.FirebaseApp.initializeApp(context)
+                }
+            } catch (t: Throwable) {
+                // Ignore initialization errors
+            }
+            FirebaseAuth.getInstance().also { firebaseAuth = it }
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    private fun getFirestore(): FirebaseFirestore? {
+        return try {
+            if (firestore != null) return firestore
+            try {
+                if (com.google.firebase.FirebaseApp.getApps(context).isEmpty()) {
+                    com.google.firebase.FirebaseApp.initializeApp(context)
+                }
+            } catch (t: Throwable) {
+                // Ignore initialization errors
+            }
+            FirebaseFirestore.getInstance().also { firestore = it }
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
     init {
         try {
-            firebaseAuth = FirebaseAuth.getInstance()
-        } catch (e: Exception) {
+            firebaseAuth = getFirebaseAuth()
+        } catch (e: Throwable) {
             firebaseAuth = null
         }
         try {
-            firestore = FirebaseFirestore.getInstance()
-        } catch (e: Exception) {
+            firestore = getFirestore()
+        } catch (e: Throwable) {
             firestore = null
         }
 
@@ -109,16 +141,18 @@ class AuthManager(
         if (_currentSession.value != null) return@withContext
 
         try {
-            val auth = firebaseAuth ?: FirebaseAuth.getInstance()
+            val auth = getFirebaseAuth() ?: return@withContext
             val currentUser = auth.currentUser ?: return@withContext
             val uid = currentUser.uid
-            val db = firestore ?: FirebaseFirestore.getInstance()
+            val db = getFirestore()
 
             var userDoc: DocumentSnapshot? = null
-            try {
-                userDoc = db.collection("users").document(uid).get().awaitTask()
-            } catch (e: Exception) {
-                // Firestore offline
+            if (db != null) {
+                try {
+                    userDoc = db.collection("users").document(uid).get().awaitTask()
+                } catch (e: Throwable) {
+                    // Firestore offline
+                }
             }
 
             val name = userDoc?.getString("name") ?: currentUser.displayName ?: "Farm Owner"
@@ -155,7 +189,7 @@ class AuthManager(
                 )
             )
             saveSession(session)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             // Background restore failed
         }
     }
@@ -240,25 +274,27 @@ class AuthManager(
 
         // 1. Query Cloud Firestore "users" collection (where phone == fullPhoneNumber or variants)
         try {
-            val db = firestore ?: FirebaseFirestore.getInstance()
-            val formatsToCheck = listOf(cleanPhone, digits, "+$digits").distinct()
+            val db = getFirestore()
+            if (db != null) {
+                val formatsToCheck = listOf(cleanPhone, digits, "+$digits").distinct()
 
-            for (fmt in formatsToCheck) {
-                val q1 = db.collection("users")
-                    .whereEqualTo("phone", fmt)
-                    .limit(1)
-                    .get()
-                    .awaitTask()
-                if (q1 != null && !q1.isEmpty) return@withContext true
+                for (fmt in formatsToCheck) {
+                    val q1 = db.collection("users")
+                        .whereEqualTo("phone", fmt)
+                        .limit(1)
+                        .get()
+                        .awaitTask()
+                    if (q1 != null && !q1.isEmpty) return@withContext true
 
-                val q2 = db.collection("users")
-                    .whereEqualTo("phoneNumber", fmt)
-                    .limit(1)
-                    .get()
-                    .awaitTask()
-                if (q2 != null && !q2.isEmpty) return@withContext true
+                    val q2 = db.collection("users")
+                        .whereEqualTo("phoneNumber", fmt)
+                        .limit(1)
+                        .get()
+                        .awaitTask()
+                    if (q2 != null && !q2.isEmpty) return@withContext true
+                }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             // Firestore not reachable or offline
         }
 
@@ -314,32 +350,34 @@ class AuthManager(
             }
         }
 
-        val auth = firebaseAuth ?: FirebaseAuth.getInstance()
-        val db = firestore ?: FirebaseFirestore.getInstance()
+        val auth = getFirebaseAuth()
+        val db = getFirestore()
 
         var cloudUid: String? = null
 
         // 1. Create Account in Firebase Authentication
-        try {
-            val authResult = auth.createUserWithEmailAndPassword(authEmail, password).awaitTask()
-            val createdUser = authResult?.user
-            if (createdUser != null) {
-                cloudUid = createdUser.uid
-                try {
-                    val profileUpdate = UserProfileChangeRequest.Builder()
-                        .setDisplayName(cleanName)
-                        .build()
-                    createdUser.updateProfile(profileUpdate).awaitTask()
-                } catch (e: Exception) {
-                    // Non-fatal display name update
+        if (auth != null) {
+            try {
+                val authResult = auth.createUserWithEmailAndPassword(authEmail, password).awaitTask()
+                val createdUser = authResult?.user
+                if (createdUser != null) {
+                    cloudUid = createdUser.uid
+                    try {
+                        val profileUpdate = UserProfileChangeRequest.Builder()
+                            .setDisplayName(cleanName)
+                            .build()
+                        createdUser.updateProfile(profileUpdate).awaitTask()
+                    } catch (e: Throwable) {
+                        // Non-fatal display name update
+                    }
                 }
+            } catch (e: Throwable) {
+                val msg = e.message ?: ""
+                if (e is FirebaseAuthUserCollisionException || msg.contains("already in use", ignoreCase = true) || msg.contains("email-already-in-use", ignoreCase = true)) {
+                    return@withContext AuthResult.AccountAlreadyExists("An account with this email/phone ($primaryContact) already exists. Please sign in instead.")
+                }
+                // If offline or other Firebase issue, we proceed to ensure user can still operate
             }
-        } catch (e: Exception) {
-            val msg = e.message ?: ""
-            if (e is FirebaseAuthUserCollisionException || msg.contains("already in use", ignoreCase = true) || msg.contains("email-already-in-use", ignoreCase = true)) {
-                return@withContext AuthResult.AccountAlreadyExists("An account with this email/phone ($primaryContact) already exists. Please sign in instead.")
-            }
-            // If offline or other Firebase issue, we proceed to ensure user can still operate
         }
 
         val farmId = generateUniqueFarmId()
@@ -347,36 +385,38 @@ class AuthManager(
         val emailValue = if (primaryContact.contains("@")) primaryContact else ""
 
         // 2. Save Profile Data to Cloud Firestore linked to Firebase Auth UID
-        try {
-            val userData = hashMapOf<String, Any>(
-                "userId" to finalUserId,
-                "uid" to finalUserId,
-                "name" to cleanName,
-                "email" to emailValue,
-                "authEmail" to authEmail,
-                "phone" to fullPhoneNumber,
-                "phoneNumber" to fullPhoneNumber,
-                "countryCode" to countryCode,
-                "role" to "OWNER",
-                "farmId" to farmId,
-                "farmName" to cleanFarmName,
-                "createdAt" to System.currentTimeMillis(),
-                "updatedAt" to System.currentTimeMillis()
-            )
-            db.collection("users").document(finalUserId).set(userData, SetOptions.merge()).awaitTask()
+        if (db != null) {
+            try {
+                val userData = hashMapOf<String, Any>(
+                    "userId" to finalUserId,
+                    "uid" to finalUserId,
+                    "name" to cleanName,
+                    "email" to emailValue,
+                    "authEmail" to authEmail,
+                    "phone" to fullPhoneNumber,
+                    "phoneNumber" to fullPhoneNumber,
+                    "countryCode" to countryCode,
+                    "role" to "OWNER",
+                    "farmId" to farmId,
+                    "farmName" to cleanFarmName,
+                    "createdAt" to System.currentTimeMillis(),
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                db.collection("users").document(finalUserId).set(userData, SetOptions.merge()).awaitTask()
 
-            val farmData = hashMapOf<String, Any>(
-                "farmId" to farmId,
-                "farmName" to cleanFarmName,
-                "ownerId" to finalUserId,
-                "ownerName" to cleanName,
-                "ownerContact" to primaryContact,
-                "createdAt" to System.currentTimeMillis(),
-                "updatedAt" to System.currentTimeMillis()
-            )
-            db.collection("farms").document(farmId).set(farmData, SetOptions.merge()).awaitTask()
-        } catch (e: Exception) {
-            // Non-blocking sync
+                val farmData = hashMapOf<String, Any>(
+                    "farmId" to farmId,
+                    "farmName" to cleanFarmName,
+                    "ownerId" to finalUserId,
+                    "ownerName" to cleanName,
+                    "ownerContact" to primaryContact,
+                    "createdAt" to System.currentTimeMillis(),
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                db.collection("farms").document(farmId).set(farmData, SetOptions.merge()).awaitTask()
+            } catch (e: Throwable) {
+                // Non-blocking sync
+            }
         }
 
         // 3. Local storage (Room database) used for caching/offline access
@@ -430,8 +470,8 @@ class AuthManager(
             return@withContext AuthResult.Error("Please enter your email/phone and password.")
         }
 
-        val auth = firebaseAuth ?: FirebaseAuth.getInstance()
-        val db = firestore ?: FirebaseFirestore.getInstance()
+        val auth = getFirebaseAuth()
+        val db = getFirestore()
 
         // 1. Check Default Demo Accounts (for offline evaluation/demo mode)
         if (cleanIdentifier.equals("owner@mkulima.farm", ignoreCase = true) && (password == "password123" || password == "admin")) {
@@ -492,30 +532,32 @@ class AuthManager(
             ).distinct()
 
             // Query Firestore collection "users" to find user profile by phone
-            for (phoneVariant in possiblePhoneFormats) {
-                try {
-                    val q1 = db.collection("users").whereEqualTo("phone", phoneVariant).limit(1).get().awaitTask()
-                    if (q1 != null && !q1.isEmpty) {
-                        val doc = q1.documents[0]
-                        preloadedFirestoreUser = doc.data
-                        val authEmailField = doc.getString("authEmail")
-                        val emailField = doc.getString("email")
-                        if (!authEmailField.isNullOrBlank()) candidateAuthEmails.add(authEmailField.lowercase())
-                        if (!emailField.isNullOrBlank()) candidateAuthEmails.add(emailField.lowercase())
-                        break
+            if (db != null) {
+                for (phoneVariant in possiblePhoneFormats) {
+                    try {
+                        val q1 = db.collection("users").whereEqualTo("phone", phoneVariant).limit(1).get().awaitTask()
+                        if (q1 != null && !q1.isEmpty) {
+                            val doc = q1.documents[0]
+                            preloadedFirestoreUser = doc.data
+                            val authEmailField = doc.getString("authEmail")
+                            val emailField = doc.getString("email")
+                            if (!authEmailField.isNullOrBlank()) candidateAuthEmails.add(authEmailField.lowercase())
+                            if (!emailField.isNullOrBlank()) candidateAuthEmails.add(emailField.lowercase())
+                            break
+                        }
+                        val q2 = db.collection("users").whereEqualTo("phoneNumber", phoneVariant).limit(1).get().awaitTask()
+                        if (q2 != null && !q2.isEmpty) {
+                            val doc = q2.documents[0]
+                            preloadedFirestoreUser = doc.data
+                            val authEmailField = doc.getString("authEmail")
+                            val emailField = doc.getString("email")
+                            if (!authEmailField.isNullOrBlank()) candidateAuthEmails.add(authEmailField.lowercase())
+                            if (!emailField.isNullOrBlank()) candidateAuthEmails.add(emailField.lowercase())
+                            break
+                        }
+                    } catch (e: Throwable) {
+                        // Firestore lookup exception
                     }
-                    val q2 = db.collection("users").whereEqualTo("phoneNumber", phoneVariant).limit(1).get().awaitTask()
-                    if (q2 != null && !q2.isEmpty) {
-                        val doc = q2.documents[0]
-                        preloadedFirestoreUser = doc.data
-                        val authEmailField = doc.getString("authEmail")
-                        val emailField = doc.getString("email")
-                        if (!authEmailField.isNullOrBlank()) candidateAuthEmails.add(authEmailField.lowercase())
-                        if (!emailField.isNullOrBlank()) candidateAuthEmails.add(emailField.lowercase())
-                        break
-                    }
-                } catch (e: Exception) {
-                    // Firestore lookup exception
                 }
             }
 
@@ -528,15 +570,17 @@ class AuthManager(
         var authenticatedUser: com.google.firebase.auth.FirebaseUser? = null
         var lastAuthException: Exception? = null
 
-        for (targetEmail in candidateAuthEmails.distinct()) {
-            try {
-                val result = auth.signInWithEmailAndPassword(targetEmail, password).awaitTask()
-                if (result?.user != null) {
-                    authenticatedUser = result.user
-                    break
+        if (auth != null) {
+            for (targetEmail in candidateAuthEmails.distinct()) {
+                try {
+                    val result = auth.signInWithEmailAndPassword(targetEmail, password).awaitTask()
+                    if (result?.user != null) {
+                        authenticatedUser = result.user
+                        break
+                    }
+                } catch (e: Exception) {
+                    lastAuthException = e
                 }
-            } catch (e: Exception) {
-                lastAuthException = e
             }
         }
 
@@ -545,25 +589,25 @@ class AuthManager(
             val uid = authenticatedUser.uid
             var userDocData = preloadedFirestoreUser
 
-            if (userDocData == null) {
+            if (userDocData == null && db != null) {
                 try {
                     val doc = db.collection("users").document(uid).get().awaitTask()
                     if (doc != null && doc.exists()) {
                         userDocData = doc.data
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     // Firestore get failed
                 }
             }
 
             // Fallback query by authEmail if doc by UID wasn't found
-            if (userDocData == null && authenticatedUser.email != null) {
+            if (userDocData == null && authenticatedUser.email != null && db != null) {
                 try {
                     val q = db.collection("users").whereEqualTo("authEmail", authenticatedUser.email).limit(1).get().awaitTask()
                     if (q != null && !q.isEmpty) {
                         userDocData = q.documents[0].data
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     // Ignored
                 }
             }
@@ -627,7 +671,7 @@ class AuthManager(
             }
 
             // If user doc was missing in Firestore, write it now so future logins are instant
-            if (userDocData == null) {
+            if (userDocData == null && db != null) {
                 try {
                     val newUserData = hashMapOf<String, Any>(
                         "userId" to uid,
@@ -642,7 +686,7 @@ class AuthManager(
                         "updatedAt" to System.currentTimeMillis()
                     )
                     db.collection("users").document(uid).set(newUserData, SetOptions.merge()).awaitTask()
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     // Non-blocking
                 }
             }
@@ -672,47 +716,49 @@ class AuthManager(
         }
 
         // 5. Check if it's a Worker registered in Cloud Firestore
-        try {
-            val workerQuery = db.collection("users")
-                .whereEqualTo("role", "WORKER")
-                .whereEqualTo("phone", cleanIdentifier)
-                .limit(1)
-                .get()
-                .awaitTask()
-            if (workerQuery != null && !workerQuery.isEmpty) {
-                val doc = workerQuery.documents[0]
-                val savedPass = doc.getString("password")
-                if (savedPass != null && (savedPass == password || password == "pass1234" || password == "password123")) {
-                    val wid = doc.id
-                    val wName = doc.getString("name") ?: "Farm Worker"
-                    val wFarmId = doc.getString("farmId") ?: "FARM-DEFAULT"
-                    val wFarmName = doc.getString("farmName") ?: "Assigned Farm"
-                    val session = UserSession(
-                        userId = wid,
-                        name = wName,
-                        emailOrPhone = cleanIdentifier,
-                        role = "WORKER",
-                        farmId = wFarmId,
-                        farmName = wFarmName,
-                        isRevoked = doc.getBoolean("isRevoked") ?: false,
-                        permissions = WorkerPermissions(
-                            canViewLivestock = true,
-                            canEditLivestock = true,
-                            canViewLogs = true,
-                            canEditLogs = true,
-                            canViewFinance = doc.getBoolean("canViewFinance") ?: false,
-                            canEditFinance = doc.getBoolean("canEditFinance") ?: false,
-                            canViewTasks = true,
-                            canCompleteTasks = true,
-                            canViewRequests = true
+        if (db != null) {
+            try {
+                val workerQuery = db.collection("users")
+                    .whereEqualTo("role", "WORKER")
+                    .whereEqualTo("phone", cleanIdentifier)
+                    .limit(1)
+                    .get()
+                    .awaitTask()
+                if (workerQuery != null && !workerQuery.isEmpty) {
+                    val doc = workerQuery.documents[0]
+                    val savedPass = doc.getString("password")
+                    if (savedPass != null && (savedPass == password || password == "pass1234" || password == "password123")) {
+                        val wid = doc.id
+                        val wName = doc.getString("name") ?: "Farm Worker"
+                        val wFarmId = doc.getString("farmId") ?: "FARM-DEFAULT"
+                        val wFarmName = doc.getString("farmName") ?: "Assigned Farm"
+                        val session = UserSession(
+                            userId = wid,
+                            name = wName,
+                            emailOrPhone = cleanIdentifier,
+                            role = "WORKER",
+                            farmId = wFarmId,
+                            farmName = wFarmName,
+                            isRevoked = doc.getBoolean("isRevoked") ?: false,
+                            permissions = WorkerPermissions(
+                                canViewLivestock = true,
+                                canEditLivestock = true,
+                                canViewLogs = true,
+                                canEditLogs = true,
+                                canViewFinance = doc.getBoolean("canViewFinance") ?: false,
+                                canEditFinance = doc.getBoolean("canEditFinance") ?: false,
+                                canViewTasks = true,
+                                canCompleteTasks = true,
+                                canViewRequests = true
+                            )
                         )
-                    )
-                    saveSession(session)
-                    return@withContext AuthResult.Success(session)
+                        saveSession(session)
+                        return@withContext AuthResult.Success(session)
+                    }
                 }
+            } catch (e: Throwable) {
+                // Worker Firestore query failed
             }
-        } catch (e: Exception) {
-            // Worker Firestore query failed
         }
 
         // 6. Offline Local Database Fallback (Room cache)
@@ -759,21 +805,27 @@ class AuthManager(
         val clean = emailOrPhone.trim()
         if (clean.isBlank()) return@withContext "Please enter your registered email or phone number."
 
-        val auth = firebaseAuth ?: FirebaseAuth.getInstance()
+        val auth = getFirebaseAuth()
 
         if (clean.contains("@")) {
-            try {
-                auth.sendPasswordResetEmail(clean).awaitTask()
-                return@withContext "Password reset instructions sent to $clean. Please check your inbox."
-            } catch (e: Exception) {
-                return@withContext "Could not send reset email. Please ensure the email address is correct."
+            if (auth != null) {
+                try {
+                    auth.sendPasswordResetEmail(clean).awaitTask()
+                    return@withContext "Password reset instructions sent to $clean. Please check your inbox."
+                } catch (e: Throwable) {
+                    return@withContext "Could not send reset email. Please ensure the email address is correct."
+                }
+            } else {
+                return@withContext "Password reset instructions simulated for $clean."
             }
         } else {
             val authEmail = toAuthEmail(clean)
-            try {
-                auth.sendPasswordResetEmail(authEmail).awaitTask()
-            } catch (e: Exception) {
-                // Ignored
+            if (auth != null) {
+                try {
+                    auth.sendPasswordResetEmail(authEmail).awaitTask()
+                } catch (e: Throwable) {
+                    // Ignored
+                }
             }
             val code = (100000..999999).random().toString()
             prefs.edit().putString("reset_code_$clean", code).apply()
@@ -790,12 +842,12 @@ class AuthManager(
 
         // Also update in Firebase Auth / Firestore if possible
         try {
-            val auth = firebaseAuth ?: FirebaseAuth.getInstance()
-            val currentUser = auth.currentUser
+            val auth = getFirebaseAuth()
+            val currentUser = auth?.currentUser
             if (currentUser != null) {
                 currentUser.updatePassword(newPass).awaitTask()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             // Ignored
         }
 
@@ -823,8 +875,8 @@ class AuthManager(
         }
         _currentSession.value = null
         try {
-            firebaseAuth?.signOut()
-        } catch (e: Exception) {
+            getFirebaseAuth()?.signOut()
+        } catch (e: Throwable) {
             // Ignored
         }
     }
@@ -865,26 +917,28 @@ class AuthManager(
 
         // Save worker to Cloud Firestore
         try {
-            val db = firestore ?: FirebaseFirestore.getInstance()
-            val workerData = hashMapOf<String, Any>(
-                "userId" to workerId,
-                "uid" to workerId,
-                "name" to cleanName,
-                "phone" to cleanEmail,
-                "phoneNumber" to cleanEmail,
-                "email" to (if (cleanEmail.contains("@")) cleanEmail else ""),
-                "password" to cleanPass,
-                "role" to "WORKER",
-                "farmId" to farmId,
-                "farmName" to farmName,
-                "isRevoked" to false,
-                "canViewFinance" to permissions.canViewFinance,
-                "canEditFinance" to permissions.canEditFinance,
-                "createdAt" to System.currentTimeMillis(),
-                "updatedAt" to System.currentTimeMillis()
-            )
-            db.collection("users").document(workerId).set(workerData, SetOptions.merge()).awaitTask()
-        } catch (e: Exception) {
+            val db = getFirestore()
+            if (db != null) {
+                val workerData = hashMapOf<String, Any>(
+                    "userId" to workerId,
+                    "uid" to workerId,
+                    "name" to cleanName,
+                    "phone" to cleanEmail,
+                    "phoneNumber" to cleanEmail,
+                    "email" to (if (cleanEmail.contains("@")) cleanEmail else ""),
+                    "password" to cleanPass,
+                    "role" to "WORKER",
+                    "farmId" to farmId,
+                    "farmName" to farmName,
+                    "isRevoked" to false,
+                    "canViewFinance" to permissions.canViewFinance,
+                    "canEditFinance" to permissions.canEditFinance,
+                    "createdAt" to System.currentTimeMillis(),
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                db.collection("users").document(workerId).set(workerData, SetOptions.merge()).awaitTask()
+            }
+        } catch (e: Throwable) {
             // Non-blocking
         }
 
@@ -894,33 +948,35 @@ class AuthManager(
     suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean) = withContext(Dispatchers.IO) {
         repository.setWorkerRevoked(workerId, isRevoked)
         try {
-            val db = firestore ?: FirebaseFirestore.getInstance()
-            db.collection("users").document(workerId).update("isRevoked", isRevoked).awaitTask()
-        } catch (e: Exception) {}
+            val db = getFirestore()
+            db?.collection("users")?.document(workerId)?.update("isRevoked", isRevoked)?.awaitTask()
+        } catch (e: Throwable) {}
     }
 
     suspend fun deleteWorker(workerId: String) = withContext(Dispatchers.IO) {
         repository.deleteWorker(workerId)
         try {
-            val db = firestore ?: FirebaseFirestore.getInstance()
-            db.collection("users").document(workerId).delete().awaitTask()
-        } catch (e: Exception) {}
+            val db = getFirestore()
+            db?.collection("users")?.document(workerId)?.delete()?.awaitTask()
+        } catch (e: Throwable) {}
     }
 
     suspend fun updateWorker(worker: WorkerAccount) = withContext(Dispatchers.IO) {
         repository.updateWorker(worker)
         try {
-            val db = firestore ?: FirebaseFirestore.getInstance()
-            val workerData = hashMapOf<String, Any>(
-                "name" to worker.name,
-                "phone" to worker.emailOrPhone,
-                "password" to worker.password,
-                "canViewFinance" to worker.canViewFinance,
-                "canEditFinance" to worker.canEditFinance,
-                "updatedAt" to System.currentTimeMillis()
-            )
-            db.collection("users").document(worker.workerId).set(workerData, SetOptions.merge()).awaitTask()
-        } catch (e: Exception) {}
+            val db = getFirestore()
+            if (db != null) {
+                val workerData = hashMapOf<String, Any>(
+                    "name" to worker.name,
+                    "phone" to worker.emailOrPhone,
+                    "password" to worker.password,
+                    "canViewFinance" to worker.canViewFinance,
+                    "canEditFinance" to worker.canEditFinance,
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                db.collection("users").document(worker.workerId).set(workerData, SetOptions.merge()).awaitTask()
+            }
+        } catch (e: Throwable) {}
     }
 }
 

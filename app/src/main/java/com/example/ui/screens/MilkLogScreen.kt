@@ -306,8 +306,9 @@ fun MilkProductionLineChart(
             .padding(vertical = 12.dp, horizontal = 8.dp)
     ) {
         // Selected Item Banner / Summary if tapped
-        if (selectedIndex != null && selectedIndex!! in dataPoints.indices) {
-            val idx = selectedIndex!!
+        val activeIndex = selectedIndex
+        if (activeIndex != null && activeIndex in dataPoints.indices) {
+            val idx = activeIndex
             val label = xLabels.getOrElse(idx) { "Day ${idx + 1}" }
             val yieldVal = dataPoints[idx]
             Surface(
@@ -1409,7 +1410,7 @@ fun MilkLogScreen(
 
                         Box(modifier = Modifier.fillMaxWidth()) {
                             OutlinedTextField(
-                                value = if (selectedCow != null && cowSearchQuery.isBlank()) selectedCow!!.name else cowSearchQuery,
+                                value = if (selectedCow != null && cowSearchQuery.isBlank()) selectedCow?.name ?: "" else cowSearchQuery,
                                 onValueChange = { query ->
                                     cowSearchQuery = query
                                     selectedCow = cowsList.firstOrNull { it.name.equals(query.trim(), ignoreCase = true) }
@@ -3217,7 +3218,7 @@ fun MilkLogScreen(
                                     ) {
                                         Icon(Icons.Filled.Check, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text(saveSuccessMessage!!, fontSize = 12.sp, color = ForestGreenPrimary, fontWeight = FontWeight.Bold)
+                                        Text(saveSuccessMessage ?: "", fontSize = 12.sp, color = ForestGreenPrimary, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }

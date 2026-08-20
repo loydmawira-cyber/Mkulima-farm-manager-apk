@@ -94,6 +94,20 @@ fun ProofUploadDialog(
     val sampleProof1 = "android.resource://com.aistudio.mkulimafarm.xrqz/drawable/farm_vaccination_1786598052984"
     val sampleProof2 = "android.resource://com.aistudio.mkulimafarm.xrqz/drawable/irrigation_proof_1786598065914"
 
+    var showCameraXDialog by remember { mutableStateOf(false) }
+
+    if (showCameraXDialog) {
+        CameraCaptureDialog(
+            title = "Task Proof Capture",
+            onDismiss = { showCameraXDialog = false },
+            onPhotoCaptured = { uri ->
+                val savedUri = onSaveInternalPhoto(uri) ?: uri.toString()
+                selectedPhotoUriString = savedUri
+                showCameraXDialog = false
+            }
+        )
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -279,7 +293,7 @@ fun ProofUploadDialog(
                     }
 
                     Button(
-                        onClick = { cameraLauncher.launch("image/*") },
+                        onClick = { showCameraXDialog = true },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("upload_camera_button"),

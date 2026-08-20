@@ -66,6 +66,7 @@ class FarmRepository(private val farmDao: FarmDao) {
 
     // Cattle Events
     fun getCattleEventsForUnit(unitId: Long): Flow<List<CattleEvent>> = farmDao.getCattleEventsByUnit(unitId)
+    fun getAllCattleEvents(farmId: String): Flow<List<CattleEvent>> = farmDao.getAllCattleEvents(farmId)
     suspend fun insertCattleEvent(event: CattleEvent): Long = farmDao.insertCattleEvent(event)
     suspend fun updateCattleEvent(event: CattleEvent) = farmDao.updateCattleEvent(event)
     suspend fun deleteCattleEvent(id: Long) = farmDao.deleteCattleEventById(id)

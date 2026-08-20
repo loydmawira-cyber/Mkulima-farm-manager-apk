@@ -177,6 +177,7 @@ class FarmViewModel(
             when (val result = authManager.login(emailOrPhone, pass)) {
                 is AuthResult.Success -> onSuccess()
                 is AuthResult.Error -> onError(result.message)
+                is AuthResult.AccountAlreadyExists -> onError(result.message)
             }
         }
     }
@@ -195,7 +196,16 @@ class FarmViewModel(
             when (val result = authManager.signUpOwner(name, emailOrPhone, pass, farmName, countryCode, phoneNumber)) {
                 is AuthResult.Success -> onSuccess()
                 is AuthResult.Error -> onError(result.message)
+                is AuthResult.AccountAlreadyExists -> onError(result.message)
             }
+        }
+    }
+
+    fun checkPhoneNumberExists(countryCode: String, phoneNumber: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val formatted = AuthManager.formatPhoneNumber(countryCode, phoneNumber)
+            val exists = authManager.checkPhoneNumberExists(formatted)
+            onResult(exists, formatted)
         }
     }
 
@@ -538,6 +548,11 @@ class FarmViewModel(
 
     // Cattle Events
     fun getCattleEventsFlow(unitId: Long): Flow<List<CattleEvent>> = repository.getCattleEventsForUnit(unitId)
+
+    val allCattleEvents: Flow<List<CattleEvent>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getAllCattleEvents(farmId)
+    }
 
     fun addCattleEvent(unitId: Long, category: String, title: String, date: String, details: String, notes: String?, metricValue: String?) {
         viewModelScope.launch {

@@ -154,6 +154,12 @@ fun AuthScreen(
     var selectedCountry by remember { mutableStateOf(DEFAULT_COUNTRY_CODES[0]) }
     var showCountryPicker by remember { mutableStateOf(false) }
 
+    // Sign in specific phone state & toggle
+    var loginMethodPhone by remember { mutableStateOf(true) } // true: Phone with country code, false: Email or Worker ID
+    var loginPhoneNumber by remember { mutableStateOf("") }
+    var loginSelectedCountry by remember { mutableStateOf(DEFAULT_COUNTRY_CODES[0]) }
+    var showLoginCountryPicker by remember { mutableStateOf(false) }
+
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var farmName by remember { mutableStateOf("") }
@@ -162,6 +168,7 @@ fun AuthScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
+    var duplicateAccountAlertPhone by remember { mutableStateOf<String?>(null) }
 
     // Password reset step state
     var resetStep by remember { mutableIntStateOf(1) } // 1: enter identifier, 2: enter OTP and new pass
@@ -187,6 +194,64 @@ fun AuthScreen(
                 showCountryPicker = false
             },
             onDismiss = { showCountryPicker = false }
+        )
+    }
+
+    if (showLoginCountryPicker) {
+        CountryCodePickerDialog(
+            selectedCountry = loginSelectedCountry,
+            onSelectCountry = { country ->
+                loginSelectedCountry = country
+                showLoginCountryPicker = false
+            },
+            onDismiss = { showLoginCountryPicker = false }
+        )
+    }
+
+    // Single Registration Alert Dialog
+    if (duplicateAccountAlertPhone != null) {
+        AlertDialog(
+            onDismissRequest = { duplicateAccountAlertPhone = null },
+            title = {
+                Text(
+                    text = "Account Already Exists",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color(0xFF0F172A)
+                )
+            },
+            text = {
+                Text(
+                    text = "An account with the phone number ($duplicateAccountAlertPhone) is already registered on Mkulima Farm. Please sign in to continue or use a different phone number.",
+                    fontSize = 14.sp,
+                    color = Color(0xFF334155),
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val num = duplicateAccountAlertPhone ?: ""
+                        duplicateAccountAlertPhone = null
+                        selectedTab = 0
+                        mode = AuthMode.LOGIN
+                        loginMethodPhone = true
+                        loginPhoneNumber = num.removePrefix(loginSelectedCountry.dialCode).removePrefix("+")
+                        errorMessage = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Go to Sign In", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { duplicateAccountAlertPhone = null }) {
+                    Text("Use Different Number", color = Color(0xFF64748B), fontWeight = FontWeight.Medium)
+                }
+            },
+            shape = RoundedCornerShape(18.dp),
+            containerColor = Color.White
         )
     }
 
@@ -554,9 +619,9 @@ fun AuthScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Phone Number with Country Code Selector
+                            // Phone Number with Country Code Dropdown Selector (Requirement 2)
                             Text(
-                                text = "Phone Number (with Country Code)",
+                                text = "Phone Number (International Code)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF334155),
@@ -567,7 +632,7 @@ fun AuthScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Country Code Button
+                                // Country Code Selector Dropdown Button
                                 Surface(
                                     modifier = Modifier
                                         .height(56.dp)
@@ -589,7 +654,7 @@ fun AuthScreen(
                                         )
                                         Icon(
                                             imageVector = Icons.Filled.ArrowDropDown,
-                                            contentDescription = "Select Country",
+                                            contentDescription = "Select Country Code",
                                             tint = Color(0xFF475569)
                                         )
                                     }
@@ -597,7 +662,7 @@ fun AuthScreen(
 
                                 Spacer(modifier = Modifier.width(8.dp))
 
-                                // Phone number field
+                                // Phone number local input field
                                 OutlinedTextField(
                                     value = rawPhoneNumber,
                                     onValueChange = {
@@ -676,31 +741,132 @@ fun AuthScreen(
 
                         } else {
                             // SIGN IN Fields (Owner or Worker)
-                            OutlinedTextField(
-                                value = emailOrPhone,
-                                onValueChange = {
-                                    emailOrPhone = it
-                                    errorMessage = null
-                                },
-                                label = { Text("Email, Phone (+Code) or Worker ID") },
-                                placeholder = { Text("e.g. +254712345678 or owner@mkulima.farm") },
-                                leadingIcon = {
-                                    Icon(
-                                        if (emailOrPhone.contains("@")) Icons.Filled.Email else Icons.Filled.Phone,
-                                        contentDescription = null
-                                    )
-                                },
-                                singleLine = true,
+                            // Login Mode Switch: Phone with Country Code vs Email / Worker ID
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("auth_email_phone_input"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = getAuthFieldColors(),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = if (emailOrPhone.contains("@")) KeyboardType.Email else KeyboardType.Phone,
-                                    imeAction = ImeAction.Next
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFF8FAFC))
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { loginMethodPhone = true },
+                                    color = if (loginMethodPhone) ForestGreenPrimary else Color.Transparent
+                                ) {
+                                    Text(
+                                        text = "Phone Number",
+                                        color = if (loginMethodPhone) Color.White else Color(0xFF64748B),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 6.dp)
+                                    )
+                                }
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { loginMethodPhone = false },
+                                    color = if (!loginMethodPhone) ForestGreenPrimary else Color.Transparent
+                                ) {
+                                    Text(
+                                        text = "Email / Worker ID",
+                                        color = if (!loginMethodPhone) Color.White else Color(0xFF64748B),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 6.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            if (loginMethodPhone) {
+                                // Country Code selector alongside phone field on Login (Requirement 2)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .height(56.dp)
+                                            .clickable { showLoginCountryPicker = true }
+                                            .testTag("login_country_code_selector"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF1F5F9),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF94A3B8))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${loginSelectedCountry.flagEmoji} ${loginSelectedCountry.dialCode}",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Filled.ArrowDropDown,
+                                                contentDescription = "Select Country Code",
+                                                tint = Color(0xFF475569)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    OutlinedTextField(
+                                        value = loginPhoneNumber,
+                                        onValueChange = {
+                                            loginPhoneNumber = it
+                                            errorMessage = null
+                                        },
+                                        placeholder = { Text(loginSelectedCountry.samplePlaceholder) },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Phone,
+                                            imeAction = ImeAction.Next
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("login_phone_input"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = getAuthFieldColors()
+                                    )
+                                }
+                            } else {
+                                OutlinedTextField(
+                                    value = emailOrPhone,
+                                    onValueChange = {
+                                        emailOrPhone = it
+                                        errorMessage = null
+                                    },
+                                    label = { Text("Email Address or Worker ID") },
+                                    placeholder = { Text("e.g. owner@mkulima.farm or WRK-1001") },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (emailOrPhone.contains("@")) Icons.Filled.Email else Icons.Filled.Person,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("auth_email_phone_input"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = getAuthFieldColors(),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Email,
+                                        imeAction = ImeAction.Next
+                                    )
                                 )
-                            )
+                            }
 
                             Spacer(modifier = Modifier.height(12.dp))
                         }
@@ -788,12 +954,24 @@ fun AuthScreen(
                                 errorMessage = null
                                 successMessage = null
                                 if (selectedTab == 0) {
-                                    if (emailOrPhone.isBlank() || password.isBlank()) {
-                                        errorMessage = "Please enter your identifier and password."
+                                    val loginIdentifier = if (loginMethodPhone) {
+                                        if (loginPhoneNumber.isBlank()) {
+                                            errorMessage = "Please enter your phone number."
+                                            return@Button
+                                        }
+                                        val cleanCode = loginSelectedCountry.dialCode
+                                        val cleanNum = loginPhoneNumber.trim().removePrefix("0").replace(Regex("[^0-9]"), "")
+                                        "$cleanCode$cleanNum"
+                                    } else {
+                                        emailOrPhone.trim()
+                                    }
+
+                                    if (loginIdentifier.isBlank() || password.isBlank()) {
+                                        errorMessage = "Please enter your credentials and password."
                                         return@Button
                                     }
                                     isLoading = true
-                                    onLogin(emailOrPhone, password) { err ->
+                                    onLogin(loginIdentifier, password) { err ->
                                         isLoading = false
                                         errorMessage = err
                                     }
@@ -802,11 +980,14 @@ fun AuthScreen(
                                         errorMessage = "Please enter your name."
                                         return@Button
                                     }
-                                    val finalContact = if (rawPhoneNumber.isNotBlank()) {
-                                        "${selectedCountry.dialCode}${rawPhoneNumber.trim().removePrefix("0")}"
+                                    val finalFullPhone = if (rawPhoneNumber.isNotBlank()) {
+                                        val cleanDigits = rawPhoneNumber.trim().replace(Regex("[^0-9]"), "").removePrefix("0")
+                                        "${selectedCountry.dialCode}$cleanDigits"
                                     } else {
-                                        emailOrPhone.trim()
+                                        ""
                                     }
+                                    val finalContact = if (finalFullPhone.isNotBlank()) finalFullPhone else emailOrPhone.trim()
+
                                     if (finalContact.isBlank()) {
                                         errorMessage = "Please provide a phone number or email address."
                                         return@Button
@@ -829,6 +1010,9 @@ fun AuthScreen(
                                         rawPhoneNumber.trim()
                                     ) { err ->
                                         isLoading = false
+                                        if (err.contains("already exists", ignoreCase = true)) {
+                                            duplicateAccountAlertPhone = finalFullPhone.ifBlank { finalContact }
+                                        }
                                         errorMessage = err
                                     }
                                 }
@@ -908,6 +1092,7 @@ fun AuthScreen(
         }
     }
 }
+
 
 @Composable
 fun CountryCodePickerDialog(

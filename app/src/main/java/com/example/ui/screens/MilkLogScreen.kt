@@ -10,6 +10,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -233,7 +237,8 @@ fun parseMilkLogCalendar(dateStr: String): java.util.Calendar? {
 }
 
 /**
- * Custom Compose Canvas Line Chart for Milk Production Trends with Dynamic Data and Numerical Labels
+ * Custom Compose Canvas Line Chart for Milk Production Trends with Dynamic Data,
+ * Horizontal Scroll for Multi-day views, Clean Bezier Curves, and Interactive Tap Tooltips.
  */
 @Composable
 fun MilkProductionLineChart(
@@ -245,14 +250,14 @@ fun MilkProductionLineChart(
     if (dataPoints.isEmpty() || dataPoints.all { it == 0f }) {
         Surface(
             modifier = modifier,
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             color = Color(0xFFF8FAFC),
             border = BorderStroke(1.dp, Color(0xFFE2E8F0))
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -260,14 +265,14 @@ fun MilkProductionLineChart(
                     Icons.Filled.WaterDrop,
                     contentDescription = null,
                     tint = ForestGreenPrimary.copy(alpha = 0.5f),
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(36.dp)
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "No milk records logged for this timeframe",
                     color = Color(0xFF64748B),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = "Add entries using '+ Quick Milk Entry' below",
@@ -279,19 +284,132 @@ fun MilkProductionLineChart(
         return
     }
 
+    var selectedIndex by remember(dataPoints, xLabels) { mutableStateOf<Int?>(null) }
     val maxVal = (dataPoints.maxOrNull() ?: 10f).coerceAtLeast(1f)
     val minVal = (dataPoints.minOrNull() ?: 0f).coerceAtLeast(0f)
-    val displayMax = if (maxVal == minVal) maxVal * 1.3f else maxVal * 1.2f
+    val displayMax = if (maxVal == minVal) maxVal * 1.3f else maxVal * 1.25f
     val displayMin = 0f
     val range = (displayMax - displayMin).coerceAtLeast(1f)
 
     val lineColor = ForestGreenPrimary
-    val gradientColor = ForestGreenPrimary.copy(alpha = 0.22f)
+    val gradientTop = ForestGreenPrimary.copy(alpha = 0.28f)
+    val gradientBottom = ForestGreenPrimary.copy(alpha = 0.02f)
 
+    val isDense = dataPoints.size > 7
+    val pointSpacingDp = if (isDense) 52.dp else 0.dp
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFFFFFFFF))
+            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
+            .padding(vertical = 12.dp, horizontal = 8.dp)
+    ) {
+        // Selected Item Banner / Summary if tapped
+        if (selectedIndex != null && selectedIndex!! in dataPoints.indices) {
+            val idx = selectedIndex!!
+            val label = xLabels.getOrElse(idx) { "Day ${idx + 1}" }
+            val yieldVal = dataPoints[idx]
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFECFDF5),
+                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF065F46)
+                    )
+                    Text(
+                        text = "Yield: %.1f%s".format(yieldVal, unitSuffix),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = ForestGreenPrimary
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            if (isDense) {
+                // Scrollable container for multi-day views (e.g. 30-day Month view)
+                val scrollState = rememberScrollState()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .horizontalScroll(scrollState)
+                ) {
+                    val canvasWidth = (dataPoints.size * 56).dp.coerceAtLeast(320.dp)
+                    MilkProductionCanvas(
+                        dataPoints = dataPoints,
+                        xLabels = xLabels,
+                        displayMax = displayMax,
+                        displayMin = displayMin,
+                        range = range,
+                        lineColor = lineColor,
+                        gradientTop = gradientTop,
+                        gradientBottom = gradientBottom,
+                        unitSuffix = unitSuffix,
+                        selectedIndex = selectedIndex,
+                        onPointSelected = { selectedIndex = it },
+                        modifier = Modifier
+                            .width(canvasWidth)
+                            .fillMaxHeight()
+                    )
+                }
+            } else {
+                // Static Responsive Chart for 7-day or 3-session view
+                MilkProductionCanvas(
+                    dataPoints = dataPoints,
+                    xLabels = xLabels,
+                    displayMax = displayMax,
+                    displayMin = displayMin,
+                    range = range,
+                    lineColor = lineColor,
+                    gradientTop = gradientTop,
+                    gradientBottom = gradientBottom,
+                    unitSuffix = unitSuffix,
+                    selectedIndex = selectedIndex,
+                    onPointSelected = { selectedIndex = it },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MilkProductionCanvas(
+    dataPoints: List<Float>,
+    xLabels: List<String>,
+    displayMax: Float,
+    displayMin: Float,
+    range: Float,
+    lineColor: Color,
+    gradientTop: Color,
+    gradientBottom: Color,
+    unitSuffix: String,
+    selectedIndex: Int?,
+    onPointSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val valueTextPaint = remember {
         android.graphics.Paint().apply {
             color = android.graphics.Color.parseColor("#15803D")
-            textSize = 28f
+            textSize = 26f
             isFakeBoldText = true
             textAlign = android.graphics.Paint.Align.CENTER
             isAntiAlias = true
@@ -300,129 +418,169 @@ fun MilkProductionLineChart(
     val gridTextPaint = remember {
         android.graphics.Paint().apply {
             color = android.graphics.Color.parseColor("#94A3B8")
-            textSize = 22f
+            textSize = 20f
             textAlign = android.graphics.Paint.Align.LEFT
             isAntiAlias = true
         }
     }
+    val xLabelTextPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#475569")
+            textSize = 22f
+            isFakeBoldText = true
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
 
-    Column(modifier = modifier) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            val width = size.width
-            val height = size.height
-            val paddingLeft = 38.dp.toPx()
-            val paddingRight = 16.dp.toPx()
-            val usableWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1f)
+    Canvas(
+        modifier = modifier
+            .padding(horizontal = 8.dp)
+            .pointerInput(dataPoints) {
+                detectTapGestures { offset ->
+                    val width = size.width.toFloat()
+                    val paddingLeft = 36.dp.toPx()
+                    val paddingRight = 24.dp.toPx()
+                    val usableWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1f)
+                    val pointCount = dataPoints.size
+                    val spacingX = if (pointCount > 1) usableWidth / (pointCount - 1) else usableWidth / 2
 
-            // Horizontal Grid Lines with Y-Axis reference numbers
-            val gridSteps = 3
-            for (i in 0..gridSteps) {
-                val y = height * (i.toFloat() / gridSteps)
-                drawLine(
-                    color = Color(0xFFE2E8F0),
-                    start = Offset(paddingLeft, y),
-                    end = Offset(width - paddingRight, y),
-                    strokeWidth = 1.dp.toPx()
-                )
-                val gridVal = displayMax - (i.toFloat() / gridSteps) * range
-                drawContext.canvas.nativeCanvas.drawText(
-                    "%.0f%s".format(gridVal, unitSuffix),
-                    4.dp.toPx(),
-                    (y + 4.dp.toPx()).coerceAtMost(height - 2.dp.toPx()),
-                    gridTextPaint
-                )
-            }
+                    var closestIdx = 0
+                    var minDistance = Float.MAX_VALUE
 
-            // Calculate point coordinates
-            val pointCount = dataPoints.size
-            val spacingX = if (pointCount > 1) usableWidth / (pointCount - 1) else usableWidth / 2
-            val points = dataPoints.mapIndexed { idx, value ->
-                val x = paddingLeft + (if (pointCount > 1) idx * spacingX else usableWidth / 2)
-                val normalizedY = (value - displayMin) / range
-                val y = height - (normalizedY * (height * 0.72f) + height * 0.12f)
-                Offset(x, y)
-            }
+                    for (i in 0 until pointCount) {
+                        val px = paddingLeft + (if (pointCount > 1) i * spacingX else usableWidth / 2)
+                        val dist = kotlin.math.abs(offset.x - px)
+                        if (dist < minDistance) {
+                            minDistance = dist
+                            closestIdx = i
+                        }
+                    }
 
-            if (points.size > 1) {
-                // Build Smooth Curved Path
-                val strokePath = Path().apply {
-                    moveTo(points.first().x, points.first().y)
-                    for (i in 0 until points.size - 1) {
-                        val p1 = points[i]
-                        val p2 = points[i + 1]
-                        val controlX = (p1.x + p2.x) / 2
-                        cubicTo(controlX, p1.y, controlX, p2.y, p2.x, p2.y)
+                    if (minDistance < spacingX * 0.8f || pointCount <= 3) {
+                        onPointSelected(closestIdx)
                     }
                 }
+            }
+    ) {
+        val width = size.width
+        val height = size.height
+        val paddingLeft = 36.dp.toPx()
+        val paddingRight = 24.dp.toPx()
+        val bottomLabelHeight = 28.dp.toPx()
+        val graphHeight = (height - bottomLabelHeight).coerceAtLeast(10f)
+        val usableWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1f)
 
-                // Fill Path (Gradient)
-                val fillPath = Path().apply {
-                    addPath(strokePath)
-                    lineTo(points.last().x, height)
-                    lineTo(points.first().x, height)
-                    close()
+        // Horizontal Grid Lines with Y-Axis reference numbers
+        val gridSteps = 3
+        for (i in 0..gridSteps) {
+            val y = graphHeight * (i.toFloat() / gridSteps)
+            drawLine(
+                color = Color(0xFFF1F5F9),
+                start = Offset(paddingLeft, y),
+                end = Offset(width - paddingRight, y),
+                strokeWidth = 1.dp.toPx()
+            )
+            val gridVal = displayMax - (i.toFloat() / gridSteps) * range
+            drawContext.canvas.nativeCanvas.drawText(
+                "%.0f%s".format(gridVal, unitSuffix),
+                2.dp.toPx(),
+                (y + 4.dp.toPx()).coerceAtMost(graphHeight - 2.dp.toPx()),
+                gridTextPaint
+            )
+        }
+
+        // Calculate point coordinates
+        val pointCount = dataPoints.size
+        val spacingX = if (pointCount > 1) usableWidth / (pointCount - 1) else usableWidth / 2
+        val points = dataPoints.mapIndexed { idx, value ->
+            val x = paddingLeft + (if (pointCount > 1) idx * spacingX else usableWidth / 2)
+            val normalizedY = (value - displayMin) / range
+            val y = graphHeight - (normalizedY * (graphHeight * 0.72f) + graphHeight * 0.12f)
+            Offset(x, y)
+        }
+
+        if (points.size > 1) {
+            // Build Smooth Curved Path
+            val strokePath = Path().apply {
+                moveTo(points.first().x, points.first().y)
+                for (i in 0 until points.size - 1) {
+                    val p1 = points[i]
+                    val p2 = points[i + 1]
+                    val controlX = (p1.x + p2.x) / 2
+                    cubicTo(controlX, p1.y, controlX, p2.y, p2.x, p2.y)
                 }
+            }
 
-                drawPath(
-                    path = fillPath,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(gradientColor, Color.Transparent)
-                    )
+            // Fill Path (Gradient)
+            val fillPath = Path().apply {
+                addPath(strokePath)
+                lineTo(points.last().x, graphHeight)
+                lineTo(points.first().x, graphHeight)
+                close()
+            }
+
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(gradientTop, gradientBottom),
+                    startY = 0f,
+                    endY = graphHeight
                 )
+            )
 
-                // Draw Smooth Line
-                drawPath(
-                    path = strokePath,
-                    color = lineColor,
-                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+            // Draw Smooth Line
+            drawPath(
+                path = strokePath,
+                color = lineColor,
+                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+            )
+        }
+
+        // Draw Dots and Values
+        points.forEachIndexed { idx, point ->
+            val isSelected = selectedIndex == idx
+            val valAmt = dataPoints[idx]
+
+            if (isSelected) {
+                // Glow ring for selected point
+                drawCircle(
+                    color = ForestGreenPrimary.copy(alpha = 0.25f),
+                    radius = 12.dp.toPx(),
+                    center = point
                 )
             }
 
-            // Draw Dots and Values
-            points.forEachIndexed { idx, point ->
-                val valAmt = dataPoints[idx]
-                drawCircle(
-                    color = Color.White,
-                    radius = 6.dp.toPx(),
-                    center = point
-                )
-                drawCircle(
-                    color = lineColor,
-                    radius = 4.dp.toPx(),
-                    center = point
-                )
+            drawCircle(
+                color = Color.White,
+                radius = if (isSelected) 7.dp.toPx() else 5.dp.toPx(),
+                center = point
+            )
+            drawCircle(
+                color = if (isSelected) Color(0xFF065F46) else lineColor,
+                radius = if (isSelected) 5.dp.toPx() else 3.5.dp.toPx(),
+                center = point
+            )
 
-                // Numeric Value Label above dot
+            // Numeric Value Label above dot (render if selected or not overly crowded)
+            if (isSelected || pointCount <= 10 || (pointCount <= 14 && idx % 2 == 0)) {
                 val formattedVal = if (valAmt % 1.0f == 0f) "%.0f%s".format(valAmt, unitSuffix) else "%.1f%s".format(valAmt, unitSuffix)
                 drawContext.canvas.nativeCanvas.drawText(
                     formattedVal,
                     point.x,
-                    (point.y - 8.dp.toPx()).coerceAtLeast(18.dp.toPx()),
+                    (point.y - 8.dp.toPx()).coerceAtLeast(16.dp.toPx()),
                     valueTextPaint
                 )
             }
-        }
 
-        // X Labels Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 32.dp, end = 12.dp, top = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            xLabels.forEach { label ->
-                Text(
-                    text = label,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF64748B),
-                    textAlign = TextAlign.Center
-                )
-            }
+            // X-Axis Day Label below dot
+            val label = xLabels.getOrElse(idx) { (idx + 1).toString() }
+            drawContext.canvas.nativeCanvas.drawText(
+                label,
+                point.x,
+                height - 4.dp.toPx(),
+                xLabelTextPaint
+            )
         }
     }
 }

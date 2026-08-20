@@ -183,6 +183,9 @@ interface FarmDao {
     @Query("SELECT * FROM cattle_events WHERE unitId = :unitId ORDER BY date DESC")
     fun getCattleEventsByUnit(unitId: Long): Flow<List<CattleEvent>>
 
+    @Query("SELECT * FROM cattle_events WHERE farmId = :farmId ORDER BY date DESC")
+    fun getAllCattleEvents(farmId: String): Flow<List<CattleEvent>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCattleEvent(event: CattleEvent): Long
 

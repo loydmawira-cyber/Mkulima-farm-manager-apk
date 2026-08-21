@@ -376,8 +376,15 @@ object CattleLifecycleEngine {
         )
 
         // 5. Dynamic Breeding Event Prioritization
-        // If confirmed positive PD or marked In-Calf:
-        if (isInCalf) {
+        // If a dry-off was logged after the last PD, that dry-off takes priority —
+        // a cow that's just been dried off shouldn't keep showing as "In-Calf".
+        val driedOffAfterPd = latestDryOff != null && latestPd != null &&
+            parseDateOrNull(latestDryOff.date)?.let { d ->
+                parseDateOrNull(latestPd.date)?.let { p -> d.after(p) }
+            } == true
+
+        // If confirmed positive PD or marked In-Calf (and not just dried off):
+        if (isInCalf && !driedOffAfterPd) {
             val dryOffEst = calculateExpectedDryOff(calvingDateEst)
             val hasPreviousBirth = calvingEvents.isNotEmpty() || hasGivenBirthPreviously
             return if (isCurrentlyMilking || hasPreviousBirth) {

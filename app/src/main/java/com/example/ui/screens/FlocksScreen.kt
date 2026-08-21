@@ -3049,9 +3049,8 @@ fun AnimalDetailsView(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                    Spacer(modifier = Modifier.height(10.dp))    
+                        Spacer(modifier = Modifier.height(12.dp)) 
+                        
                         val filteredEvents = animalEvents
                             }
 

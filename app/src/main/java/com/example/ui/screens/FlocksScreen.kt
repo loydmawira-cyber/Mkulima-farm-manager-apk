@@ -3052,7 +3052,6 @@ fun AnimalDetailsView(
                         Spacer(modifier = Modifier.height(12.dp)) 
                         
                         val filteredEvents = animalEvents
-                            }
 
                         if (filteredEvents.isEmpty()) {
                             Text(

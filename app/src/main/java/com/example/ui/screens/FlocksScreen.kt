@@ -3051,36 +3051,7 @@ fun AnimalDetailsView(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Filter Chips Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf(
-                                "ALL" to "All Logs",
-                                "CALVING" to "🍼 Calving",
-                                "HEALTH" to "🩺 Health",
-                                "HEAT" to "🔥 Heat & AI",
-                                "PD" to "🤰 PD",
-                                "WEIGHT" to "⚖️ Weight"
-                            ).forEach { (filterKey, filterLabel) ->
-                                val isSelected = selectedLogFilter == filterKey
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { selectedLogFilter = filterKey },
-                                    label = { Text(filterLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ForestGreenPrimary,
-                                        selectedLabelColor = Color.White,
-                                        containerColor = Color(0xFFF1F5F9),
-                                        labelColor = Color(0xFF475569)
-                                    )
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
+                    Spacer(modifier = Modifier.height(10.dp))    
                         val filteredEvents = animalEvents.filter {
                             when (selectedLogFilter) {
                                 "CALVING" -> it.category.equals("CALVING", ignoreCase = true)

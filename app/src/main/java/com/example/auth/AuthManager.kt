@@ -136,71 +136,123 @@ class AuthManager(
 
     /**
      * Checks FirebaseAuth's current user state and Cloud Firestore on app startup.
+     * Also falls back to local Room database accounts so user never loses their login.
      */
     private suspend fun checkAndRestoreFirebaseAuthSession() = withContext(Dispatchers.IO) {
         if (_currentSession.value != null) return@withContext
+        if (prefs.getBoolean("is_logged_out", false)) return@withContext
 
+        // 1. Try Firebase Auth session
         try {
-            val auth = getFirebaseAuth() ?: return@withContext
-            val currentUser = auth.currentUser ?: return@withContext
-            val uid = currentUser.uid
-            val db = getFirestore()
+            val auth = getFirebaseAuth()
+            val currentUser = auth?.currentUser
+            if (currentUser != null) {
+                val uid = currentUser.uid
+                val db = getFirestore()
 
-            var userDoc: DocumentSnapshot? = null
-            if (db != null) {
-                try {
-                    userDoc = db.collection("users").document(uid).get().awaitTask()
-                } catch (e: Throwable) {
-                    // Firestore offline
+                var userDoc: DocumentSnapshot? = null
+                if (db != null) {
+                    try {
+                        userDoc = db.collection("users").document(uid).get().awaitTask()
+                    } catch (e: Throwable) {
+                        // Firestore offline
+                    }
+                }
+
+                val name = userDoc?.getString("name") ?: currentUser.displayName ?: "Farm Owner"
+                val role = userDoc?.getString("role") ?: "OWNER"
+                val farmId = userDoc?.getString("farmId") ?: prefs.getString("last_farm_id", "FARM-001") ?: "FARM-001"
+                val farmName = userDoc?.getString("farmName") ?: prefs.getString("last_farm_name", "My Farm") ?: "My Farm"
+                val phone = userDoc?.getString("phone") ?: userDoc?.getString("phoneNumber") ?: currentUser.phoneNumber ?: ""
+                val email = userDoc?.getString("email") ?: currentUser.email ?: ""
+                val identifier = if (phone.isNotBlank()) phone else if (email.isNotBlank()) email else uid
+
+                val isRevoked = userDoc?.getBoolean("isRevoked") ?: false
+                if (!isRevoked) {
+                    val session = UserSession(
+                        userId = uid,
+                        name = name,
+                        emailOrPhone = identifier,
+                        role = role,
+                        farmId = farmId,
+                        farmName = farmName,
+                        isRevoked = false,
+                        permissions = WorkerPermissions(
+                            canViewLivestock = true,
+                            canEditLivestock = role.equals("OWNER", ignoreCase = true),
+                            canViewLogs = true,
+                            canEditLogs = role.equals("OWNER", ignoreCase = true),
+                            canViewFinance = role.equals("OWNER", ignoreCase = true),
+                            canEditFinance = role.equals("OWNER", ignoreCase = true),
+                            canViewTasks = true,
+                            canCompleteTasks = true,
+                            canViewRequests = true
+                        )
+                    )
+                    saveSession(session)
+                    return@withContext
                 }
             }
+        } catch (e: Throwable) {
+            // Background Firebase restore failed, fall through to local storage
+        }
 
-            val name = userDoc?.getString("name") ?: currentUser.displayName ?: "Farm Owner"
-            val role = userDoc?.getString("role") ?: "OWNER"
-            val farmId = userDoc?.getString("farmId") ?: prefs.getString("last_farm_id", "FARM-001") ?: "FARM-001"
-            val farmName = userDoc?.getString("farmName") ?: prefs.getString("last_farm_name", "My Farm") ?: "My Farm"
-            val phone = userDoc?.getString("phone") ?: userDoc?.getString("phoneNumber") ?: currentUser.phoneNumber ?: ""
-            val email = userDoc?.getString("email") ?: currentUser.email ?: ""
-            val identifier = if (phone.isNotBlank()) phone else if (email.isNotBlank()) email else uid
+        // 2. Try SharedPreferences saved session
+        val saved = loadSavedSession()
+        if (saved != null) {
+            _currentSession.value = saved
+            return@withContext
+        }
 
-            val isRevoked = userDoc?.getBoolean("isRevoked") ?: false
-            if (isRevoked) {
+        // 3. Try latest registered FarmAccount in local Room database
+        try {
+            val allFarms = repository.getAllFarmAccounts()
+            val customFarm = allFarms.firstOrNull { it.farmId != "FARM-DEFAULT" && it.ownerEmailOrPhone.isNotBlank() }
+                ?: allFarms.lastOrNull { it.ownerEmailOrPhone.isNotBlank() }
+
+            if (customFarm != null) {
+                val session = UserSession(
+                    userId = customFarm.ownerId,
+                    name = customFarm.ownerName,
+                    emailOrPhone = customFarm.ownerEmailOrPhone,
+                    role = "OWNER",
+                    farmId = customFarm.farmId,
+                    farmName = customFarm.farmName,
+                    isRevoked = false
+                )
+                saveSession(session)
                 return@withContext
             }
 
-            val session = UserSession(
-                userId = uid,
-                name = name,
-                emailOrPhone = identifier,
-                role = role,
-                farmId = farmId,
-                farmName = farmName,
-                isRevoked = false,
-                permissions = WorkerPermissions(
-                    canViewLivestock = true,
-                    canEditLivestock = role.equals("OWNER", ignoreCase = true),
-                    canViewLogs = true,
-                    canEditLogs = role.equals("OWNER", ignoreCase = true),
-                    canViewFinance = role.equals("OWNER", ignoreCase = true),
-                    canEditFinance = role.equals("OWNER", ignoreCase = true),
-                    canViewTasks = true,
-                    canCompleteTasks = true,
-                    canViewRequests = true
+            // 4. Try any registered WorkerAccount in Room
+            val allWorkers = repository.getWorkersForFarm("").firstOrNull() ?: emptyList()
+            val customWorker = allWorkers.firstOrNull { !it.isRevoked }
+            if (customWorker != null) {
+                val session = UserSession(
+                    userId = customWorker.workerId,
+                    name = customWorker.name,
+                    emailOrPhone = customWorker.emailOrPhone,
+                    role = "WORKER",
+                    farmId = customWorker.farmId,
+                    farmName = "Assigned Farm",
+                    isRevoked = false,
+                    permissions = customWorker.toPermissions()
                 )
-            )
-            saveSession(session)
+                saveSession(session)
+                return@withContext
+            }
         } catch (e: Throwable) {
-            // Background restore failed
+            // Ignored
         }
     }
 
     private fun loadSavedSession(): UserSession? {
-        val userId = prefs.getString("user_id", null) ?: return null
-        val name = prefs.getString("user_name", "Farm User") ?: "Farm User"
-        val emailOrPhone = prefs.getString("email_or_phone", "") ?: ""
-        val role = prefs.getString("user_role", "OWNER") ?: "OWNER"
-        val farmId = prefs.getString("farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT"
-        val farmName = prefs.getString("farm_name", "My Farm") ?: "My Farm"
+        val userId = prefs.getString("user_id", null) ?: prefs.getString("last_user_id", null) ?: return null
+        val name = prefs.getString("user_name", null) ?: prefs.getString("last_user_name", "Farm User") ?: "Farm User"
+        val emailOrPhone = prefs.getString("email_or_phone", null) ?: prefs.getString("last_email_or_phone", "") ?: ""
+        val role = prefs.getString("user_role", null) ?: prefs.getString("last_user_role", "OWNER") ?: "OWNER"
+        val farmId = prefs.getString("farm_id", null) ?: prefs.getString("last_farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT"
+        val farmName = prefs.getString("farm_name", null) ?: prefs.getString("last_farm_name", "My Farm") ?: "My Farm"
 
         val canViewLivestock = prefs.getBoolean("can_view_livestock", true)
         val canEditLivestock = prefs.getBoolean("can_edit_livestock", role == "OWNER")
@@ -236,12 +288,17 @@ class AuthManager(
 
     private fun saveSession(session: UserSession) {
         prefs.edit().apply {
+            putBoolean("is_logged_out", false)
             putString("user_id", session.userId)
             putString("user_name", session.name)
             putString("email_or_phone", session.emailOrPhone)
             putString("user_role", session.role)
             putString("farm_id", session.farmId)
             putString("farm_name", session.farmName)
+            putString("last_user_id", session.userId)
+            putString("last_user_name", session.name)
+            putString("last_email_or_phone", session.emailOrPhone)
+            putString("last_user_role", session.role)
             putString("last_farm_id", session.farmId)
             putString("last_farm_name", session.farmName)
             putBoolean("can_view_livestock", session.permissions.canViewLivestock)
@@ -253,7 +310,7 @@ class AuthManager(
             putBoolean("can_view_tasks", session.permissions.canViewTasks)
             putBoolean("can_complete_tasks", session.permissions.canCompleteTasks)
             putBoolean("can_view_requests", session.permissions.canViewRequests)
-            apply()
+            commit()
         }
         _currentSession.value = session
     }
@@ -522,18 +579,27 @@ class AuthManager(
         } else {
             // Phone number resolution:
             val cleanDigits = cleanIdentifier.replace(Regex("[^0-9]"), "").removePrefix("0")
-            val fullPhone = if (cleanIdentifier.startsWith("+")) cleanIdentifier else "+254$cleanDigits"
-            val possiblePhoneFormats = listOf(
+            val possiblePhoneFormats = mutableListOf(
                 cleanIdentifier,
-                fullPhone,
                 "+$cleanDigits",
                 cleanDigits,
-                if (cleanDigits.startsWith("254")) cleanDigits else "254$cleanDigits"
-            ).distinct()
+                "0$cleanDigits"
+            )
+
+            val knownPrefixes = listOf("254", "255", "256", "250", "234", "27", "233", "251", "1", "44", "91")
+            for (prefix in knownPrefixes) {
+                possiblePhoneFormats.add("+$prefix$cleanDigits")
+                possiblePhoneFormats.add("$prefix$cleanDigits")
+                if (cleanDigits.startsWith(prefix)) {
+                    val withoutPrefix = cleanDigits.removePrefix(prefix)
+                    possiblePhoneFormats.add("0$withoutPrefix")
+                    possiblePhoneFormats.add(withoutPrefix)
+                }
+            }
 
             // Query Firestore collection "users" to find user profile by phone
             if (db != null) {
-                for (phoneVariant in possiblePhoneFormats) {
+                for (phoneVariant in possiblePhoneFormats.distinct()) {
                     try {
                         val q1 = db.collection("users").whereEqualTo("phone", phoneVariant).limit(1).get().awaitTask()
                         if (q1 != null && !q1.isEmpty) {
@@ -561,9 +627,13 @@ class AuthManager(
                 }
             }
 
-            val fullDigits = if (cleanDigits.startsWith("254")) cleanDigits else "254$cleanDigits"
-            candidateAuthEmails.add("phone_${fullDigits}@mkulima.farm")
             candidateAuthEmails.add("phone_${cleanDigits}@mkulima.farm")
+            for (prefix in knownPrefixes) {
+                candidateAuthEmails.add("phone_${prefix}${cleanDigits}@mkulima.farm")
+                if (cleanDigits.startsWith(prefix)) {
+                    candidateAuthEmails.add("phone_${cleanDigits}@mkulima.farm")
+                }
+            }
         }
 
         // 3. Authenticate with Firebase Authentication
@@ -856,6 +926,7 @@ class AuthManager(
 
     fun logout() {
         prefs.edit().apply {
+            putBoolean("is_logged_out", true)
             remove("user_id")
             remove("user_name")
             remove("email_or_phone")
@@ -871,7 +942,7 @@ class AuthManager(
             remove("can_view_tasks")
             remove("can_complete_tasks")
             remove("can_view_requests")
-            apply()
+            commit()
         }
         _currentSession.value = null
         try {

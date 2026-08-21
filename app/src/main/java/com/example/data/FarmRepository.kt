@@ -62,7 +62,26 @@ class FarmRepository(private val farmDao: FarmDao) {
     suspend fun deleteWorker(workerId: String) = farmDao.deleteWorkerById(workerId)
     suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean) = farmDao.setWorkerRevoked(workerId, isRevoked)
     suspend fun getWorkerById(workerId: String): WorkerAccount? = farmDao.getWorkerById(workerId)
-    suspend fun getWorkerByLoginIdentifier(identifier: String): WorkerAccount? = farmDao.getWorkerByLoginIdentifier(identifier)
+    suspend fun getWorkerByLoginIdentifier(identifier: String): WorkerAccount? {
+        val trimmed = identifier.trim()
+        val direct = farmDao.getWorkerByLoginIdentifier(trimmed)
+        if (direct != null) return direct
+
+        val cleanDigits = trimmed.replace(Regex("[^0-9]"), "").removePrefix("0")
+        if (cleanDigits.length >= 4) {
+            val all = farmDao.getAllWorkers()
+            for (w in all) {
+                val wDigits = w.emailOrPhone.replace(Regex("[^0-9]"), "").removePrefix("0")
+                if (wDigits.isNotBlank() && (wDigits.endsWith(cleanDigits) || cleanDigits.endsWith(wDigits))) {
+                    return w
+                }
+                if (w.workerId.equals(trimmed, ignoreCase = true) || w.emailOrPhone.equals(trimmed, ignoreCase = true)) {
+                    return w
+                }
+            }
+        }
+        return null
+    }
 
     // Cattle Events
     fun getCattleEventsForUnit(unitId: Long): Flow<List<CattleEvent>> = farmDao.getCattleEventsByUnit(unitId)
@@ -75,7 +94,28 @@ class FarmRepository(private val farmDao: FarmDao) {
     suspend fun insertFarmAccount(farm: FarmAccount) = farmDao.insertFarmAccount(farm)
     suspend fun updateFarmAccount(farm: FarmAccount) = farmDao.updateFarmAccount(farm)
     suspend fun getFarmAccount(farmId: String): FarmAccount? = farmDao.getFarmAccount(farmId)
-    suspend fun getFarmAccountByOwner(emailOrPhone: String): FarmAccount? = farmDao.getFarmAccountByOwner(emailOrPhone)
+    suspend fun getFarmAccountByOwner(emailOrPhone: String): FarmAccount? {
+        val trimmed = emailOrPhone.trim()
+        val direct = farmDao.getFarmAccountByOwner(trimmed)
+        if (direct != null) return direct
+
+        val cleanDigits = trimmed.replace(Regex("[^0-9]"), "").removePrefix("0")
+        if (cleanDigits.length >= 5) {
+            val all = farmDao.getAllFarmAccounts()
+            for (f in all) {
+                val p1 = f.phoneNumber?.replace(Regex("[^0-9]"), "")?.removePrefix("0") ?: ""
+                val p2 = f.ownerEmailOrPhone.replace(Regex("[^0-9]"), "").removePrefix("0")
+                if ((p1.isNotBlank() && (p1.endsWith(cleanDigits) || cleanDigits.endsWith(p1))) ||
+                    (p2.isNotBlank() && (p2.endsWith(cleanDigits) || cleanDigits.endsWith(p2)))) {
+                    return f
+                }
+                if (f.ownerEmailOrPhone.equals(trimmed, ignoreCase = true) || f.ownerId.equals(trimmed, ignoreCase = true)) {
+                    return f
+                }
+            }
+        }
+        return null
+    }
     suspend fun getAllFarmAccounts(): List<FarmAccount> = farmDao.getAllFarmAccounts()
     suspend fun updateOwnerPassword(emailOrPhone: String, newPass: String) = farmDao.updateOwnerPassword(emailOrPhone, newPass)
     suspend fun updateWorkerPassword(emailOrPhone: String, newPass: String) = farmDao.updateWorkerPassword(emailOrPhone, newPass)

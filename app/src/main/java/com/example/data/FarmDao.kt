@@ -164,6 +164,9 @@ interface FarmDao {
     @Query("SELECT * FROM worker_accounts WHERE workerId = :workerId")
     suspend fun getWorkerById(workerId: String): WorkerAccount?
 
+    @Query("SELECT * FROM worker_accounts")
+    suspend fun getAllWorkers(): List<WorkerAccount>
+
     @Query("SELECT * FROM worker_accounts WHERE emailOrPhone = :emailOrPhone LIMIT 1")
     suspend fun getWorkerByLoginIdentifier(emailOrPhone: String): WorkerAccount?
 

@@ -71,8 +71,13 @@ import com.example.ui.components.AddTaskDialog
 import com.example.ui.components.AddUnitDialog
 import com.example.ui.components.ProofImageModal
 import com.example.ui.components.ProofUploadDialog
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import com.example.ui.components.FarmRemindersDialog
 import com.example.ui.components.SettingsDialog
+import com.example.util.FarmReminderEngine
 import com.example.ui.screens.WorkerDashboardScreen
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.History
@@ -159,9 +164,14 @@ fun MkulimaAppContent(
     var showAddEmployeeRequestDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showWorkerManagementScreen by remember { mutableStateOf(false) }
+    var showRemindersDialog by remember { mutableStateOf(false) }
+
+    val farmReminders = remember(allUnits, allTasks) {
+        FarmReminderEngine.computeAllReminders(units = allUnits, tasks = allTasks)
+    }
 
     // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
-    val hasOpenOverlay = showWorkerManagementScreen || showSettingsDialog || showAddTaskDialog ||
+    val hasOpenOverlay = showWorkerManagementScreen || showSettingsDialog || showRemindersDialog || showAddTaskDialog ||
             showAddUnitDialog || showAddMilkLogDialog || showAddEggLogDialog ||
             showAddFinanceDialog || (editingFinanceRecord != null) || showAddEmployeeRequestDialog ||
             (proofUploadTaskTarget != null) || (proofModalTaskTarget != null)
@@ -170,6 +180,7 @@ fun MkulimaAppContent(
         when {
             showWorkerManagementScreen -> showWorkerManagementScreen = false
             showSettingsDialog -> showSettingsDialog = false
+            showRemindersDialog -> showRemindersDialog = false
             proofModalTaskTarget != null -> proofModalTaskTarget = null
             proofUploadTaskTarget != null -> proofUploadTaskTarget = null
             showAddTaskDialog -> showAddTaskDialog = false
@@ -319,6 +330,27 @@ fun MkulimaAppContent(
         )
     }
 
+    if (showRemindersDialog) {
+        FarmRemindersDialog(
+            reminders = farmReminders,
+            onDismiss = { showRemindersDialog = false },
+            onNavigateToAnimal = {
+                showRemindersDialog = false
+                selectedTab = 1
+            },
+            onAddNewTaskClick = {
+                showRemindersDialog = false
+                showAddTaskDialog = true
+            },
+            onMarkTaskDone = { taskId ->
+                val pureId = taskId.removePrefix("task_").toLongOrNull()
+                if (pureId != null) {
+                    viewModel.markTaskComplete(pureId, null, "Completed via reminders")
+                }
+            }
+        )
+    }
+
     if (showWorkerManagementScreen) {
         WorkerManagementScreen(
             farmId = userSession?.farmId ?: "FARM-DEFAULT",
@@ -340,7 +372,7 @@ fun MkulimaAppContent(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(end = 12.dp)
+                                .padding(end = 4.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { }) {
@@ -364,12 +396,42 @@ fun MkulimaAppContent(
                                     color = Color(0xFF1E293B)
                                 )
                             }
-                            IconButton(onClick = { showSettingsDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Settings,
-                                    contentDescription = "Settings",
-                                    tint = Color(0xFF1E293B)
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Farm Reminders & Alerts Notification Bell
+                                IconButton(
+                                    onClick = { showRemindersDialog = true },
+                                    modifier = Modifier.testTag("topbar_reminders_button")
+                                ) {
+                                    BadgedBox(
+                                        badge = {
+                                            if (farmReminders.isNotEmpty()) {
+                                                Badge(
+                                                    containerColor = Color(0xFFDC2626),
+                                                    contentColor = Color.White
+                                                ) {
+                                                    Text(
+                                                        text = if (farmReminders.size > 9) "9+" else "${farmReminders.size}",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Notifications,
+                                            contentDescription = "Farm Reminders",
+                                            tint = Color(0xFF1E293B)
+                                        )
+                                    }
+                                }
+                                IconButton(onClick = { showSettingsDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Settings,
+                                        contentDescription = "Settings",
+                                        tint = Color(0xFF1E293B)
+                                    )
+                                }
                             }
                         }
                     },

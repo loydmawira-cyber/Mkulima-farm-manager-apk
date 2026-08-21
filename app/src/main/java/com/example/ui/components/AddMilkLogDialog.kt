@@ -175,7 +175,7 @@ fun AddMilkLogDialog(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Log Milk Yield",
+                                text = "Log Milk Production",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)

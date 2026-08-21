@@ -896,7 +896,7 @@ fun MilkLogScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Milk Yield Log",
+                            text = "Milk Production",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF1E293B)

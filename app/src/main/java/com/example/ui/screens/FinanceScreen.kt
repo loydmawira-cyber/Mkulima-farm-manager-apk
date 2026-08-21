@@ -23,10 +23,13 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -58,6 +61,7 @@ fun FinanceScreen(
     modifier: Modifier = Modifier
 ) {
     var recordToDelete by remember { mutableStateOf<FinanceRecord?>(null) }
+    var activeMenuRecordId by remember { mutableStateOf<Long?>(null) }
 
     if (recordToDelete != null) {
         val rec = recordToDelete!!
@@ -252,18 +256,79 @@ fun FinanceScreen(
                             }
                         }
 
-                        Row {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             Text(
                                 text = if (isIncome) "+$currency %,.2f".format(rec.amount) else "-$currency %,.2f".format(rec.amount),
-                                fontSize = 17.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isIncome) ForestGreenPrimary else Color(0xFF991B1B)
                             )
-                            IconButton(onClick = { onEditTransaction(rec) }) {
-                                Icon(Icons.Filled.Edit, contentDescription = "Edit")
-                            }
-                            IconButton(onClick = { recordToDelete = rec }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF991B1B))
+                            Box {
+                                IconButton(
+                                    onClick = { activeMenuRecordId = rec.id },
+                                    modifier = Modifier.testTag("finance_item_menu_${rec.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.MoreVert,
+                                        contentDescription = "Transaction Actions",
+                                        tint = Color(0xFF64748B)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = activeMenuRecordId == rec.id,
+                                    onDismissRequest = { activeMenuRecordId = null },
+                                    modifier = Modifier.background(Color.White)
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Edit,
+                                                    contentDescription = null,
+                                                    tint = ForestGreenPrimary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    "Edit Transaction",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color(0xFF1E293B)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            activeMenuRecordId = null
+                                            onEditTransaction(rec)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Delete,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFDC2626),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    "Delete Transaction",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color(0xFFDC2626)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            activeMenuRecordId = null
+                                            recordToDelete = rec
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

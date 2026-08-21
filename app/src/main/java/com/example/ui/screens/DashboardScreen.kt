@@ -86,6 +86,11 @@ import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.StatusUrgentRed
 import com.example.util.CattleLifecycleEngine
 import com.example.util.CattleStage
+import com.example.util.FarmReminder
+import com.example.util.FarmReminderEngine
+import com.example.util.ReminderType
+import com.example.util.ReminderUrgency
+import com.example.ui.components.FarmRemindersDialog
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -300,13 +305,19 @@ fun DashboardScreen(
     }
 
     // Attention / Urgent items (only active/pending items)
+    var showRemindersDialog by remember { mutableStateOf(false) }
+    var selectedReminderFilter by remember { mutableStateOf<ReminderType?>(null) }
+    val farmReminders = remember(units, tasks) {
+        FarmReminderEngine.computeAllReminders(units = units, tasks = tasks)
+    }
+
     val pendingRequests = remember(employeeRequests) {
         employeeRequests.filter { it.status == RequestStatus.PENDING }
     }
     val pendingTasks = remember(tasks) {
         tasks.filter { !it.isCompleted }
     }
-    val urgentCount = pendingRequests.size + pendingTasks.size
+    val urgentCount = pendingRequests.size + pendingTasks.size + farmReminders.count { it.urgency == ReminderUrgency.OVERDUE || it.urgency == ReminderUrgency.TODAY }
 
     Box(
         modifier = modifier
@@ -476,8 +487,22 @@ fun DashboardScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Dynamic Urgent Items List (Only Active / Incomplete)
+                                // Dynamic Urgent Items List (Only Active / Incomplete & Urgent Reminders)
                                 val urgentItems = mutableListOf<@Composable (isLast: Boolean) -> Unit>()
+
+                                // 1. Urgent Reminders (Calving due soon/today, Overdue vaccinations, Deworming)
+                                farmReminders.filter { it.urgency == ReminderUrgency.OVERDUE || it.urgency == ReminderUrgency.TODAY || (it.type == ReminderType.CALVING && it.daysRemaining <= 7) }
+                                    .take(2)
+                                    .forEach { rem ->
+                                        urgentItems.add { isLast ->
+                                            UrgentItemRow(
+                                                title = "${rem.type.emoji} ${rem.title}",
+                                                subtitle = "${rem.urgency.label} • ${rem.targetName} • Due: ${rem.dueDateStr}",
+                                                onClick = { showRemindersDialog = true },
+                                                isLast = isLast
+                                            )
+                                        }
+                                    }
 
                                 pendingRequests.take(2).forEach { req ->
                                     urgentItems.add { isLast ->
@@ -490,7 +515,7 @@ fun DashboardScreen(
                                     }
                                 }
 
-                                pendingTasks.take(3).forEach { task ->
+                                pendingTasks.take(2).forEach { task ->
                                     urgentItems.add { isLast ->
                                         UrgentItemRow(
                                             title = task.title,
@@ -504,13 +529,208 @@ fun DashboardScreen(
                                 if (urgentItems.isEmpty()) {
                                     UrgentItemRow(
                                         title = "All clear! No urgent tasks pending 🎉",
-                                        subtitle = "All assigned tasks completed. Tap to view tasks.",
+                                        subtitle = "All assigned tasks & livestock schedules up to date. Tap to view tasks.",
                                         onClick = { onNavigateToTab(4) },
                                         isLast = true
                                     )
                                 } else {
                                     urgentItems.forEachIndexed { idx, itemComposable ->
                                         itemComposable(idx == urgentItems.lastIndex)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // CARD 1B: FARM REMINDERS & UPCOMING HEALTH SCHEDULE CARD
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dashboard_reminders_card"),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, LineColor)
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            // Head Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("🔔", fontSize = 18.sp)
+                                    Text(
+                                        text = "Upcoming Reminders",
+                                        fontSize = 15.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Soil
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = RustBg
+                                    ) {
+                                        Text(
+                                            text = "${farmReminders.size} Active",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Terracotta,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = "View all ›",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Terracotta,
+                                    modifier = Modifier
+                                        .clickable { showRemindersDialog = true }
+                                        .padding(4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Filter Chips Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                FilterChip(
+                                    selected = selectedReminderFilter == null,
+                                    onClick = { selectedReminderFilter = null },
+                                    label = { Text("All", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                                FilterChip(
+                                    selected = selectedReminderFilter == ReminderType.VACCINATION,
+                                    onClick = { selectedReminderFilter = ReminderType.VACCINATION },
+                                    label = { Text("💉 Vaccines", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                                FilterChip(
+                                    selected = selectedReminderFilter == ReminderType.DEWORMING,
+                                    onClick = { selectedReminderFilter = ReminderType.DEWORMING },
+                                    label = { Text("💊 Deworm", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                                FilterChip(
+                                    selected = selectedReminderFilter == ReminderType.CALVING,
+                                    onClick = { selectedReminderFilter = ReminderType.CALVING },
+                                    label = { Text("🍼 Calvings", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Display top 3 reminders matching filter
+                            val displayReminders = remember(farmReminders, selectedReminderFilter) {
+                                (if (selectedReminderFilter == null) farmReminders else farmReminders.filter { it.type == selectedReminderFilter }).take(3)
+                            }
+
+                            if (displayReminders.isEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text("✨", fontSize = 20.sp)
+                                        Text(
+                                            text = "No upcoming reminders in this category",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    displayReminders.forEach { reminder ->
+                                        val urgencyBg = when (reminder.urgency) {
+                                            ReminderUrgency.OVERDUE -> Color(0xFFFEE2E2)
+                                            ReminderUrgency.TODAY -> Color(0xFFFFEDD5)
+                                            ReminderUrgency.DUE_SOON -> Color(0xFFFEF3C7)
+                                            ReminderUrgency.UPCOMING -> Color(0xFFEFF6FF)
+                                        }
+                                        val urgencyText = when (reminder.urgency) {
+                                            ReminderUrgency.OVERDUE -> Color(0xFF991B1B)
+                                            ReminderUrgency.TODAY -> Color(0xFFC2410C)
+                                            ReminderUrgency.DUE_SOON -> Color(0xFFB45309)
+                                            ReminderUrgency.UPCOMING -> Color(0xFF1D4ED8)
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color(0xFFF8FAFC),
+                                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { showRemindersDialog = true }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(10.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    Text(reminder.type.emoji, fontSize = 20.sp)
+                                                    Column {
+                                                        Text(
+                                                            text = reminder.title,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF0F172A),
+                                                            maxLines = 1
+                                                        )
+                                                        Text(
+                                                            text = "${reminder.targetName} • Due: ${reminder.dueDateStr}",
+                                                            fontSize = 11.5.sp,
+                                                            color = Color(0xFF64748B),
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                }
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = urgencyBg
+                                                ) {
+                                                    Text(
+                                                        text = reminder.urgency.label,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = urgencyText,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -968,6 +1188,28 @@ fun DashboardScreen(
             item {
                 Spacer(modifier = Modifier.height(28.dp))
             }
+        }
+
+        if (showRemindersDialog) {
+            FarmRemindersDialog(
+                reminders = farmReminders,
+                onDismiss = { showRemindersDialog = false },
+                onNavigateToAnimal = { unitId ->
+                    showRemindersDialog = false
+                    onNavigateToTab(1)
+                },
+                onAddNewTaskClick = {
+                    showRemindersDialog = false
+                    onAddTaskClick()
+                },
+                onMarkTaskDone = { taskId ->
+                    val pureId = taskId.removePrefix("task_").toLongOrNull()
+                    val task = tasks.find { it.id == pureId }
+                    if (task != null) {
+                        onCompleteTaskClick(task)
+                    }
+                }
+            )
         }
     }
 }

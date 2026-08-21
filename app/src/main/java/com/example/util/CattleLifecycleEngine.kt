@@ -251,7 +251,11 @@ object CattleLifecycleEngine {
         }
 
         // 4. Analyze Breeding & Reproduction Log Events
-        val sortedEvents = events
+        // Sort newest-first by actual parsed date, not insertion order — insertion
+        // order isn't reliable since users can log events retroactively (e.g.
+        // backfilling a calving date from weeks ago after already logging a
+        // more recent heat/AI event).
+        val sortedEvents = events.sortedByDescending { parseDateOrNull(it.date) ?: Date(0) }
 
         val pdEvents = sortedEvents.filter {
             it.category.equals("PD", ignoreCase = true) ||

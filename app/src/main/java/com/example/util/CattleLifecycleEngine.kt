@@ -437,13 +437,16 @@ object CattleLifecycleEngine {
             }
         }
 
-        // If most recent event is Insemination (and no positive PD yet):
+        // If most recent event is Insemination (and no PD result yet since that AI):
         val latestAi = aiEvents.firstOrNull()
         val latestCalvingDate = calvingEvents.firstOrNull()?.date?.let { parseDateOrNull(it) }
         val latestAiDate = latestAi?.date?.let { parseDateOrNull(it) }
         val aiAfterCalving = if (latestAiDate != null && latestCalvingDate != null) latestAiDate.after(latestCalvingDate) else (latestAiDate != null)
 
-        if ((aiEvents.isNotEmpty() && aiAfterCalving && !isNegativePd) || cleanStatus == "INSEMINATED" || cleanStatus == "SERVED") {
+        val pdAfterAi = latestPd != null && latestAiDate != null &&
+            parseDateOrNull(latestPd.date)?.after(latestAiDate) == true
+
+        if ((aiEvents.isNotEmpty() && aiAfterCalving && !isNegativePd && !pdAfterAi) || cleanStatus == "INSEMINATED" || cleanStatus == "SERVED") {
             return CattleStageEvaluation(
                 stage = CattleStage.INSEMINATED,
                 stageKey = CattleStage.INSEMINATED.key,

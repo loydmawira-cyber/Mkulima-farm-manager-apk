@@ -594,9 +594,14 @@ class FarmViewModel(
                     val isCalving = category.equals("CALVING", ignoreCase = true) || title.contains("Calving", ignoreCase = true)
                     val isDryOff = category.equals("DRY_OFF", ignoreCase = true) || title.contains("Dry Off", ignoreCase = true)
 
+                    val hasCalvedOrMilking = existing.healthStatus.contains("Milking", ignoreCase = true) ||
+                        existing.healthStatus.contains("Lactating", ignoreCase = true) ||
+                        existing.healthStatus.contains("In-Calf / Milking", ignoreCase = true) ||
+                        !existing.healthStatus.contains("Heifer", ignoreCase = true)
+
                     val newStatus = when {
-                        isPositivePd -> "In-Calf"
-                        isNegativePd -> "Milking (Open)"
+                        isPositivePd -> if (hasCalvedOrMilking) "In-Calf / Milking" else "In-Calf"
+                        isNegativePd -> if (hasCalvedOrMilking) "Milking (Open)" else "Heifer (Open)"
                         isInsemination -> "Inseminated"
                         isCalving -> "Milking"
                         isDryOff -> "Dry"

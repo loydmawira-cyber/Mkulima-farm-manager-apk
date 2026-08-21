@@ -53,6 +53,7 @@ import java.util.Locale
 fun AddCattleEventDialog(
     animalName: String,
     unitId: Long,
+    initialCategory: String = "PD",
     onDismiss: () -> Unit,
     onSaveEvent: (
         eventType: String,
@@ -64,8 +65,21 @@ fun AddCattleEventDialog(
         reminderText: String
     ) -> Unit
 ) {
-    var selectedCategory by remember { mutableStateOf("PD") } // PD, INSEMINATION, CALVING, DRY_OFF, HEAT, WEIGHT, HEALTH, OTHER
+    var selectedCategory by remember { mutableStateOf(initialCategory) } // PD, INSEMINATION, CALVING, DRY_OFF, HEAT, WEIGHT, HEALTH, OTHER
     var pdResult by remember { mutableStateOf("CONFIRMED_POSITIVE") } // CONFIRMED_POSITIVE, NEGATIVE
+
+    // Calving specific fields
+    var calfGender by remember { mutableStateOf("Heifer Calf (Female)") } // Heifer Calf (Female), Bull Calf (Male), Twins
+    var calfTag by remember { mutableStateOf("#134") }
+    var calfBirthWeight by remember { mutableStateOf("34 kg") }
+    var calvingEase by remember { mutableStateOf("Normal (Unassisted)") } // Normal (Unassisted), Assisted, Vet Cesarean
+    var colostrumFed by remember { mutableStateOf("Fed colostrum within 2 hours") }
+
+    // Health specific fields
+    var healthType by remember { mutableStateOf("Vaccination") } // Vaccination, Deworming, Antibiotic, Mastitis Care, Hoof Care, Routine Check, Other
+    var healthCondition by remember { mutableStateOf("Routine Foot & Mouth Booster") }
+    var medicationDosage by remember { mutableStateOf("FMD Booster 2ml s.c.") }
+    var withdrawalDays by remember { mutableStateOf("0 days") }
 
     val todayDate = remember {
         SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
@@ -76,13 +90,13 @@ fun AddCattleEventDialog(
         mutableStateOf(
             when (selectedCategory) {
                 "INSEMINATION" -> "Inseminated with high-grade dairy semen straw."
-                "CALVING" -> "Delivered healthy calf. Mother and calf in good condition."
+                "CALVING" -> "Delivered healthy calf. Mother transitioned to fresh milking lactation."
                 "DRY_OFF" -> "Milking stopped. Administered intramammary dry cow therapy."
                 "HEAT" -> "Observed standing heat, clear mucus discharge."
                 "WEIGHT" -> "Weighed on herd scale."
-                "HEALTH" -> "Routine treatment / vaccination administered."
+                "HEALTH" -> "Routine vaccination / health treatment administered."
                 "OTHER" -> "General management or observation event."
-                else -> "Pregnancy confirmed positive via rectal palpation / ultrasound. Gestation normal."
+                else -> "Pregnancy confirmed positive via veterinary check. Gestation normal."
             }
         )
     }
@@ -121,7 +135,7 @@ fun AddCattleEventDialog(
         when (category) {
             "PD" -> {
                 if (pdResult == "CONFIRMED_POSITIVE") {
-                    detailsText = "Pregnancy confirmed positive via veterinary check. Cow is now In-Calf."
+                    detailsText = "Pregnancy confirmed positive via veterinary check. Cow is now In-Calf & Milking."
                     metricText = "Positive (In-Calf)"
                     reminderText = "Dry Off check 60 days before expected calving"
                 } else {
@@ -138,10 +152,10 @@ fun AddCattleEventDialog(
                 reminderText = "In 21 days (Repeat Heat / PD Check)"
             }
             "CALVING" -> {
-                detailsText = "Successfully gave birth to healthy calf. Mother transition to fresh lactation milking."
-                notesText = "Calf Tag: #132 (Heifer Calf)"
-                metricText = "Birth Wt: 34 kg"
-                reminderText = "Colostrum Feeding & Post-calving check in 24h"
+                detailsText = "Delivered $calfGender (Tag $calfTag). Calving ease: $calvingEase. $colostrumFed. Mother entered active lactation."
+                notesText = "Attended by: Dr. Otieno (Vet)"
+                metricText = "Birth Wt: $calfBirthWeight"
+                reminderText = "First post-calving heat check in 45-60 days"
             }
             "DRY_OFF" -> {
                 detailsText = "Lactation halted. Cow dried off 60 days prior to expected calving with dry cow antibiotic sealant."
@@ -162,10 +176,10 @@ fun AddCattleEventDialog(
                 reminderText = "In 30 days (Monthly Weighing)"
             }
             "HEALTH" -> {
-                detailsText = "Foot & Mouth booster 2ml administered subcutaneously."
-                notesText = "Dosage: 2ml subcutaneously (Batch #FMD-2026-X)"
-                metricText = "2 ml"
-                reminderText = "In 6 months (Booster Due)"
+                detailsText = "[$healthType] $healthCondition. Administered $medicationDosage. Withdrawal: $withdrawalDays."
+                notesText = "Attending Vet: Dr. Otieno"
+                metricText = medicationDosage
+                reminderText = "Booster / Follow-up review in 6 months"
             }
             "OTHER" -> {
                 detailsText = "General observation or other farm management activity."
@@ -355,7 +369,7 @@ fun AddCattleEventDialog(
                                 .weight(1f)
                                 .clickable {
                                     pdResult = "CONFIRMED_POSITIVE"
-                                    detailsText = "Pregnancy confirmed positive. Cow is now in-calf."
+                                    detailsText = "Pregnancy confirmed positive via veterinary check. Cow is now In-Calf & Milking."
                                     metricText = "Positive (In-Calf)"
                                 }
                         ) {
@@ -364,7 +378,7 @@ fun AddCattleEventDialog(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text("🤰 POSITIVE", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = ForestGreenPrimary)
-                                Text("Sets stage to IN-CALF", fontSize = 10.sp, color = Color(0xFF166534))
+                                Text("In-Calf & Milking", fontSize = 10.sp, color = Color(0xFF166534))
                             }
                         }
 
@@ -392,6 +406,156 @@ fun AddCattleEventDialog(
                             }
                         }
                     }
+                }
+
+                // If Calving is selected, show Calving Details Panel
+                if (selectedCategory == "CALVING") {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "CALF & BIRTH DETAILS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF64748B)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Heifer (Female)", "Bull (Male)", "Twins").forEach { genderOption ->
+                            val isSel = calfGender.contains(genderOption.split(" ")[0])
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        calfGender = genderOption
+                                        detailsText = "Delivered $calfGender (Tag $calfTag). Calving ease: $calvingEase. $colostrumFed."
+                                    }
+                            ) {
+                                Text(
+                                    text = genderOption,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) Color.White else Color(0xFF475569),
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = calfTag,
+                            onValueChange = {
+                                calfTag = it
+                                detailsText = "Delivered $calfGender (Tag $calfTag). Calving ease: $calvingEase. $colostrumFed."
+                            },
+                            label = { Text("Calf Tag ID") },
+                            placeholder = { Text("e.g. #145") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = calvingEase,
+                            onValueChange = {
+                                calvingEase = it
+                                detailsText = "Delivered $calfGender (Tag $calfTag). Calving ease: $calvingEase. $colostrumFed."
+                            },
+                            label = { Text("Calving Ease") },
+                            placeholder = { Text("e.g. Normal unassisted") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                // If Health is selected, show Health Category Chips
+                if (selectedCategory == "HEALTH") {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "TREATMENT / HEALTH TYPE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF64748B)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("Vaccination", "Deworming", "Antibiotic", "Mastitis").forEach { hType ->
+                            val isSel = healthType == hType
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        healthType = hType
+                                        when (hType) {
+                                            "Vaccination" -> {
+                                                healthCondition = "Foot & Mouth / Anthrax Booster"
+                                                medicationDosage = "2 ml s.c."
+                                                withdrawalDays = "0 days"
+                                            }
+                                            "Deworming" -> {
+                                                healthCondition = "Internal Parasite Deworming"
+                                                medicationDosage = "Albendazole 50ml Oral"
+                                                withdrawalDays = "3 days milk / 14 days meat"
+                                            }
+                                            "Antibiotic" -> {
+                                                healthCondition = "Bacterial Infection / Respiratory"
+                                                medicationDosage = "Oxytetracycline 20ml i.m."
+                                                withdrawalDays = "5 days milk / 21 days meat"
+                                            }
+                                            "Mastitis" -> {
+                                                healthCondition = "Clinical Mastitis - Left Front Quarter"
+                                                medicationDosage = "Intramammary Infusion Tube"
+                                                withdrawalDays = "3 days milk withdrawal"
+                                            }
+                                        }
+                                        detailsText = "[$healthType] $healthCondition. Administered $medicationDosage. Withdrawal: $withdrawalDays."
+                                        metricText = medicationDosage
+                                    }
+                            ) {
+                                Text(
+                                    text = hType,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) Color.White else Color(0xFF475569),
+                                    modifier = Modifier.padding(vertical = 7.dp),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = healthCondition,
+                        onValueChange = {
+                            healthCondition = it
+                            detailsText = "[$healthType] $healthCondition. Administered $medicationDosage. Withdrawal: $withdrawalDays."
+                        },
+                        label = { Text("Condition / Diagnosis") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))

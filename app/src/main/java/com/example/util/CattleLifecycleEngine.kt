@@ -96,6 +96,8 @@ data class CattleStageEvaluation(
     val expectedDryOffDate: String? = null,
     val lastEventSummary: String? = null,
     val lastInseminationDate: String? = null,
+    val lastCalvingDate: String? = null,
+    val hasGivenBirthPreviously: Boolean = false,
     val explanation: String = summaryReason,
     val daysInGestation: Int? = gestationDays,
     val dryOffTargetDate: String? = expectedDryOffDate
@@ -353,19 +355,42 @@ object CattleLifecycleEngine {
             Regex("""\b\d+(\.\d+)?\s*L\b""", RegexOption.IGNORE_CASE).containsMatchIn(animal.lastMilk)
 
         val latestDryOff = dryOffEvents.firstOrNull()
-        val isDriedOff = latestDryOff != null || cleanStatus == "DRY" || cleanStatus.contains("DRY OFF")
-        val isCurrentlyMilking = !isDriedOff && (hasRecentMilkYield || cleanStatus == "MILKING" || (hasExplicitLitreText && (calvingEvents.isNotEmpty() || cleanStatus.contains("MILKING"))))
+        val isDriedOff = if (latestDryOff != null && latestCalving != null) {
+            val dDry = parseDateOrNull(latestDryOff.date)
+            val dCalv = parseDateOrNull(latestCalving.date)
+            if (dDry != null && dCalv != null) dDry.after(dCalv) else true
+        } else {
+            latestDryOff != null || cleanStatus == "DRY" || cleanStatus.contains("DRY OFF") || cleanStatus.contains("DRY COW")
+        }
+
+        val hasGivenBirthPreviously = calvingEvents.isNotEmpty() ||
+            cleanStatus.contains("MILKING") ||
+            cleanBreeding.contains("MILKING") ||
+            (animal.lastMilk.isNotBlank() && !animal.lastMilk.contains("0L") && !animal.lastMilk.contains("No data", ignoreCase = true) && !animal.lastMilk.contains("N/A", ignoreCase = true))
+
+        val isCurrentlyMilking = !isDriedOff && (
+            hasRecentMilkYield ||
+            cleanStatus == "MILKING" ||
+            hasGivenBirthPreviously ||
+            (hasExplicitLitreText && (calvingEvents.isNotEmpty() || cleanStatus.contains("MILKING")))
+        )
 
         // 5. Dynamic Breeding Event Prioritization
-        // If confirmed positive PD:
+        // If confirmed positive PD or marked In-Calf:
         if (isInCalf) {
             val dryOffEst = calculateExpectedDryOff(calvingDateEst)
-            return if (isCurrentlyMilking) {
+            val hasPreviousBirth = calvingEvents.isNotEmpty() || hasGivenBirthPreviously
+            return if (isCurrentlyMilking || hasPreviousBirth) {
+                val parityNote = if (calvingEvents.isNotEmpty()) " (Parity ${calvingEvents.size})" else ""
                 CattleStageEvaluation(
                     stage = CattleStage.INCALF_MILKING,
                     stageKey = CattleStage.INCALF_MILKING.key,
                     label = "In-Calf / Milking",
-                    summaryReason = "$inCalfReason • Actively milking (${animal.lastMilk.ifBlank { "14.2L" }}/day)",
+                    summaryReason = if (calvingEvents.isNotEmpty()) {
+                        "Previously gave birth$parityNote • Confirmed pregnant & in milk (${animal.lastMilk.ifBlank { "14.2L" }}/day)"
+                    } else {
+                        "$inCalfReason • Actively milking (${animal.lastMilk.ifBlank { "14.2L" }}/day)"
+                    },
                     breedingStatusText = "IN-CALF & MILKING (Day $gestationEst of 283)",
                     isInCalf = true,
                     isMilking = true,
@@ -374,8 +399,10 @@ object CattleLifecycleEngine {
                     gestationDays = gestationEst,
                     expectedCalvingDate = calvingDateEst,
                     expectedDryOffDate = dryOffEst,
-                    lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
-                    lastInseminationDate = aiEvents.firstOrNull()?.date
+                    lastEventSummary = latestPd?.details ?: "Positive PD Confirmed (In-Calf & Milking)",
+                    lastInseminationDate = aiEvents.firstOrNull()?.date,
+                    lastCalvingDate = latestCalving?.date,
+                    hasGivenBirthPreviously = true
                 )
             } else {
                 CattleStageEvaluation(
@@ -392,7 +419,9 @@ object CattleLifecycleEngine {
                     expectedCalvingDate = calvingDateEst,
                     expectedDryOffDate = dryOffEst,
                     lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
-                    lastInseminationDate = aiEvents.firstOrNull()?.date
+                    lastInseminationDate = aiEvents.firstOrNull()?.date,
+                    lastCalvingDate = latestCalving?.date,
+                    hasGivenBirthPreviously = hasGivenBirthPreviously
                 )
             }
         }
@@ -460,22 +489,42 @@ object CattleLifecycleEngine {
 
         if (cleanStatus == "INCALF" || cleanStatus == "IN-CALF" || cleanStatus == "PREGNANT") {
             val dryOffEst = calculateExpectedDryOff(calvingDateEst)
-            return CattleStageEvaluation(
-                stage = CattleStage.INCALF,
-                stageKey = CattleStage.INCALF.key,
-                label = "In-Calf",
-                summaryReason = "Confirmed pregnant • Resting / Pre-calving.",
-                breedingStatusText = "IN-CALF (Day $gestationEst of 283)",
-                isInCalf = true,
-                isMilking = false,
-                badgeBgColor = Color(0xFFFEF3C7),
-                badgeTextColor = Color(0xFFB45309),
-                gestationDays = gestationEst,
-                expectedCalvingDate = calvingDateEst,
-                expectedDryOffDate = dryOffEst,
-                lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
-                lastInseminationDate = aiEvents.firstOrNull()?.date
-            )
+            val hasPreviousCalving = calvingEvents.isNotEmpty() || hasGivenBirthPreviously
+            return if (hasPreviousCalving && !isDriedOff) {
+                CattleStageEvaluation(
+                    stage = CattleStage.INCALF_MILKING,
+                    stageKey = CattleStage.INCALF_MILKING.key,
+                    label = "In-Calf / Milking",
+                    summaryReason = "Previously gave birth • Confirmed pregnant & actively in milk.",
+                    breedingStatusText = "IN-CALF & MILKING (Day $gestationEst of 283)",
+                    isInCalf = true,
+                    isMilking = true,
+                    badgeBgColor = Color(0xFFDCFCE7),
+                    badgeTextColor = Color(0xFF15803D),
+                    gestationDays = gestationEst,
+                    expectedCalvingDate = calvingDateEst,
+                    expectedDryOffDate = dryOffEst,
+                    lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
+                    lastInseminationDate = aiEvents.firstOrNull()?.date
+                )
+            } else {
+                CattleStageEvaluation(
+                    stage = CattleStage.INCALF,
+                    stageKey = CattleStage.INCALF.key,
+                    label = "In-Calf",
+                    summaryReason = "Confirmed pregnant • Resting / Pre-calving.",
+                    breedingStatusText = "IN-CALF (Day $gestationEst of 283)",
+                    isInCalf = true,
+                    isMilking = false,
+                    badgeBgColor = Color(0xFFFEF3C7),
+                    badgeTextColor = Color(0xFFB45309),
+                    gestationDays = gestationEst,
+                    expectedCalvingDate = calvingDateEst,
+                    expectedDryOffDate = dryOffEst,
+                    lastEventSummary = latestPd?.details ?: "Positive PD Confirmed",
+                    lastInseminationDate = aiEvents.firstOrNull()?.date
+                )
+            }
         }
 
         if (cleanStatus == "HEIFER" || cleanStatus == "OPEN HEIFER") {

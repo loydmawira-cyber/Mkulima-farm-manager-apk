@@ -1889,7 +1889,8 @@ fun AnimalDetailsView(
     }
 
     var showAddCattleEventDialog by remember { mutableStateOf(false) }
-    var selectedLogFilter by remember { mutableStateOf("ALL") } // ALL, HEAT, WEIGHT, HEALTH
+    var cattleEventDialogCategory by remember { mutableStateOf("PD") }
+    var selectedLogFilter by remember { mutableStateOf("ALL") } // ALL, CALVING, HEALTH, HEAT, PD, WEIGHT
     var currentStatus by remember(animal.id, animal.status) { mutableStateOf(animal.status) }
     var showUpdateStageDialog by remember { mutableStateOf(false) }
     var showDisposeDialog by remember { mutableStateOf(false) }
@@ -2778,28 +2779,251 @@ fun AnimalDetailsView(
                 }
             }
 
-            // Quick Action: Log Cattle Event Button (Placed above Events & Health Logs)
+            // Quick Action Buttons for Cattle / Livestock
             item {
-                Button(
-                    onClick = { showAddCattleEventDialog = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        if (isCattle) "+ LOG EVENT (HEAT / AI / PD / WEIGHT / HEALTH)" else "+ LOG EVENT",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+                if (isCattle) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    cattleEventDialogCategory = "CALVING"
+                                    showAddCattleEventDialog = true
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .testTag("log_calving_date_button"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("🍼 Log Calving Date", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+
+                            Button(
+                                onClick = {
+                                    cattleEventDialogCategory = "HEALTH"
+                                    showAddCattleEventDialog = true
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .testTag("log_health_record_button"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                            ) {
+                                Icon(Icons.Filled.MedicalServices, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("🩺 Log Health / Meds", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    cattleEventDialogCategory = "PD"
+                                    showAddCattleEventDialog = true
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .testTag("log_pd_button"),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, ForestGreenPrimary)
+                            ) {
+                                Text("🤰 Pregnancy Check (PD)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    cattleEventDialogCategory = "INSEMINATION"
+                                    showAddCattleEventDialog = true
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .testTag("log_insemination_button"),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFF64748B))
+                            ) {
+                                Text("🧬 AI / Insemination", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                            }
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = { showAddCattleEventDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("+ LOG EVENT", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
                 }
             }
 
-            // Events Log & Records (Heat, Insemination, Weight, Health)
+            // Calving History & Parity Log Card (for cows that have given birth)
+            if (isCattle) {
+                val calvingLogs = animalEvents.filter { it.category.equals("CALVING", ignoreCase = true) }
+                val hasCalved = calvingLogs.isNotEmpty() || (cattleEval != null && cattleEval.lastCalvingDate != null)
+
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, if (hasCalved) Color(0xFFBBF7D0) else Color(0xFFE2E8F0))
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (hasCalved) Color(0xFFDCFCE7) else Color(0xFFF1F5F9)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Pets,
+                                            contentDescription = null,
+                                            tint = if (hasCalved) ForestGreenPrimary else Color(0xFF64748B),
+                                            modifier = Modifier
+                                                .padding(6.dp)
+                                                .size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Calving History & Parity",
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF1E293B)
+                                        )
+                                        Text(
+                                            text = if (calvingLogs.isNotEmpty()) "Parity: ${calvingLogs.size} ${if (calvingLogs.size == 1) "Calving" else "Calvings"} Recorded" else if (hasCalved) "Parity: 1+ Calving (Active Lactation)" else "Heifer (No previous calvings)",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (hasCalved) Color(0xFF15803D) else Color(0xFF64748B)
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        cattleEventDialogCategory = "CALVING"
+                                        showAddCattleEventDialog = true
+                                    }
+                                ) {
+                                    Icon(Icons.Filled.Add, contentDescription = "Add Calving", tint = ForestGreenPrimary)
+                                }
+                            }
+
+                            if (calvingLogs.isEmpty()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = if (hasCalved) "Cow has previous lactation history. Click '+ Log Calving Date' to add detailed calf records." else "No calving events logged yet. When this cow calves, log the date here to automatically track lactation and next breeding cycle.",
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                calvingLogs.forEachIndexed { idx, cLog ->
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFF0FDF4),
+                                        border = BorderStroke(1.dp, Color(0xFFDCFCE7)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = ForestGreenPrimary
+                                                    ) {
+                                                        Text(
+                                                            text = "CALVING #${calvingLogs.size - idx}",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        text = cLog.date,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF0F172A)
+                                                    )
+                                                }
+
+                                                if (cLog.metricValue.isNotBlank()) {
+                                                    Text(
+                                                        text = cLog.metricValue,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Color(0xFF166534)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = cLog.details,
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF334155)
+                                            )
+
+                                            if (cLog.notes.isNotBlank()) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = cLog.notes,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF64748B)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Events Log & Records (Heat, Insemination, Calving, Weight, Health)
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -2831,15 +3055,17 @@ fun AnimalDetailsView(
                         ) {
                             listOf(
                                 "ALL" to "All Logs",
+                                "CALVING" to "🍼 Calving",
+                                "HEALTH" to "🩺 Health",
                                 "HEAT" to "🔥 Heat & AI",
-                                "WEIGHT" to "⚖️ Weight",
-                                "HEALTH" to "🩺 Health"
+                                "PD" to "🤰 PD In-Calf",
+                                "WEIGHT" to "⚖️ Weight"
                             ).forEach { (filterKey, filterLabel) ->
                                 val isSelected = selectedLogFilter == filterKey
                                 FilterChip(
                                     selected = isSelected,
                                     onClick = { selectedLogFilter = filterKey },
-                                    label = { Text(filterLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    label = { Text(filterLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = ForestGreenPrimary,
                                         selectedLabelColor = Color.White,
@@ -2854,9 +3080,11 @@ fun AnimalDetailsView(
 
                         val filteredEvents = animalEvents.filter {
                             when (selectedLogFilter) {
-                                "HEAT" -> it.category == "HEAT" || it.category == "INSEMINATION"
-                                "WEIGHT" -> it.category == "WEIGHT"
-                                "HEALTH" -> it.category == "HEALTH"
+                                "CALVING" -> it.category.equals("CALVING", ignoreCase = true)
+                                "HEALTH" -> it.category.equals("HEALTH", ignoreCase = true)
+                                "HEAT" -> it.category.equals("HEAT", ignoreCase = true) || it.category.equals("INSEMINATION", ignoreCase = true)
+                                "PD" -> it.category.equals("PD", ignoreCase = true)
+                                "WEIGHT" -> it.category.equals("WEIGHT", ignoreCase = true)
                                 else -> true
                             }
                         }
@@ -2886,15 +3114,19 @@ fun AnimalDetailsView(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Surface(
                                                     shape = RoundedCornerShape(6.dp),
-                                                    color = when (ev.category) {
-                                                        "HEAT" -> Color(0xFFFEF3C7)
+                                                    color = when (ev.category.uppercase()) {
+                                                        "CALVING" -> Color(0xFFDCFCE7)
+                                                        "PD" -> Color(0xFFFEF3C7)
+                                                        "HEAT" -> Color(0xFFFFEDD5)
                                                         "INSEMINATION" -> Color(0xFFE0F2FE)
-                                                        "WEIGHT" -> Color(0xFFDCFCE7)
+                                                        "WEIGHT" -> Color(0xFFF3E8FF)
                                                         else -> Color(0xFFFEE2E2)
                                                     }
                                                 ) {
                                                     Text(
-                                                        text = when (ev.category) {
+                                                        text = when (ev.category.uppercase()) {
+                                                            "CALVING" -> "CALVING"
+                                                            "PD" -> "PD CHECK"
                                                             "HEAT" -> "HEAT"
                                                             "INSEMINATION" -> "AI"
                                                             "WEIGHT" -> "WEIGHT"
@@ -2903,10 +3135,12 @@ fun AnimalDetailsView(
                                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                                         fontSize = 10.sp,
                                                         fontWeight = FontWeight.Bold,
-                                                        color = when (ev.category) {
-                                                            "HEAT" -> Color(0xFFB45309)
+                                                        color = when (ev.category.uppercase()) {
+                                                            "CALVING" -> Color(0xFF15803D)
+                                                            "PD" -> Color(0xFFB45309)
+                                                            "HEAT" -> Color(0xFFC2410C)
                                                             "INSEMINATION" -> Color(0xFF0369A1)
-                                                            "WEIGHT" -> Color(0xFF15803D)
+                                                            "WEIGHT" -> Color(0xFF7E22CE)
                                                             else -> Color(0xFF991B1B)
                                                         }
                                                     )
@@ -3213,6 +3447,7 @@ fun AnimalDetailsView(
         AddCattleEventDialog(
             animalName = animal.name,
             unitId = unitId,
+            initialCategory = cattleEventDialogCategory,
             onDismiss = { showAddCattleEventDialog = false },
             onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String ->
                 viewModel.addCattleEvent(
@@ -3224,8 +3459,20 @@ fun AnimalDetailsView(
                     notes = notes,
                     metricValue = metricValue
                 )
+                val hasCalvedOrMilking = animalEvents.any { it.category.equals("CALVING", ignoreCase = true) } ||
+                    currentStatus.contains("Milking", ignoreCase = true) ||
+                    currentStatus.contains("Lactating", ignoreCase = true) ||
+                    (cattleEval != null && (cattleEval.stage == CattleStage.MILKING || cattleEval.stage == CattleStage.INCALF_MILKING || cattleEval.lastCalvingDate != null))
+
                 val immediateStage = when (type.uppercase()) {
-                    "PD" -> if (title.contains("Positive", ignoreCase = true) || details.contains("Positive", ignoreCase = true) || metricValue.contains("Positive", ignoreCase = true) || metricValue.contains("In-Calf", ignoreCase = true)) "INCALF" else "ACTIVE"
+                    "PD" -> {
+                        val isPos = title.contains("Positive", ignoreCase = true) || details.contains("Positive", ignoreCase = true) || metricValue.contains("Positive", ignoreCase = true) || metricValue.contains("In-Calf", ignoreCase = true)
+                        if (isPos) {
+                            if (hasCalvedOrMilking) "INCALF / MILKING" else "INCALF"
+                        } else {
+                            if (hasCalvedOrMilking) "MILKING" else "HEIFER"
+                        }
+                    }
                     "INSEMINATION" -> "INSEMINATED"
                     "CALVING" -> "MILKING"
                     "DRY_OFF" -> "DRY"
@@ -3233,7 +3480,8 @@ fun AnimalDetailsView(
                 }
                 if (immediateStage != null) {
                     currentStatus = immediateStage
-                    onUpdateAnimalStage(immediateStage, if (immediateStage == "INCALF") "Confirmed Pregnant" else immediateStage)
+                    val breedingDesc = if (immediateStage.contains("INCALF")) "Confirmed Pregnant" else immediateStage
+                    onUpdateAnimalStage(immediateStage, breedingDesc)
                 }
                 showAddCattleEventDialog = false
             }

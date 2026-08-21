@@ -363,10 +363,10 @@ object CattleLifecycleEngine {
             latestDryOff != null || cleanStatus == "DRY" || cleanStatus.contains("DRY OFF") || cleanStatus.contains("DRY COW")
         }
 
-        val hasGivenBirthPreviously = calvingEvents.isNotEmpty() ||
-            cleanStatus.contains("MILKING") ||
-            cleanBreeding.contains("MILKING") ||
-            (animal.lastMilk.isNotBlank() && !animal.lastMilk.contains("0L") && !animal.lastMilk.contains("No data", ignoreCase = true) && !animal.lastMilk.contains("N/A", ignoreCase = true))
+        // Birth history must come only from actual calving events — never inferred
+        // from status/breeding text or milk yield, which can be stale or misleading
+        // for a heifer that has never given birth.
+        val hasGivenBirthPreviously = calvingEvents.isNotEmpty()
 
         val isCurrentlyMilking = !isDriedOff && (
             hasRecentMilkYield ||

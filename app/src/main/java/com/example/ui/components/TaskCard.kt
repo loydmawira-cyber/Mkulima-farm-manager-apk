@@ -32,6 +32,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +78,8 @@ fun TaskCard(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+
+    var taskMenuExpanded by remember { mutableStateOf(false) }
 
     val categoryColor = when (task.category) {
         TaskCategory.LIVESTOCK -> Color(0xFF6750A4)
@@ -160,18 +164,94 @@ fun TaskCard(
                     }
                 }
 
-                IconButton(
-                    onClick = { onDeleteClick(task) },
-                    modifier = Modifier
-                        .size(32.dp)
-                        .testTag("delete_task_${task.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Delete,
-                        contentDescription = "Delete task",
-                        tint = Color.Gray.copy(alpha = 0.6f),
-                        modifier = Modifier.size(18.dp)
-                    )
+                Box {
+                    IconButton(
+                        onClick = { taskMenuExpanded = true },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("task_menu_${task.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "Task options",
+                            tint = Color(0xFF64748B),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = taskMenuExpanded,
+                        onDismissRequest = { taskMenuExpanded = false },
+                        modifier = Modifier.background(Color.White)
+                    ) {
+                        if (!task.isCompleted) {
+                            DropdownMenuItem(
+                                text = { Text("Complete Task", fontWeight = FontWeight.Bold, color = Color(0xFF15803D)) },
+                                onClick = {
+                                    taskMenuExpanded = false
+                                    onCompleteClick(task)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF15803D),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text("Mark Incomplete", fontWeight = FontWeight.SemiBold, color = Color(0xFF475569)) },
+                                onClick = {
+                                    taskMenuExpanded = false
+                                    onReopenClick(task)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.CheckCircleOutline,
+                                        contentDescription = null,
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            )
+                        }
+
+                        if (task.isCompleted && !task.proofPhotoUri.isNullOrBlank()) {
+                            DropdownMenuItem(
+                                text = { Text("View Proof", fontWeight = FontWeight.Medium, color = Color(0xFF334155)) },
+                                onClick = {
+                                    taskMenuExpanded = false
+                                    onViewProofClick(task)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Image,
+                                        contentDescription = null,
+                                        tint = Color(0xFF334155),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            )
+                        }
+
+                        DropdownMenuItem(
+                            text = { Text("Delete Task", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626)) },
+                            onClick = {
+                                taskMenuExpanded = false
+                                onDeleteClick(task)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Delete,
+                                    contentDescription = null,
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
+                    }
                 }
             }
 

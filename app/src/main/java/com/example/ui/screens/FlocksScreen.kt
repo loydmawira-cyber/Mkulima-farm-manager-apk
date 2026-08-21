@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Egg
@@ -48,6 +49,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -3058,7 +3061,7 @@ fun AnimalDetailsView(
                                 "CALVING" to "🍼 Calving",
                                 "HEALTH" to "🩺 Health",
                                 "HEAT" to "🔥 Heat & AI",
-                                "PD" to "🤰 PD In-Calf",
+                                "PD" to "🤰 PD",
                                 "WEIGHT" to "⚖️ Weight"
                             ).forEach { (filterKey, filterLabel) ->
                                 val isSelected = selectedLogFilter == filterKey
@@ -3126,7 +3129,7 @@ fun AnimalDetailsView(
                                                     Text(
                                                         text = when (ev.category.uppercase()) {
                                                             "CALVING" -> "CALVING"
-                                                            "PD" -> "PD CHECK"
+                                                            "PD" -> "PD"
                                                             "HEAT" -> "HEAT"
                                                             "INSEMINATION" -> "AI"
                                                             "WEIGHT" -> "WEIGHT"
@@ -3599,9 +3602,14 @@ fun FlockDetailsView(
         }
     }
 
+    val dismissedVaccineRuleIds = remember(flock.id) {
+        mutableStateListOf<String>()
+    }
+
     // Dynamic calculated vaccination schedule
-    val calculatedVaccineSchedule = remember(flockDateAdded, completedVaccineRuleIds.toList()) {
+    val calculatedVaccineSchedule = remember(flockDateAdded, completedVaccineRuleIds.toList(), dismissedVaccineRuleIds.toList()) {
         PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(flockDateAdded, completedVaccineRuleIds.toSet())
+            .filter { !dismissedVaccineRuleIds.contains(it.ruleId) }
     }
 
     val overdueVaccineCount = remember(calculatedVaccineSchedule) {
@@ -4422,6 +4430,22 @@ fun FlockDetailsView(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
+                        if (calculatedVaccineSchedule.isEmpty() && customVaccines.isEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF8FAFC),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = "🎉 All poultry vaccination tasks completed or cleared!",
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF64748B),
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
+                        }
+
                         calculatedVaccineSchedule.forEach { vac ->
                             val (bgColor, textColor) = when (vac.status) {
                                 VaccineDueStatus.COMPLETED -> Color(0xFFDCFCE7) to Color(0xFF15803D)
@@ -4430,6 +4454,8 @@ fun FlockDetailsView(
                                 VaccineDueStatus.DUE_SOON -> Color(0xFFFFFBEB) to Color(0xFFD97706)
                                 VaccineDueStatus.UPCOMING -> Color(0xFFF1F5F9) to Color(0xFF475569)
                             }
+
+                            var vacMenuExpanded by remember { mutableStateOf(false) }
 
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
@@ -4464,36 +4490,113 @@ fun FlockDetailsView(
                                         )
                                     }
 
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = bgColor,
-                                        modifier = Modifier.clickable {
-                                            if (completedVaccineRuleIds.contains(vac.ruleId)) {
-                                                completedVaccineRuleIds.remove(vac.ruleId)
-                                            } else {
-                                                completedVaccineRuleIds.add(vac.ruleId)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = bgColor,
+                                            modifier = Modifier.clickable {
+                                                if (completedVaccineRuleIds.contains(vac.ruleId)) {
+                                                    completedVaccineRuleIds.remove(vac.ruleId)
+                                                } else {
+                                                    completedVaccineRuleIds.add(vac.ruleId)
+                                                }
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (vac.isCompleted) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.CheckCircle,
+                                                        contentDescription = null,
+                                                        tint = textColor,
+                                                        modifier = Modifier.size(12.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                }
+                                                Text(
+                                                    text = vac.statusLabel,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = textColor
+                                                )
                                             }
                                         }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            if (vac.isCompleted) {
+
+                                        Box {
+                                            IconButton(
+                                                onClick = { vacMenuExpanded = true },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
                                                 Icon(
-                                                    imageVector = Icons.Filled.CheckCircle,
-                                                    contentDescription = null,
-                                                    tint = textColor,
-                                                    modifier = Modifier.size(12.dp)
+                                                    imageVector = Icons.Filled.MoreVert,
+                                                    contentDescription = "Vaccine task options",
+                                                    tint = Color(0xFF64748B),
+                                                    modifier = Modifier.size(18.dp)
                                                 )
-                                                Spacer(modifier = Modifier.width(4.dp))
                                             }
-                                            Text(
-                                                text = vac.statusLabel,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = textColor
-                                            )
+
+                                            DropdownMenu(
+                                                expanded = vacMenuExpanded,
+                                                onDismissRequest = { vacMenuExpanded = false },
+                                                modifier = Modifier.background(Color.White)
+                                            ) {
+                                                if (!vac.isCompleted) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Complete Vaccination", fontWeight = FontWeight.Bold, color = Color(0xFF15803D)) },
+                                                        onClick = {
+                                                            vacMenuExpanded = false
+                                                            if (!completedVaccineRuleIds.contains(vac.ruleId)) {
+                                                                completedVaccineRuleIds.add(vac.ruleId)
+                                                            }
+                                                        },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.CheckCircle,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF15803D),
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    )
+                                                } else {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Mark Pending", fontWeight = FontWeight.SemiBold, color = Color(0xFF475569)) },
+                                                        onClick = {
+                                                            vacMenuExpanded = false
+                                                            completedVaccineRuleIds.remove(vac.ruleId)
+                                                        },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.CheckCircle,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF64748B),
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    )
+                                                }
+
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete / Dismiss Task", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626)) },
+                                                    onClick = {
+                                                        vacMenuExpanded = false
+                                                        dismissedVaccineRuleIds.add(vac.ruleId)
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Delete,
+                                                            contentDescription = null,
+                                                            tint = Color(0xFFDC2626),
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -4502,6 +4605,8 @@ fun FlockDetailsView(
 
                         // Custom added vaccines
                         customVaccines.forEach { customVac ->
+                            var customMenuExpanded by remember { mutableStateOf(false) }
+
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0xFFF8FAFC),
@@ -4513,21 +4618,113 @@ fun FlockDetailsView(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                         Text(customVac.vaccineName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1E293B))
                                         Text("Target: ${customVac.targetStage} • Due: ${customVac.dueDate}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        if (customVac.notes.isNotBlank()) {
+                                            Text(customVac.notes, fontSize = 11.sp, color = Color(0xFF64748B))
+                                        }
                                     }
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = Color(0xFFDCFCE7)
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Text(
-                                            text = customVac.status,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF15803D)
-                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (customVac.status == "COMPLETED") Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
+                                            modifier = Modifier.clickable {
+                                                val newStatus = if (customVac.status == "COMPLETED") "UPCOMING" else "COMPLETED"
+                                                val index = customVaccines.indexOf(customVac)
+                                                if (index >= 0) {
+                                                    customVaccines[index] = customVac.copy(status = newStatus)
+                                                }
+                                            }
+                                        ) {
+                                            Text(
+                                                text = customVac.status,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (customVac.status == "COMPLETED") Color(0xFF15803D) else Color(0xFFB45309)
+                                            )
+                                        }
+
+                                        Box {
+                                            IconButton(
+                                                onClick = { customMenuExpanded = true },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MoreVert,
+                                                    contentDescription = "Custom vaccine options",
+                                                    tint = Color(0xFF64748B),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+
+                                            DropdownMenu(
+                                                expanded = customMenuExpanded,
+                                                onDismissRequest = { customMenuExpanded = false },
+                                                modifier = Modifier.background(Color.White)
+                                            ) {
+                                                if (customVac.status != "COMPLETED") {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Complete Vaccination", fontWeight = FontWeight.Bold, color = Color(0xFF15803D)) },
+                                                        onClick = {
+                                                            customMenuExpanded = false
+                                                            val index = customVaccines.indexOf(customVac)
+                                                            if (index >= 0) {
+                                                                customVaccines[index] = customVac.copy(status = "COMPLETED")
+                                                            }
+                                                        },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.CheckCircle,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF15803D),
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    )
+                                                } else {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Mark Pending", fontWeight = FontWeight.SemiBold, color = Color(0xFF475569)) },
+                                                        onClick = {
+                                                            customMenuExpanded = false
+                                                            val index = customVaccines.indexOf(customVac)
+                                                            if (index >= 0) {
+                                                                customVaccines[index] = customVac.copy(status = "UPCOMING")
+                                                            }
+                                                        },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.CheckCircle,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF64748B),
+                                                                modifier = Modifier.size(18.dp)
+                                                            )
+                                                        }
+                                                    )
+                                                }
+
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete Vaccine", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626)) },
+                                                    onClick = {
+                                                        customMenuExpanded = false
+                                                        customVaccines.remove(customVac)
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Delete,
+                                                            contentDescription = null,
+                                                            tint = Color(0xFFDC2626),
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }

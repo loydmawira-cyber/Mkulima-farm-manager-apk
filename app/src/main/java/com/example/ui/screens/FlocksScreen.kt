@@ -3052,14 +3052,7 @@ fun AnimalDetailsView(
                         Spacer(modifier = Modifier.height(12.dp))
 
                     Spacer(modifier = Modifier.height(10.dp))    
-                        val filteredEvents = animalEvents.filter {
-                            when (selectedLogFilter) {
-                                "CALVING" -> it.category.equals("CALVING", ignoreCase = true)
-                                "HEALTH" -> it.category.equals("HEALTH", ignoreCase = true)
-                                "HEAT" -> it.category.equals("HEAT", ignoreCase = true) || it.category.equals("INSEMINATION", ignoreCase = true)
-                                "PD" -> it.category.equals("PD", ignoreCase = true)
-                                "WEIGHT" -> it.category.equals("WEIGHT", ignoreCase = true)
-                                else -> true
+                        val filteredEvents = animalEvents
                             }
                         }
 

@@ -329,7 +329,9 @@ object CattleLifecycleEngine {
             if (matchingAi != null) {
                 val dAi = parseDateOrNull(matchingAi.date)
                 if (dAi != null) {
-                    val diff = System.currentTimeMillis() - dAi.time
+                    val aiCal = Calendar.getInstance().apply { time = dAi; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+                    val todayCal = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+                    val diff = todayCal.timeInMillis - aiCal.timeInMillis
                     val days = (diff / (1000 * 60 * 60 * 24)).toInt().coerceIn(21, 283)
                     gestationEst = days
                     calvingDateEst = calculateExpectedCalving(matchingAi.date)

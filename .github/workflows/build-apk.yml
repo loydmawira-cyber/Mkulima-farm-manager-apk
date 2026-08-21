@@ -28,8 +28,12 @@ jobs:
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 9.3.1
 
-      - name: Generate debug keystore
-        run: keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+      - name: Verify debug keystore exists
+        run: |
+          if [ ! -f debug.keystore ]; then
+            echo "ERROR: debug.keystore not found in repo root. Commit it once."
+            exit 1
+          fi
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew || true

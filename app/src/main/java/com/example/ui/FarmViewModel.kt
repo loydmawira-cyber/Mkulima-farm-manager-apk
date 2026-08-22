@@ -616,9 +616,32 @@ class FarmViewModel(
         }
     }
 
+    fun updateCattleEvent(eventId: Long, unitId: Long, category: String, title: String, date: String, details: String, notes: String?, metricValue: String?) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val event = CattleEvent(id = eventId, farmId = farmId, unitId = unitId, category = category, title = title, date = date, details = details, notes = notes, metricValue = metricValue)
+            repository.updateCattleEvent(event)
+        }
+    }
+
     fun deleteCattleEvent(eventId: Long) {
         viewModelScope.launch {
             repository.deleteCattleEvent(eventId)
+        }
+    }
+
+    fun clearCurrentFarmData(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            repository.clearFarmData(farmId)
+            onComplete()
+        }
+    }
+
+    fun clearAllData(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.clearAllData()
+            onComplete()
         }
     }
 }

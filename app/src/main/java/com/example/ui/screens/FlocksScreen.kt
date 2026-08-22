@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -132,6 +133,38 @@ data class CattleEventItem(
     val metricValue: String = ""
 )
 
+fun parseEventDateForSorting(dateStr: String): Long {
+    if (dateStr.isBlank()) return 0L
+    val clean = dateStr.trim()
+    val formats = listOf(
+        "dd MMM yyyy, hh:mm a",
+        "dd MMM yyyy, HH:mm",
+        "dd MMM yyyy",
+        "d MMM yyyy",
+        "yyyy-MM-dd",
+        "dd/MM/yyyy",
+        "MMM dd, yyyy",
+        "dd MMM, hh:mm a",
+        "dd MMM"
+    )
+    for (pattern in formats) {
+        try {
+            val sdf = SimpleDateFormat(pattern, Locale.getDefault())
+            val parsed = sdf.parse(clean)
+            if (parsed != null) {
+                return parsed.time
+            }
+        } catch (_: Exception) {}
+    }
+    if (clean.startsWith("Today", ignoreCase = true)) {
+        return System.currentTimeMillis()
+    }
+    if (clean.startsWith("Yesterday", ignoreCase = true)) {
+        return System.currentTimeMillis() - 86400000L
+    }
+    return 0L
+}
+
 data class UpcomingCattleNotification(
     val id: String,
     val title: String,
@@ -178,176 +211,7 @@ data class FlockDisposalLogItem(
     val notes: String
 )
 
-val mockAnimals = listOf(
-    AnimalDetailData(
-        id = "1",
-        name = "Bessie",
-        tagNumber = "#102",
-        breed = "Friesian Cow",
-        category = "CATTLE",
-        status = "MILKING",
-        age = "4y 2m",
-        weight = "520kg",
-        lastMilk = "14.2L",
-        breedingStatus = "MILKING",
-        expectedCalving = "Jun 21, '24",
-        insemination = "AI - Thunder (Sep 12, '23)",
-        dateOfBirth = "14 May 2020",
-        weightAtBirth = "34 kg",
-        sire = "Thunder #045",
-        dam = "Bessie #001",
-        headCountInt = 1
-    ),
-    AnimalDetailData(
-        id = "2",
-        name = "Daisy",
-        tagNumber = "#105",
-        breed = "Jersey Cow",
-        category = "CATTLE",
-        status = "PREGNANT",
-        age = "3y 6m",
-        weight = "480kg",
-        lastMilk = "12.8L",
-        breedingStatus = "PREGNANT (7 months)",
-        expectedCalving = "Oct 15, '26",
-        dateOfBirth = "02 Dec 2020",
-        weightAtBirth = "28 kg",
-        sire = "Bull - Prince #012",
-        dam = "Daisy #088",
-        headCountInt = 1
-    ),
-    AnimalDetailData(
-        id = "3",
-        name = "Star",
-        tagNumber = "#110",
-        breed = "Guernsey Heifer",
-        category = "CATTLE",
-        status = "HEIFER",
-        age = "1y 8m",
-        weight = "380kg",
-        lastMilk = "N/A",
-        breedingStatus = "OPEN HEIFER",
-        dateOfBirth = "18 Dec 2024",
-        weightAtBirth = "31 kg",
-        sire = "Guernsey King #004",
-        dam = "Star #052",
-        headCountInt = 1
-    ),
-    AnimalDetailData(
-        id = "4",
-        name = "Little Joey",
-        tagNumber = "#130",
-        breed = "Friesian Calf",
-        category = "CATTLE",
-        status = "CALF",
-        age = "3 months",
-        weight = "85kg",
-        lastMilk = "N/A",
-        breedingStatus = "WEANING CALF",
-        dateOfBirth = "12 May 2026",
-        weightAtBirth = "33 kg",
-        sire = "Thunder #045",
-        dam = "Bessie #102",
-        headCountInt = 1
-    ),
-    AnimalDetailData(
-        id = "5",
-        name = "Thunder",
-        tagNumber = "#045",
-        breed = "Boran Bull",
-        category = "CATTLE",
-        status = "BULL",
-        age = "4y 8m",
-        weight = "680kg",
-        lastMilk = "N/A",
-        breedingStatus = "BREEDING BULL",
-        dateOfBirth = "10 Nov 2019",
-        weightAtBirth = "38 kg",
-        sire = "Boran Giant #001",
-        dam = "Queen Boran #011",
-        headCountInt = 1
-    ),
-    AnimalDetailData(
-        id = "6",
-        name = "Old Bertha",
-        tagNumber = "#090",
-        breed = "Ayrshire Cow",
-        category = "CATTLE",
-        status = "DISPOSED (Sold)",
-        age = "9y 4m",
-        weight = "510kg",
-        lastMilk = "0.0L",
-        breedingStatus = "DISPOSED (Sold)",
-        dateOfBirth = "10 Apr 2017",
-        weightAtBirth = "30 kg",
-        sire = "Ayrshire Prime #001",
-        dam = "Bertha #005",
-        disposalReason = "Sold",
-        disposalAmount = 145000.0,
-        disposalDate = "02 Jun 2026",
-        disposalNotes = "Sold to Nakuru Meat Processors",
-        headCountInt = 1
-    ),
-    AnimalDetailData(
-        id = "6b",
-        name = "Bella",
-        tagNumber = "#115",
-        breed = "Friesian Cow",
-        category = "CATTLE",
-        status = "DRY",
-        age = "5y 1m",
-        weight = "560kg",
-        lastMilk = "0.0L",
-        breedingStatus = "DRY OFF (Pre-Calving Rest)",
-        dateOfBirth = "14 Mar 2021",
-        weightAtBirth = "35 kg",
-        sire = "Thunder #045",
-        dam = "Bella #010",
-        headCountInt = 1
-    ),
-    AnimalDetailData(
-        id = "7",
-        name = "Alpha Layers",
-        tagNumber = "Count: 450",
-        breed = "Isa Brown Layers",
-        category = "POULTRY",
-        status = "Layer / Finisher Feed (8+ Weeks)",
-        age = "168 Days (24 Weeks)",
-        weight = "1.8kg avg",
-        lastMilk = "380 Eggs/Day",
-        breedingStatus = "ACTIVE LAYING",
-        dateOfBirth = "25 Feb 2026",
-        headCountInt = 450
-    ),
-    AnimalDetailData(
-        id = "8",
-        name = "Beta Broilers",
-        tagNumber = "Count: 300",
-        breed = "Cobb 500 Broilers",
-        category = "POULTRY",
-        status = "Grower Feed (3 - 8 Weeks)",
-        age = "35 Days (5 Weeks)",
-        weight = "2.1kg avg",
-        lastMilk = "N/A (Meat)",
-        breedingStatus = "FINISHER STAGE",
-        dateOfBirth = "10 Jul 2026",
-        headCountInt = 300
-    ),
-    AnimalDetailData(
-        id = "9",
-        name = "Kienyeji Flock 1",
-        tagNumber = "Count: 200",
-        breed = "Improved Kienyeji",
-        category = "POULTRY",
-        status = "Starter Feed (0 - 3 Weeks)",
-        age = "20 Days (2 Wks, 6 Days)",
-        weight = "1.2kg avg",
-        lastMilk = "Pre-laying",
-        breedingStatus = "GROWING FLOCK",
-        dateOfBirth = "25 Jul 2026",
-        headCountInt = 200
-    )
-)
+val mockAnimals: List<AnimalDetailData> = emptyList()
 
 @Composable
 fun DisposeAnimalDialog(
@@ -883,7 +747,7 @@ fun FlocksScreen(
         }
     }
 
-    val initialAnimals = remember(units, milkLogs, deletedSet) {
+    val initialAnimals = remember(units, milkLogs, allDbCattleEvents, deletedSet) {
         (roomAnimals + mockAnimals)
             .filter { !deletedSet.contains(it.id) && !deletedSet.contains(it.name.lowercase()) }
             .distinctBy { it.name }
@@ -892,51 +756,7 @@ fun FlocksScreen(
     val mutableAnimals = remember { mutableStateListOf<AnimalDetailData>().apply { addAll(initialAnimals) } }
 
     val allAnimalEventsMap = remember {
-        mutableStateMapOf<String, SnapshotStateList<CattleEventItem>>().apply {
-            put(
-                "1",
-                mutableStateListOf(
-                    CattleEventItem("e1_1", "INSEMINATION", "Artificial Insemination (AI)", "12 Sep 2023", "Inseminated with Friesian Bull Straw #FRIESIAN-88 (Sire: Thunder #045).", "Technician: Dr. Otieno (Vet)", "Straw #88"),
-                    CattleEventItem("e1_2", "CALVING", "Calving Event - Delivered Healthy Calf", "14 Jun 2024", "Delivered healthy male calf (Calf #130). Clean delivery, placenta expelled.", "Calf Tag: #130"),
-                    CattleEventItem("e1_3", "HEAT", "Estrus (Heat Period) Observed", "02 Aug 2026", "Standing heat and clear mucus discharge observed.", "Observed by Worker John"),
-                    CattleEventItem("e1_4", "INSEMINATION", "Artificial Insemination (AI)", "03 Aug 2026", "Inseminated with Friesian Straw #92 (Sire: Thunder #045).", "Technician: Dr. Otieno (Vet)", "Straw #92")
-                )
-            )
-            put(
-                "2",
-                mutableStateListOf(
-                    CattleEventItem("e2_1", "INSEMINATION", "Artificial Insemination (AI)", "10 Jan 2026", "Inseminated with Jersey Bull Straw #JERSEY-12.", "Technician: Dr. Otieno (Vet)", "Straw #12"),
-                    CattleEventItem("e2_2", "PD", "Pregnancy Diagnosis (PD) - Confirmed Positive", "15 Mar 2026", "Rectal palpation confirmed pregnancy ~65 days. Gestation progressing well.", "Technician: Dr. Otieno (Vet)", "Positive (In-Calf)")
-                )
-            )
-            put(
-                "3",
-                mutableStateListOf(
-                    CattleEventItem("e3_1", "HEAT", "First Estrus Observed", "10 Jun 2026", "Heifer showed standing heat for 12 hours.", "Recorded by Tech"),
-                    CattleEventItem("e3_2", "WEIGHT", "Weight Check (Heifer Target)", "15 Jul 2026", "Current weight 380kg. Reached breeding target weight.", "Tech: Peter", "380 kg")
-                )
-            )
-            put(
-                "4",
-                mutableStateListOf(
-                    CattleEventItem("e4_1", "CALVING", "Birth Record", "12 May 2026", "Born to Bessie #102. Birth weight 33kg. Colostrum administered.", "Dam: Bessie #102", "33 kg"),
-                    CattleEventItem("e4_2", "HEALTH", "Dehorning & Blackquarter Vaccine", "20 Jun 2026", "Disbudded with electric cautery. BQ vaccine administered.", "Vet Clinic")
-                )
-            )
-            put(
-                "5",
-                mutableStateListOf(
-                    CattleEventItem("e5_1", "WEIGHT", "Breeding Bull Weight Assessment", "01 Jul 2026", "Weighed 680kg. Excellent body conformation.", "Record: Tech", "680 kg")
-                )
-            )
-            put(
-                "6b",
-                mutableStateListOf(
-                    CattleEventItem("e6b_1", "PD", "Pregnancy Diagnosis (PD) - Confirmed Positive", "10 Apr 2026", "Confirmed pregnant ~120 days. Expected calving Sep 2026.", "Technician: Dr. Otieno (Vet)", "Positive (In-Calf)"),
-                    CattleEventItem("e6b_2", "DRY_OFF", "Dry Off (Milking Cessation)", "15 Jul 2026", "Milking halted for 60-day dry period. Dry cow intramammary therapy applied.", "Vet: Dr. Otieno", "Dry Period")
-                )
-            )
-        }
+        mutableStateMapOf<String, SnapshotStateList<CattleEventItem>>()
     }
 
     LaunchedEffect(units, deletedSet, roomAnimals) {
@@ -1197,9 +1017,28 @@ fun FlocksScreen(
     val cattleList = mutableAnimals.filter { it.category.equals("CATTLE", ignoreCase = true) }
     val poultryList = mutableAnimals.filter { it.category.equals("POULTRY", ignoreCase = true) || it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true) }
 
-    val evaluatedCattleMap = cattleList.associate { animal ->
-        val evs = allAnimalEventsMap[animal.id] ?: emptyList()
-        animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, evs, milkLogs)
+    val evaluatedCattleMap = remember(cattleList, allDbCattleEvents, milkLogs, allAnimalEventsMap) {
+        cattleList.associate { animal ->
+            val numericUnitId = animal.id.removePrefix("unit_").toLongOrNull()
+            val dbEvs = if (numericUnitId != null) {
+                allDbCattleEvents.filter { it.unitId == numericUnitId }.map {
+                    CattleEventItem(
+                        id = it.id.toString(),
+                        category = it.category,
+                        title = it.title,
+                        date = it.date,
+                        details = it.details,
+                        notes = it.notes ?: "",
+                        metricValue = it.metricValue ?: ""
+                    )
+                }
+            } else emptyList()
+            val rawId = animal.id.removePrefix("unit_")
+            val mockEvs = allAnimalEventsMap[animal.id] ?: allAnimalEventsMap[rawId] ?: emptyList()
+            val combinedEvs = (dbEvs + mockEvs).distinctBy { it.id }
+            val cowMilkLogs = milkLogs.filter { it.cowName.equals(animal.name, ignoreCase = true) }
+            animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, if (cowMilkLogs.isNotEmpty()) cowMilkLogs else milkLogs)
+        }
     }
 
     val inCalfMilkingCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF_MILKING }
@@ -1691,7 +1530,27 @@ fun FlocksScreen(
                     if (!matchesCategory) return@filter false
                     if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
 
-                    val eval = evaluatedCattleMap[animal.id] ?: CattleLifecycleEngine.evaluateCattleStage(animal, allAnimalEventsMap[animal.id] ?: emptyList(), milkLogs)
+                    val eval = evaluatedCattleMap[animal.id] ?: run {
+                        val numericUnitId = animal.id.removePrefix("unit_").toLongOrNull()
+                        val dbEvs = if (numericUnitId != null) {
+                            allDbCattleEvents.filter { it.unitId == numericUnitId }.map {
+                                CattleEventItem(
+                                    id = it.id.toString(),
+                                    category = it.category,
+                                    title = it.title,
+                                    date = it.date,
+                                    details = it.details,
+                                    notes = it.notes ?: "",
+                                    metricValue = it.metricValue ?: ""
+                                )
+                            }
+                        } else emptyList()
+                        val rawId = animal.id.removePrefix("unit_")
+                        val mockEvs = allAnimalEventsMap[animal.id] ?: allAnimalEventsMap[rawId] ?: emptyList()
+                        val combinedEvs = (dbEvs + mockEvs).distinctBy { it.id }
+                        val cowMilkLogs = milkLogs.filter { it.cowName.equals(animal.name, ignoreCase = true) }
+                        CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, if (cowMilkLogs.isNotEmpty()) cowMilkLogs else milkLogs)
+                    }
                     when (selectedCattleStage) {
                         "MILKING" -> eval.stage == CattleStage.MILKING
                         "INCALF" -> eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
@@ -1707,7 +1566,27 @@ fun FlocksScreen(
 
                 items(filteredList, key = { it.id }) { animal ->
                     val isCattleItem = animal.category.equals("CATTLE", ignoreCase = true)
-                    val cattleEval = if (isCattleItem) evaluatedCattleMap[animal.id] ?: CattleLifecycleEngine.evaluateCattleStage(animal, allAnimalEventsMap[animal.id] ?: emptyList(), milkLogs) else null
+                    val cattleEval = if (isCattleItem) evaluatedCattleMap[animal.id] ?: run {
+                        val numericUnitId = animal.id.removePrefix("unit_").toLongOrNull()
+                        val dbEvs = if (numericUnitId != null) {
+                            allDbCattleEvents.filter { it.unitId == numericUnitId }.map {
+                                CattleEventItem(
+                                    id = it.id.toString(),
+                                    category = it.category,
+                                    title = it.title,
+                                    date = it.date,
+                                    details = it.details,
+                                    notes = it.notes ?: "",
+                                    metricValue = it.metricValue ?: ""
+                                )
+                            }
+                        } else emptyList()
+                        val rawId = animal.id.removePrefix("unit_")
+                        val mockEvs = allAnimalEventsMap[animal.id] ?: allAnimalEventsMap[rawId] ?: emptyList()
+                        val combinedEvs = (dbEvs + mockEvs).distinctBy { it.id }
+                        val cowMilkLogs = milkLogs.filter { it.cowName.equals(animal.name, ignoreCase = true) }
+                        CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, if (cowMilkLogs.isNotEmpty()) cowMilkLogs else milkLogs)
+                    } else null
 
                     @OptIn(ExperimentalFoundationApi::class)
                     Card(
@@ -1893,7 +1772,26 @@ fun AnimalDetailsView(
 
     var showAddCattleEventDialog by remember { mutableStateOf(false) }
     var cattleEventDialogCategory by remember { mutableStateOf("PD") }
+    var eventToEdit by remember { mutableStateOf<CattleEventItem?>(null) }
+    var eventToDelete by remember { mutableStateOf<CattleEventItem?>(null) }
+    var showDeleteEventConfirmDialog by remember { mutableStateOf(false) }
     var selectedLogFilter by remember { mutableStateOf("ALL") } // ALL, CALVING, HEALTH, HEAT, PD, WEIGHT
+
+    val sortedAnimalEvents = remember(animalEvents.toList()) {
+        animalEvents.sortedWith(
+            compareByDescending<CattleEventItem> { parseEventDateForSorting(it.date) }
+                .thenByDescending { it.id.toLongOrNull() ?: 0L }
+        )
+    }
+
+    val calvingLogs = remember(animalEvents.toList()) {
+        animalEvents.filter { it.category.equals("CALVING", ignoreCase = true) }
+            .sortedWith(
+                compareByDescending<CattleEventItem> { parseEventDateForSorting(it.date) }
+                    .thenByDescending { it.id.toLongOrNull() ?: 0L }
+            )
+    }
+
     var currentStatus by remember(animal.id, animal.status) { mutableStateOf(animal.status) }
     var showUpdateStageDialog by remember { mutableStateOf(false) }
     var showDisposeDialog by remember { mutableStateOf(false) }
@@ -2881,7 +2779,6 @@ fun AnimalDetailsView(
 
             // Calving History & Parity Log Card (for cows that have given birth)
             if (isCattle) {
-                val calvingLogs = animalEvents.filter { it.category.equals("CALVING", ignoreCase = true) }
                 val hasCalved = calvingLogs.isNotEmpty() || (cattleEval != null && cattleEval.lastCalvingDate != null)
 
                 item {
@@ -2955,67 +2852,142 @@ fun AnimalDetailsView(
                                 }
                             } else {
                                 Spacer(modifier = Modifier.height(12.dp))
-                                calvingLogs.forEachIndexed { idx, cLog ->
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFFF0FDF4),
-                                        border = BorderStroke(1.dp, Color(0xFFDCFCE7)),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 4.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 240.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                        calvingLogs.forEachIndexed { idx, cLog ->
+                                            var calvingMenuExpanded by remember { mutableStateOf(false) }
+
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color(0xFFF0FDF4),
+                                                border = BorderStroke(1.dp, Color(0xFFDCFCE7)),
+                                                modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(6.dp),
-                                                        color = ForestGreenPrimary
+                                                Column(modifier = Modifier.padding(12.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
                                                     ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Surface(
+                                                                shape = RoundedCornerShape(6.dp),
+                                                                color = ForestGreenPrimary
+                                                            ) {
+                                                                Text(
+                                                                    text = "CALVING #${calvingLogs.size - idx}",
+                                                                    fontSize = 10.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Color.White,
+                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                )
+                                                            }
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                            Text(
+                                                                text = cLog.date,
+                                                                fontSize = 13.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFF0F172A)
+                                                            )
+                                                        }
+
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            if (cLog.metricValue.isNotBlank()) {
+                                                                Text(
+                                                                    text = cLog.metricValue,
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = Color(0xFF166534)
+                                                                )
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                            }
+
+                                                            Box {
+                                                                IconButton(
+                                                                    onClick = { calvingMenuExpanded = true },
+                                                                    modifier = Modifier.size(28.dp)
+                                                                ) {
+                                                                    Icon(
+                                                                        Icons.Filled.MoreVert,
+                                                                        contentDescription = "Calving Log Options",
+                                                                        tint = Color(0xFF64748B),
+                                                                        modifier = Modifier.size(18.dp)
+                                                                    )
+                                                                }
+
+                                                                DropdownMenu(
+                                                                    expanded = calvingMenuExpanded,
+                                                                    onDismissRequest = { calvingMenuExpanded = false }
+                                                                ) {
+                                                                    DropdownMenuItem(
+                                                                        text = { Text("Edit Record", fontSize = 13.sp) },
+                                                                        leadingIcon = {
+                                                                            Icon(
+                                                                                Icons.Filled.Edit,
+                                                                                contentDescription = "Edit",
+                                                                                tint = ForestGreenPrimary,
+                                                                                modifier = Modifier.size(18.dp)
+                                                                            )
+                                                                        },
+                                                                        onClick = {
+                                                                            calvingMenuExpanded = false
+                                                                            eventToEdit = cLog
+                                                                        }
+                                                                    )
+                                                                    DropdownMenuItem(
+                                                                        text = {
+                                                                            Text(
+                                                                                "Delete Record",
+                                                                                fontSize = 13.sp,
+                                                                                color = Color(0xFFDC2626)
+                                                                            )
+                                                                        },
+                                                                        leadingIcon = {
+                                                                            Icon(
+                                                                                Icons.Filled.Delete,
+                                                                                contentDescription = "Delete",
+                                                                                tint = Color(0xFFDC2626),
+                                                                                modifier = Modifier.size(18.dp)
+                                                                            )
+                                                                        },
+                                                                        onClick = {
+                                                                            calvingMenuExpanded = false
+                                                                            eventToDelete = cLog
+                                                                            showDeleteEventConfirmDialog = true
+                                                                        }
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = cLog.details,
+                                                        fontSize = 12.sp,
+                                                        color = Color(0xFF334155)
+                                                    )
+
+                                                    if (cLog.notes.isNotBlank()) {
+                                                        Spacer(modifier = Modifier.height(2.dp))
                                                         Text(
-                                                            text = "CALVING #${calvingLogs.size - idx}",
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.White,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            text = cLog.notes,
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF64748B)
                                                         )
                                                     }
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = cLog.date,
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color(0xFF0F172A)
-                                                    )
                                                 }
-
-                                                if (cLog.metricValue.isNotBlank()) {
-                                                    Text(
-                                                        text = cLog.metricValue,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        color = Color(0xFF166534)
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = cLog.details,
-                                                fontSize = 12.sp,
-                                                color = Color(0xFF334155)
-                                            )
-
-                                            if (cLog.notes.isNotBlank()) {
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = cLog.notes,
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF64748B)
-                                                )
                                             }
                                         }
                                     }
@@ -3037,124 +3009,216 @@ fun AnimalDetailsView(
                     Column(modifier = Modifier.padding(18.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Filled.Event, contentDescription = null, tint = ForestGreenPrimary)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Events & Health Logs",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E293B)
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Event, contentDescription = null, tint = ForestGreenPrimary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (sortedAnimalEvents.isNotEmpty()) "Events & Health Logs (${sortedAnimalEvents.size})" else "Events & Health Logs",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    cattleEventDialogCategory = "HEALTH"
+                                    showAddCattleEventDialog = true
+                                }
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = "Add Event", tint = ForestGreenPrimary)
+                            }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp)) 
-                        
-                        val filteredEvents = animalEvents
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                        if (filteredEvents.isEmpty()) {
+                        if (sortedAnimalEvents.isEmpty()) {
                             Text(
-                                "No events recorded under this category.",
+                                "No events recorded yet. Click '+ Log Event' to add health, breeding, or weight records.",
                                 color = Color.Gray,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(vertical = 12.dp)
                             )
                         } else {
-                            filteredEvents.forEach { ev ->
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFF8FAFC),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
+                            // Scrollable box bounded in height instead of taking over the entire page
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 280.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                    sortedAnimalEvents.forEach { ev ->
+                                        var eventMenuExpanded by remember { mutableStateOf(false) }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFF8FAFC),
+                                            border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    color = when (ev.category.uppercase()) {
-                                                        "CALVING" -> Color(0xFFDCFCE7)
-                                                        "PD" -> Color(0xFFFEF3C7)
-                                                        "HEAT" -> Color(0xFFFFEDD5)
-                                                        "INSEMINATION" -> Color(0xFFE0F2FE)
-                                                        "WEIGHT" -> Color(0xFFF3E8FF)
-                                                        else -> Color(0xFFFEE2E2)
-                                                    }
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Text(
-                                                        text = when (ev.category.uppercase()) {
-                                                            "CALVING" -> "CALVING"
-                                                            "PD" -> "PD"
-                                                            "HEAT" -> "HEAT"
-                                                            "INSEMINATION" -> "AI"
-                                                            "WEIGHT" -> "WEIGHT"
-                                                            else -> "HEALTH"
-                                                        },
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = when (ev.category.uppercase()) {
-                                                            "CALVING" -> Color(0xFF15803D)
-                                                            "PD" -> Color(0xFFB45309)
-                                                            "HEAT" -> Color(0xFFC2410C)
-                                                            "INSEMINATION" -> Color(0xFF0369A1)
-                                                            "WEIGHT" -> Color(0xFF7E22CE)
-                                                            else -> Color(0xFF991B1B)
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.weight(1f)
+                                                    ) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = when (ev.category.uppercase()) {
+                                                                "CALVING" -> Color(0xFFDCFCE7)
+                                                                "PD" -> Color(0xFFFEF3C7)
+                                                                "HEAT" -> Color(0xFFFFEDD5)
+                                                                "INSEMINATION" -> Color(0xFFE0F2FE)
+                                                                "WEIGHT" -> Color(0xFFF3E8FF)
+                                                                "DRY_OFF" -> Color(0xFFECFDF5)
+                                                                else -> Color(0xFFFEE2E2)
+                                                            }
+                                                        ) {
+                                                            Text(
+                                                                text = when (ev.category.uppercase()) {
+                                                                    "CALVING" -> "CALVING"
+                                                                    "PD" -> "PD"
+                                                                    "HEAT" -> "HEAT"
+                                                                    "INSEMINATION" -> "AI"
+                                                                    "WEIGHT" -> "WEIGHT"
+                                                                    "DRY_OFF" -> "DRY OFF"
+                                                                    else -> "HEALTH"
+                                                                },
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = when (ev.category.uppercase()) {
+                                                                    "CALVING" -> Color(0xFF15803D)
+                                                                    "PD" -> Color(0xFFB45309)
+                                                                    "HEAT" -> Color(0xFFC2410C)
+                                                                    "INSEMINATION" -> Color(0xFF0369A1)
+                                                                    "WEIGHT" -> Color(0xFF7E22CE)
+                                                                    "DRY_OFF" -> Color(0xFF047857)
+                                                                    else -> Color(0xFF991B1B)
+                                                                }
+                                                            )
                                                         }
-                                                    )
+
+                                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                                        Text(
+                                                            text = ev.title,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 13.sp,
+                                                            color = Color(0xFF1E293B),
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                        )
+                                                    }
+
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            text = ev.date,
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF64748B)
+                                                        )
+
+                                                        Box {
+                                                            IconButton(
+                                                                onClick = { eventMenuExpanded = true },
+                                                                modifier = Modifier.size(28.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    Icons.Filled.MoreVert,
+                                                                    contentDescription = "Event Options",
+                                                                    tint = Color(0xFF64748B),
+                                                                    modifier = Modifier.size(18.dp)
+                                                                )
+                                                            }
+
+                                                            DropdownMenu(
+                                                                expanded = eventMenuExpanded,
+                                                                onDismissRequest = { eventMenuExpanded = false }
+                                                            ) {
+                                                                DropdownMenuItem(
+                                                                    text = { Text("Edit Event", fontSize = 13.sp) },
+                                                                    leadingIcon = {
+                                                                        Icon(
+                                                                            Icons.Filled.Edit,
+                                                                            contentDescription = "Edit",
+                                                                            tint = ForestGreenPrimary,
+                                                                            modifier = Modifier.size(18.dp)
+                                                                        )
+                                                                    },
+                                                                    onClick = {
+                                                                        eventMenuExpanded = false
+                                                                        eventToEdit = ev
+                                                                    }
+                                                                )
+                                                                DropdownMenuItem(
+                                                                    text = {
+                                                                        Text(
+                                                                            "Delete Event",
+                                                                            fontSize = 13.sp,
+                                                                            color = Color(0xFFDC2626)
+                                                                        )
+                                                                    },
+                                                                    leadingIcon = {
+                                                                        Icon(
+                                                                            Icons.Filled.Delete,
+                                                                            contentDescription = "Delete",
+                                                                            tint = Color(0xFFDC2626),
+                                                                            modifier = Modifier.size(18.dp)
+                                                                        )
+                                                                    },
+                                                                    onClick = {
+                                                                        eventMenuExpanded = false
+                                                                        eventToDelete = ev
+                                                                        showDeleteEventConfirmDialog = true
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
+                                                    }
                                                 }
 
-                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Spacer(modifier = Modifier.height(4.dp))
 
                                                 Text(
-                                                    text = ev.title,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 14.sp,
-                                                    color = Color(0xFF1E293B)
+                                                    text = ev.details,
+                                                    fontSize = 12.sp,
+                                                    color = Color(0xFF334155)
                                                 )
-                                            }
 
-                                            Text(
-                                                text = ev.date,
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF64748B)
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.height(4.dp))
-
-                                        Text(
-                                            text = ev.details,
-                                            fontSize = 12.sp,
-                                            color = Color(0xFF334155)
-                                        )
-
-                                        if (ev.notes.isNotBlank() || ev.metricValue.isNotBlank()) {
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                if (ev.notes.isNotBlank()) {
-                                                    Text(
-                                                        text = "Notes: ${ev.notes}",
-                                                        fontSize = 11.sp,
-                                                        color = Color(0xFF64748B)
-                                                    )
-                                                }
-                                                if (ev.metricValue.isNotBlank()) {
-                                                    Text(
-                                                        text = ev.metricValue,
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = ForestGreenPrimary
-                                                    )
+                                                if (ev.notes.isNotBlank() || ev.metricValue.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        if (ev.notes.isNotBlank()) {
+                                                            Text(
+                                                                text = "Notes: ${ev.notes}",
+                                                                fontSize = 11.sp,
+                                                                color = Color(0xFF64748B),
+                                                                modifier = Modifier.weight(1f, fill = false)
+                                                            )
+                                                        }
+                                                        if (ev.metricValue.isNotBlank()) {
+                                                            Text(
+                                                                text = ev.metricValue,
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = ForestGreenPrimary
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -3448,6 +3512,170 @@ fun AnimalDetailsView(
                     onUpdateAnimalStage(immediateStage, breedingDesc)
                 }
                 showAddCattleEventDialog = false
+            }
+        )
+    }
+
+    if (eventToEdit != null) {
+        val ev = eventToEdit!!
+        AddCattleEventDialog(
+            animalName = animal.name,
+            unitId = unitId,
+            initialCategory = ev.category,
+            isEditing = true,
+            initialTitle = ev.title,
+            initialDate = ev.date,
+            initialDetails = ev.details,
+            initialNotes = ev.notes,
+            initialMetricValue = ev.metricValue,
+            onDismiss = { eventToEdit = null },
+            onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String ->
+                val evId = ev.id.toLongOrNull()
+                if (evId != null) {
+                    viewModel.updateCattleEvent(
+                        eventId = evId,
+                        unitId = unitId,
+                        category = type,
+                        title = title,
+                        date = date,
+                        details = details,
+                        notes = notes,
+                        metricValue = metricValue
+                    )
+                }
+                val idx = animalEvents.indexOfFirst { it.id == ev.id }
+                if (idx >= 0) {
+                    animalEvents[idx] = CattleEventItem(
+                        id = ev.id,
+                        category = type,
+                        title = title,
+                        date = date,
+                        details = details,
+                        notes = notes,
+                        metricValue = metricValue
+                    )
+                }
+                val hasCalvedOrMilking = animalEvents.any { it.category.equals("CALVING", ignoreCase = true) } ||
+                    currentStatus.contains("Milking", ignoreCase = true) ||
+                    currentStatus.contains("Lactating", ignoreCase = true) ||
+                    (cattleEval != null && (cattleEval.stage == CattleStage.MILKING || cattleEval.stage == CattleStage.INCALF_MILKING || cattleEval.lastCalvingDate != null))
+
+                val immediateStage = when (type.uppercase()) {
+                    "PD" -> {
+                        val isPos = title.contains("Positive", ignoreCase = true) || details.contains("Positive", ignoreCase = true) || metricValue.contains("Positive", ignoreCase = true) || metricValue.contains("In-Calf", ignoreCase = true)
+                        if (isPos) {
+                            if (hasCalvedOrMilking) "INCALF / MILKING" else "INCALF"
+                        } else {
+                            if (hasCalvedOrMilking) "MILKING" else "HEIFER"
+                        }
+                    }
+                    "INSEMINATION" -> "INSEMINATED"
+                    "CALVING" -> "MILKING"
+                    "DRY_OFF" -> "DRY"
+                    else -> null
+                }
+                if (immediateStage != null) {
+                    currentStatus = immediateStage
+                    val breedingDesc = if (immediateStage.contains("INCALF")) "Confirmed Pregnant" else immediateStage
+                    onUpdateAnimalStage(immediateStage, breedingDesc)
+                }
+                eventToEdit = null
+            }
+        )
+    }
+
+    if (showDeleteEventConfirmDialog && eventToDelete != null) {
+        val ev = eventToDelete!!
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteEventConfirmDialog = false
+                eventToDelete = null
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = Color(0xFFDC2626)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Delete Event Record?",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A)
+                    )
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Are you sure you want to delete this event record?",
+                        fontSize = 13.sp,
+                        color = Color(0xFF475569)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = ev.title,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF991B1B)
+                            )
+                            Text(
+                                text = "Date: ${ev.date}  •  Category: ${ev.category}",
+                                fontSize = 11.sp,
+                                color = Color(0xFFB91C1C)
+                            )
+                            if (ev.details.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = ev.details,
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF7F1D1D)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "This action will update the dynamic gestation and lifecycle summary.",
+                        fontSize = 11.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val evId = ev.id.toLongOrNull()
+                        if (evId != null) {
+                            viewModel.deleteCattleEvent(evId)
+                        }
+                        animalEvents.removeAll { it.id == ev.id }
+                        showDeleteEventConfirmDialog = false
+                        eventToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showDeleteEventConfirmDialog = false
+                        eventToDelete = null
+                    }
+                ) {
+                    Text("Cancel", color = Color(0xFF475569))
+                }
             }
         )
     }

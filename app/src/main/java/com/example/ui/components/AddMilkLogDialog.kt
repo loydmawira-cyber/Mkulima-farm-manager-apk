@@ -124,7 +124,7 @@ fun AddMilkLogDialog(
     var cowDropdownExpanded by remember { mutableStateOf(false) }
 
     val dairyUnits = availableUnits.filter { it.type.contains("Cattle", ignoreCase = true) || it.name.contains("Dairy", ignoreCase = true) }
-    var selectedUnitName by remember { mutableStateOf(dairyUnits.firstOrNull()?.name ?: "Dairy Herd - Friesians") }
+    var selectedUnitName by remember(dairyUnits) { mutableStateOf(dairyUnits.firstOrNull()?.name ?: "Dairy Section") }
 
     var litresText by remember { mutableStateOf("15.5") }
     var fatText by remember { mutableStateOf("3.8") }

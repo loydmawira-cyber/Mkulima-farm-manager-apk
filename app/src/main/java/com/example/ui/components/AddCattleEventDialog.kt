@@ -54,6 +54,12 @@ fun AddCattleEventDialog(
     animalName: String,
     unitId: Long,
     initialCategory: String = "PD",
+    isEditing: Boolean = false,
+    initialTitle: String? = null,
+    initialDate: String? = null,
+    initialDetails: String? = null,
+    initialNotes: String? = null,
+    initialMetricValue: String? = null,
     onDismiss: () -> Unit,
     onSaveEvent: (
         eventType: String,
@@ -66,7 +72,14 @@ fun AddCattleEventDialog(
     ) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf(initialCategory) } // PD, INSEMINATION, CALVING, DRY_OFF, HEAT, WEIGHT, HEALTH, OTHER
-    var pdResult by remember { mutableStateOf("CONFIRMED_POSITIVE") } // CONFIRMED_POSITIVE, NEGATIVE
+    var pdResult by remember {
+        mutableStateOf(
+            if (initialCategory == "PD" && (initialTitle?.contains("Negative", ignoreCase = true) == true || initialMetricValue?.contains("Negative", ignoreCase = true) == true))
+                "NEGATIVE"
+            else
+                "CONFIRMED_POSITIVE"
+        )
+    } // CONFIRMED_POSITIVE, NEGATIVE
 
     // Calving specific fields
     var calfGender by remember { mutableStateOf("Heifer Calf (Female)") } // Heifer Calf (Female), Bull Calf (Male), Twins
@@ -85,33 +98,41 @@ fun AddCattleEventDialog(
         SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
     }
 
-    var dateText by remember { mutableStateOf(todayDate) }
+    var dateText by remember { mutableStateOf(initialDate ?: todayDate) }
     var detailsText by remember(selectedCategory) {
         mutableStateOf(
-            when (selectedCategory) {
-                "INSEMINATION" -> "Inseminated with high-grade dairy semen straw."
-                "CALVING" -> "Delivered healthy calf. Mother transitioned to fresh milking lactation."
-                "DRY_OFF" -> "Milking stopped. Administered intramammary dry cow therapy."
-                "HEAT" -> "Observed standing heat, clear mucus discharge."
-                "WEIGHT" -> "Weighed on herd scale."
-                "HEALTH" -> "Routine vaccination / health treatment administered."
-                "OTHER" -> "General management or observation event."
-                else -> "Pregnancy confirmed positive via veterinary check. Gestation normal."
+            if (isEditing && initialDetails != null && selectedCategory == initialCategory) {
+                initialDetails
+            } else {
+                when (selectedCategory) {
+                    "INSEMINATION" -> "Inseminated with high-grade dairy semen straw."
+                    "CALVING" -> "Delivered healthy calf. Mother transitioned to fresh milking lactation."
+                    "DRY_OFF" -> "Milking stopped. Administered intramammary dry cow therapy."
+                    "HEAT" -> "Observed standing heat, clear mucus discharge."
+                    "WEIGHT" -> "Weighed on herd scale."
+                    "HEALTH" -> "Routine vaccination / health treatment administered."
+                    "OTHER" -> "General management or observation event."
+                    else -> "Pregnancy confirmed positive via veterinary check. Gestation normal."
+                }
             }
         )
     }
-    var notesText by remember { mutableStateOf("Technician: Dr. Otieno (Vet)") }
+    var notesText by remember { mutableStateOf(if (isEditing && initialNotes != null) initialNotes else "Technician: Dr. Otieno (Vet)") }
     var metricText by remember(selectedCategory) {
         mutableStateOf(
-            when (selectedCategory) {
-                "INSEMINATION" -> "Straw #88"
-                "CALVING" -> "Birth Wt: 34 kg"
-                "DRY_OFF" -> "Dry period started"
-                "HEAT" -> "Standing Heat"
-                "WEIGHT" -> "480 kg"
-                "HEALTH" -> "2 ml"
-                "OTHER" -> ""
-                else -> "Positive (In-Calf)"
+            if (isEditing && initialMetricValue != null && selectedCategory == initialCategory) {
+                initialMetricValue
+            } else {
+                when (selectedCategory) {
+                    "INSEMINATION" -> "Straw #88"
+                    "CALVING" -> "Birth Wt: 34 kg"
+                    "DRY_OFF" -> "Dry period started"
+                    "HEAT" -> "Standing Heat"
+                    "WEIGHT" -> "480 kg"
+                    "HEALTH" -> "2 ml"
+                    "OTHER" -> ""
+                    else -> "Positive (In-Calf)"
+                }
             }
         )
     }
@@ -219,7 +240,7 @@ fun AddCattleEventDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = "Log Cattle Event",
+                                text = if (isEditing) "Edit Event Record" else "Log Cattle Event",
                                 fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)
@@ -661,16 +682,20 @@ fun AddCattleEventDialog(
 
                     Button(
                         onClick = {
-                            val computedTitle = when (selectedCategory) {
-                                "PD" -> if (pdResult == "CONFIRMED_POSITIVE") "Pregnancy Diagnosis (PD) - Positive" else "Pregnancy Diagnosis (PD) - Negative"
-                                "INSEMINATION" -> "Artificial Insemination (AI)"
-                                "CALVING" -> "Calving & Calf Delivery"
-                                "DRY_OFF" -> "Dry Off"
-                                "HEAT" -> "Estrus (Heat Period) Observed"
-                                "WEIGHT" -> "Weight Measurement"
-                                "HEALTH" -> "Health & Treatment"
-                                "OTHER" -> "Other Cattle Event"
-                                else -> selectedCategory.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+                            val computedTitle = if (isEditing && !initialTitle.isNullOrBlank() && selectedCategory == initialCategory) {
+                                initialTitle
+                            } else {
+                                when (selectedCategory) {
+                                    "PD" -> if (pdResult == "CONFIRMED_POSITIVE") "Pregnancy Diagnosis (PD) - Positive" else "Pregnancy Diagnosis (PD) - Negative"
+                                    "INSEMINATION" -> "Artificial Insemination (AI)"
+                                    "CALVING" -> "Calving & Calf Delivery"
+                                    "DRY_OFF" -> "Dry Off"
+                                    "HEAT" -> "Estrus (Heat Period) Observed"
+                                    "WEIGHT" -> "Weight Measurement"
+                                    "HEALTH" -> "Health & Treatment"
+                                    "OTHER" -> "Other Cattle Event"
+                                    else -> selectedCategory.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+                                }
                             }
                             onSaveEvent(
                                 selectedCategory,
@@ -685,7 +710,7 @@ fun AddCattleEventDialog(
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                     ) {
-                        Text("SAVE EVENT LOG", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(if (isEditing) "UPDATE EVENT" else "SAVE EVENT LOG", fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }

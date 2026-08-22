@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -129,6 +130,7 @@ fun MkulimaAppContent(
     val eggLogs by viewModel.allEggLogs.collectAsState()
     val financeRecords by viewModel.allFinanceRecords.collectAsState()
     val employeeRequests by viewModel.allEmployeeRequests.collectAsState()
+    val allCattleEvents by viewModel.allCattleEvents.collectAsState(initial = emptyList())
     val farmSettings by viewModel.farmSettings.collectAsState()
     val farmWorkers by viewModel.farmWorkers.collectAsState()
     val userSession by viewModel.currentSession.collectAsState()
@@ -166,8 +168,21 @@ fun MkulimaAppContent(
     var showWorkerManagementScreen by remember { mutableStateOf(false) }
     var showRemindersDialog by remember { mutableStateOf(false) }
 
-    val farmReminders = remember(allUnits, allTasks) {
-        FarmReminderEngine.computeAllReminders(units = allUnits, tasks = allTasks)
+    val farmReminders = remember(allUnits, allTasks, allCattleEvents) {
+        val eventsMap = allCattleEvents.groupBy { it.unitId }.mapValues { entry ->
+            entry.value.map {
+                com.example.ui.screens.CattleEventItem(
+                    id = it.id.toString(),
+                    category = it.category,
+                    title = it.title,
+                    date = it.date,
+                    details = it.details,
+                    notes = it.notes ?: "",
+                    metricValue = it.metricValue ?: ""
+                )
+            }
+        }
+        FarmReminderEngine.computeAllReminders(units = allUnits, cattleEventsMap = eventsMap, tasks = allTasks)
     }
 
     // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
@@ -323,6 +338,9 @@ fun MkulimaAppContent(
                 showSettingsDialog = false
             },
             onOpenWorkerManagement = { showWorkerManagementScreen = true },
+            onClearFarmData = {
+                viewModel.clearCurrentFarmData()
+            },
             onLogout = {
                 viewModel.logout()
                 showSettingsDialog = false
@@ -374,7 +392,10 @@ fun MkulimaAppContent(
                                 .fillMaxWidth()
                                 .padding(end = 4.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f, fill = false)
+                            ) {
                                 IconButton(onClick = { }) {
                                     Icon(
                                         imageVector = Icons.Filled.Menu,
@@ -390,10 +411,12 @@ fun MkulimaAppContent(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Mkulima",
-                                    fontSize = 22.sp,
+                                    text = userSession?.farmName?.ifBlank { "My Farm" } ?: "My Farm",
+                                    fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E293B)
+                                    color = Color(0xFF1E293B),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -604,6 +627,7 @@ fun MkulimaAppContent(
                         milkLogs = milkLogs,
                         eggLogs = eggLogs,
                         units = allUnits,
+                        allCattleEvents = allCattleEvents,
                         financeRecords = financeRecords,
                         employeeRequests = employeeRequests,
                         onRestockClick = { showAddFinanceDialog = true },

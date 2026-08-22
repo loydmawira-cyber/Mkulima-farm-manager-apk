@@ -669,14 +669,7 @@ fun MilkLogScreen(
         val distinct = result.distinctBy {
             it.name.substringBefore(" (").substringBefore(" -").substringBefore("#").trim().lowercase()
         }
-        if (distinct.isEmpty()) {
-            listOf(
-                AnimalCowItem(tagId = "#102", name = "Bessie (#102)", breed = "Friesian Cow", lactationDay = 90),
-                AnimalCowItem(tagId = "#105", name = "Daisy (#105)", breed = "Jersey Cow", lactationDay = 120)
-            )
-        } else {
-            distinct
-        }
+        distinct
     }
 
     // --- MAIN LOG CATEGORY STATE (Milk vs Eggs) ---

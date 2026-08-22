@@ -219,4 +219,48 @@ interface FarmDao {
 
     @Query("UPDATE worker_accounts SET password = :newPassword WHERE emailOrPhone = :emailOrPhone OR workerId = :emailOrPhone")
     suspend fun updateWorkerPassword(emailOrPhone: String, newPassword: String)
+
+    // Clear operational data for a farm
+    @Query("DELETE FROM farm_units WHERE farmId = :farmId")
+    suspend fun deleteUnitsForFarm(farmId: String)
+
+    @Query("DELETE FROM farm_tasks WHERE farmId = :farmId")
+    suspend fun deleteTasksForFarm(farmId: String)
+
+    @Query("DELETE FROM milk_logs WHERE farmId = :farmId")
+    suspend fun deleteMilkLogsForFarm(farmId: String)
+
+    @Query("DELETE FROM egg_logs WHERE farmId = :farmId")
+    suspend fun deleteEggLogsForFarm(farmId: String)
+
+    @Query("DELETE FROM finance_records WHERE farmId = :farmId")
+    suspend fun deleteFinanceRecordsForFarm(farmId: String)
+
+    @Query("DELETE FROM employee_requests WHERE farmId = :farmId")
+    suspend fun deleteEmployeeRequestsForFarm(farmId: String)
+
+    @Query("DELETE FROM cattle_events WHERE farmId = :farmId")
+    suspend fun deleteCattleEventsForFarm(farmId: String)
+
+    // Clear all operational data across database
+    @Query("DELETE FROM farm_units")
+    suspend fun deleteAllUnits()
+
+    @Query("DELETE FROM farm_tasks")
+    suspend fun deleteAllTasks()
+
+    @Query("DELETE FROM milk_logs")
+    suspend fun deleteAllMilkLogs()
+
+    @Query("DELETE FROM egg_logs")
+    suspend fun deleteAllEggLogs()
+
+    @Query("DELETE FROM finance_records")
+    suspend fun deleteAllFinanceRecords()
+
+    @Query("DELETE FROM employee_requests")
+    suspend fun deleteAllEmployeeRequests()
+
+    @Query("DELETE FROM cattle_events")
+    suspend fun deleteAllCattleEvents()
 }

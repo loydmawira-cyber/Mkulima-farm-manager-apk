@@ -132,6 +132,7 @@ fun DashboardScreen(
     milkLogs: List<MilkLog> = emptyList(),
     eggLogs: List<EggLog> = emptyList(),
     units: List<FarmUnit> = emptyList(),
+    allCattleEvents: List<com.example.data.CattleEvent> = emptyList(),
     financeRecords: List<FinanceRecord> = emptyList(),
     employeeRequests: List<EmployeeRequest> = emptyList(),
     searchQuery: String = "",
@@ -243,7 +244,7 @@ fun DashboardScreen(
     }
 
     // Cattle Stage Breakdown Counts
-    val cattleStages = remember(cattleUnits, milkLogs) {
+    val cattleStages = remember(cattleUnits, milkLogs, allCattleEvents) {
         val stageCounts = mutableMapOf(
             "Milking" to 0,
             "In-calf" to 0,
@@ -255,6 +256,17 @@ fun DashboardScreen(
             "Disposed" to 0
         )
         val evaluated = cattleUnits.map { unit ->
+            val unitDbEvents = allCattleEvents.filter { it.unitId == unit.id }.map {
+                com.example.ui.screens.CattleEventItem(
+                    id = it.id.toString(),
+                    category = it.category,
+                    title = it.title,
+                    date = it.date,
+                    details = it.details,
+                    notes = it.notes ?: "",
+                    metricValue = it.metricValue ?: ""
+                )
+            }
             val mockDetail = com.example.ui.screens.AnimalDetailData(
                 id = "unit_${unit.id}",
                 name = unit.name,
@@ -271,7 +283,8 @@ fun DashboardScreen(
                 sire = unit.sire,
                 dam = unit.dam
             )
-            CattleLifecycleEngine.evaluateCattleStage(mockDetail, emptyList(), milkLogs)
+            val cowLogs = milkLogs.filter { it.cowName.equals(unit.name, ignoreCase = true) }
+            CattleLifecycleEngine.evaluateCattleStage(mockDetail, unitDbEvents, if (cowLogs.isNotEmpty()) cowLogs else milkLogs)
         }
         stageCounts["Milking"] = evaluated.count { it.stage == CattleStage.MILKING }
         stageCounts["In-calf"] = evaluated.count { it.stage == CattleStage.INCALF || it.stage == CattleStage.INCALF_MILKING }

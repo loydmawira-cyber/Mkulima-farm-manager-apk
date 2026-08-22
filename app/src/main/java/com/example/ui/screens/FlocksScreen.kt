@@ -1042,13 +1042,13 @@ fun FlocksScreen(
     }
 
     val inCalfMilkingCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF_MILKING }
-    val inCalfCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF }
-    val totalInCalfCount = inCalfMilkingCount + inCalfCount
-    val milkingCount = evaluatedCattleMap.values.count { it.stage == CattleStage.MILKING }
+    val inCalfCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INCALF || (it.stage == CattleStage.DRY && it.isInCalf) }
+    val totalInCalfCount = evaluatedCattleMap.values.count { it.isInCalf }
+    val milkingCount = evaluatedCattleMap.values.count { it.isMilking || it.stage == CattleStage.MILKING || it.stage == CattleStage.INCALF_MILKING }
     val heiferCount = evaluatedCattleMap.values.count { it.stage == CattleStage.HEIFER }
     val calfCount = evaluatedCattleMap.values.count { it.stage == CattleStage.CALF }
-    val dryCount = evaluatedCattleMap.values.count { it.stage == CattleStage.DRY }
-    val inseminatedCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INSEMINATED }
+    val dryCount = evaluatedCattleMap.values.count { it.stage == CattleStage.DRY || it.isDriedOff }
+    val inseminatedCount = evaluatedCattleMap.values.count { it.stage == CattleStage.INSEMINATED || (it.lastInseminationDate != null && !it.isInCalf) }
     val bullCount = evaluatedCattleMap.values.count { it.stage == CattleStage.BULL }
     val disposedCount = evaluatedCattleMap.values.count { it.stage == CattleStage.DISPOSED }
 
@@ -1552,12 +1552,12 @@ fun FlocksScreen(
                         CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, if (cowMilkLogs.isNotEmpty()) cowMilkLogs else milkLogs)
                     }
                     when (selectedCattleStage) {
-                        "MILKING" -> eval.stage == CattleStage.MILKING
-                        "INCALF" -> eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
+                        "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
+                        "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
                         "HEIFER" -> eval.stage == CattleStage.HEIFER
                         "CALF" -> eval.stage == CattleStage.CALF
-                        "DRY" -> eval.stage == CattleStage.DRY
-                        "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED
+                        "DRY" -> eval.stage == CattleStage.DRY || eval.isDriedOff
+                        "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED || (eval.lastInseminationDate != null && !eval.isInCalf)
                         "BULL" -> eval.stage == CattleStage.BULL
                         "DISPOSED" -> eval.stage == CattleStage.DISPOSED
                         else -> true
@@ -3280,11 +3280,55 @@ fun AnimalDetailsView(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     if (isCattle && cattleEval != null) {
+                        // Current Stage & Reproduction Summary
+                        if (cattleEval.summaryReason.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = cattleEval.badgeBgColor.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = cattleEval.summaryReason,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    fontSize = 12.sp,
+                                    color = cattleEval.badgeTextColor,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+
+                        // Calving History & Parity
+                        if (cattleEval.hasGivenBirthPreviously && cattleEval.lastCalvingDate != null) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Calving History / Parity", fontSize = 13.sp, color = Color(0xFF64748B))
+                                Text(
+                                    "${cattleEval.lastCalvingDate} (Parity ${cattleEval.parityCount})",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF1E293B)
+                                )
+                            }
+                            if (cattleEval.daysInMilk != null && cattleEval.isMilking) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Days in Milk (DIM)", fontSize = 13.sp, color = Color(0xFF64748B))
+                                    Text(
+                                        "${cattleEval.daysInMilk} days lactating",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF0369A1)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
                         // AI / Breeding Date
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Last Insemination / Mating", fontSize = 13.sp, color = Color(0xFF64748B))
                             Text(
-                                cattleEval.lastInseminationDate ?: "None Recorded",
+                                if (cattleEval.lastInseminationDate != null) cattleEval.lastInseminationDate!! else if (cattleEval.hasGivenBirthPreviously) "None in current lactation" else "None Recorded",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (cattleEval.lastInseminationDate != null) Color(0xFF1E293B) else Color(0xFF94A3B8)
@@ -3294,7 +3338,7 @@ fun AnimalDetailsView(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // Gestation Progress if pregnant
-                        if (cattleEval.daysInGestation != null && cattleEval.daysInGestation > 0) {
+                        if (cattleEval.daysInGestation != null && cattleEval.daysInGestation > 0 && cattleEval.isInCalf) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Gestation Progress", fontSize = 13.sp, color = Color(0xFF64748B))
                                 Text(
@@ -3321,19 +3365,30 @@ fun AnimalDetailsView(
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Expected Calving Date", fontSize = 13.sp, color = Color(0xFF64748B))
                             Text(
-                                cattleEval.expectedCalvingDate ?: "N/A",
-                                fontSize = 14.sp,
+                                if (cattleEval.isInCalf) (cattleEval.expectedCalvingDate ?: "Pending") else if (cattleEval.expectedCalvingDate != null) "${cattleEval.expectedCalvingDate} (If Conceived)" else "Open / Not In-Calf",
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (cattleEval.expectedCalvingDate != null) ForestGreenPrimary else Color(0xFF94A3B8)
+                                color = if (cattleEval.isInCalf && cattleEval.expectedCalvingDate != null) ForestGreenPrimary else if (cattleEval.expectedCalvingDate != null) Color(0xFF7C3AED) else Color(0xFF94A3B8)
                             )
                         }
 
-                        if (cattleEval.dryOffTargetDate != null) {
+                        if (cattleEval.isDriedOff) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Dry-Off Status", fontSize = 13.sp, color = Color(0xFF64748B))
+                                Text(
+                                    "Dried Off (Udder Rest)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFB45309)
+                                )
+                            }
+                        } else if (cattleEval.dryOffTargetDate != null) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Recommended Dry-Off Date", fontSize = 13.sp, color = Color(0xFF64748B))
                                 Text(
-                                    cattleEval.dryOffTargetDate,
+                                    cattleEval.dryOffTargetDate!!,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFFB45309)
@@ -3492,23 +3547,22 @@ fun AnimalDetailsView(
                     currentStatus.contains("Lactating", ignoreCase = true) ||
                     (cattleEval != null && (cattleEval.stage == CattleStage.MILKING || cattleEval.stage == CattleStage.INCALF_MILKING || cattleEval.lastCalvingDate != null))
 
-                val immediateStage = when (type.uppercase()) {
+                val (immediateStage, breedingDesc) = when (type.uppercase()) {
                     "PD" -> {
                         val isPos = title.contains("Positive", ignoreCase = true) || details.contains("Positive", ignoreCase = true) || metricValue.contains("Positive", ignoreCase = true) || metricValue.contains("In-Calf", ignoreCase = true)
                         if (isPos) {
-                            if (hasCalvedOrMilking) "INCALF / MILKING" else "INCALF"
+                            (if (hasCalvedOrMilking) "INCALF / MILKING" else "INCALF") to (if (hasCalvedOrMilking) "IN-CALF & MILKING" else "IN-CALF HEIFER")
                         } else {
-                            if (hasCalvedOrMilking) "MILKING" else "HEIFER"
+                            (if (hasCalvedOrMilking) "MILKING" else "HEIFER") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
                         }
                     }
-                    "INSEMINATION" -> "INSEMINATED"
-                    "CALVING" -> "MILKING"
-                    "DRY_OFF" -> "DRY"
-                    else -> null
+                    "INSEMINATION" -> (if (hasCalvedOrMilking) "MILKING" else "INSEMINATED") to "SERVED AI (Pending PD)"
+                    "CALVING" -> "MILKING" to "OPEN (In Milk)"
+                    "DRY_OFF" -> "DRY" to (if (cattleEval?.isInCalf == true) "IN-CALF (Dry)" else "DRY COW (Open)")
+                    else -> null to null
                 }
-                if (immediateStage != null) {
+                if (immediateStage != null && breedingDesc != null) {
                     currentStatus = immediateStage
-                    val breedingDesc = if (immediateStage.contains("INCALF")) "Confirmed Pregnant" else immediateStage
                     onUpdateAnimalStage(immediateStage, breedingDesc)
                 }
                 showAddCattleEventDialog = false
@@ -3560,23 +3614,22 @@ fun AnimalDetailsView(
                     currentStatus.contains("Lactating", ignoreCase = true) ||
                     (cattleEval != null && (cattleEval.stage == CattleStage.MILKING || cattleEval.stage == CattleStage.INCALF_MILKING || cattleEval.lastCalvingDate != null))
 
-                val immediateStage = when (type.uppercase()) {
+                val (immediateStage, breedingDesc) = when (type.uppercase()) {
                     "PD" -> {
                         val isPos = title.contains("Positive", ignoreCase = true) || details.contains("Positive", ignoreCase = true) || metricValue.contains("Positive", ignoreCase = true) || metricValue.contains("In-Calf", ignoreCase = true)
                         if (isPos) {
-                            if (hasCalvedOrMilking) "INCALF / MILKING" else "INCALF"
+                            (if (hasCalvedOrMilking) "INCALF / MILKING" else "INCALF") to (if (hasCalvedOrMilking) "IN-CALF & MILKING" else "IN-CALF HEIFER")
                         } else {
-                            if (hasCalvedOrMilking) "MILKING" else "HEIFER"
+                            (if (hasCalvedOrMilking) "MILKING" else "HEIFER") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
                         }
                     }
-                    "INSEMINATION" -> "INSEMINATED"
-                    "CALVING" -> "MILKING"
-                    "DRY_OFF" -> "DRY"
-                    else -> null
+                    "INSEMINATION" -> (if (hasCalvedOrMilking) "MILKING" else "INSEMINATED") to "SERVED AI (Pending PD)"
+                    "CALVING" -> "MILKING" to "OPEN (In Milk)"
+                    "DRY_OFF" -> "DRY" to (if (cattleEval?.isInCalf == true) "IN-CALF (Dry)" else "DRY COW (Open)")
+                    else -> null to null
                 }
-                if (immediateStage != null) {
+                if (immediateStage != null && breedingDesc != null) {
                     currentStatus = immediateStage
-                    val breedingDesc = if (immediateStage.contains("INCALF")) "Confirmed Pregnant" else immediateStage
                     onUpdateAnimalStage(immediateStage, breedingDesc)
                 }
                 eventToEdit = null

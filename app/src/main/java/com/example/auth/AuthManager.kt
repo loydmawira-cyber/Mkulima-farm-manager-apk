@@ -517,6 +517,10 @@ class AuthManager(
         val auth = getFirebaseAuth()
         val db = getFirestore()
 
+        if (auth == null) {
+            return@withContext AuthResult.Error("DEBUG: FirebaseAuth is null. Init error: ${lastAuthInitError ?: "none captured"}")
+        }
+
         var cloudUid: String? = null
 
         

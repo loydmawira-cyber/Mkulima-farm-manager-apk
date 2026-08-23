@@ -95,6 +95,7 @@ import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.TagLivestockBg
 import com.example.ui.theme.TagLivestockText
 import com.example.ui.theme.MkulimaTheme
+import com.example.ui.theme.mkulimaColors
 
 @Composable
 fun MkulimaApp(
@@ -400,13 +401,13 @@ fun MkulimaAppContent(
                                     Icon(
                                         imageVector = Icons.Filled.Menu,
                                         contentDescription = "Menu",
-                                        tint = Color(0xFF1E293B)
+                                        tint = MaterialTheme.mkulimaColors.textPrimary
                                     )
                                 }
                                 Icon(
                                     imageVector = Icons.Filled.Agriculture,
                                     contentDescription = null,
-                                    tint = ForestGreenPrimary,
+                                    tint = MaterialTheme.mkulimaColors.primary,
                                     modifier = Modifier.size(26.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -414,7 +415,7 @@ fun MkulimaAppContent(
                                     text = userSession?.farmName?.ifBlank { "My Farm" } ?: "My Farm",
                                     fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E293B),
+                                    color = MaterialTheme.mkulimaColors.textPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -444,7 +445,7 @@ fun MkulimaAppContent(
                                         Icon(
                                             imageVector = Icons.Filled.Notifications,
                                             contentDescription = "Farm Reminders",
-                                            tint = Color(0xFF1E293B)
+                                            tint = MaterialTheme.mkulimaColors.textPrimary
                                         )
                                     }
                                 }
@@ -452,22 +453,30 @@ fun MkulimaAppContent(
                                     Icon(
                                         imageVector = Icons.Filled.Settings,
                                         contentDescription = "Settings",
-                                        tint = Color(0xFF1E293B)
+                                        tint = MaterialTheme.mkulimaColors.textPrimary
                                     )
                                 }
                             }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color(0xFFF8F9FA)
+                        containerColor = MaterialTheme.mkulimaColors.cardBackground
                     )
                 )
             },
             bottomBar = {
                 NavigationBar(
-                    containerColor = Color.White,
+                    containerColor = MaterialTheme.mkulimaColors.cardBackground,
                     tonalElevation = 6.dp
                 ) {
+                    val navItemColors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.mkulimaColors.primary,
+                        selectedTextColor = MaterialTheme.mkulimaColors.primary,
+                        indicatorColor = MaterialTheme.mkulimaColors.primaryContainer,
+                        unselectedIconColor = MaterialTheme.mkulimaColors.textSecondary,
+                        unselectedTextColor = MaterialTheme.mkulimaColors.textSecondary
+                    )
+
                     // Tab 0: Home
                     NavigationBarItem(
                         selected = selectedTab == 0,
@@ -485,13 +494,7 @@ fun MkulimaAppContent(
                                 fontSize = 11.sp
                             )
                         },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = ForestGreenPrimary,
-                            selectedTextColor = ForestGreenPrimary,
-                            indicatorColor = Color(0xFFDCFCE7),
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        ),
+                        colors = navItemColors,
                         modifier = Modifier.testTag("nav_home_tab")
                     )
 
@@ -512,13 +515,7 @@ fun MkulimaAppContent(
                                 fontSize = 11.sp
                             )
                         },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = ForestGreenPrimary,
-                            selectedTextColor = ForestGreenPrimary,
-                            indicatorColor = Color(0xFFDCFCE7),
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        ),
+                        colors = navItemColors,
                         modifier = Modifier.testTag("nav_livestock_tab")
                     )
 
@@ -539,13 +536,7 @@ fun MkulimaAppContent(
                                 fontSize = 11.sp
                             )
                         },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = ForestGreenPrimary,
-                            selectedTextColor = ForestGreenPrimary,
-                            indicatorColor = Color(0xFFDCFCE7),
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        ),
+                        colors = navItemColors,
                         modifier = Modifier.testTag("nav_daily_log_tab")
                     )
 
@@ -567,13 +558,7 @@ fun MkulimaAppContent(
                                     fontSize = 11.sp
                                 )
                             },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = ForestGreenPrimary,
-                                selectedTextColor = ForestGreenPrimary,
-                                indicatorColor = Color(0xFFDCFCE7),
-                                unselectedIconColor = Color(0xFF64748B),
-                                unselectedTextColor = Color(0xFF64748B)
-                            ),
+                            colors = navItemColors,
                             modifier = Modifier.testTag("nav_finance_tab")
                         )
                     }
@@ -595,13 +580,7 @@ fun MkulimaAppContent(
                                 fontSize = 11.sp
                             )
                         },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = ForestGreenPrimary,
-                            selectedTextColor = ForestGreenPrimary,
-                            indicatorColor = Color(0xFFDCFCE7),
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        ),
+                        colors = navItemColors,
                         modifier = Modifier.testTag("nav_tasks_tab")
                     )
                 }
@@ -611,7 +590,7 @@ fun MkulimaAppContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .background(Color(0xFFF8F9FA))
+                    .background(MaterialTheme.colorScheme.background)
             ) {
                 val effectiveTab = if (userRole != "OWNER") {
                     when(selectedTab) {

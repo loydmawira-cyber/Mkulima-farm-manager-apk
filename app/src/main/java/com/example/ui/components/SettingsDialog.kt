@@ -336,15 +336,59 @@ fun SettingsDialog(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                Text("Theme Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    listOf("SYSTEM", "LIGHT", "DARK").forEach { mode ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = themeMode == mode,
-                                onClick = { themeMode = mode }
-                            )
-                            Text(mode, fontSize = 12.sp)
+                Text("Theme Palette & Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
+                Spacer(modifier = Modifier.height(6.dp))
+
+                val themeOptions = listOf(
+                    Triple("EMERALD", "Emerald", Color(0xFF2D5A27)),
+                    Triple("GOLDEN", "Golden", Color(0xFFD97706)),
+                    Triple("TERRACOTTA", "Savanna", Color(0xFFC4592F)),
+                    Triple("OCEAN", "Ocean", Color(0xFF0284C7)),
+                    Triple("COFFEE", "Coffee", Color(0xFF6F4E37)),
+                    Triple("DARK", "Midnight", Color(0xFF1E293B)),
+                    Triple("LIGHT", "Classic", Color(0xFF16A34A)),
+                    Triple("SYSTEM", "System", Color(0xFF64748B))
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    themeOptions.chunked(4).forEach { rowOptions ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rowOptions.forEach { (modeKey, label, color) ->
+                                val isSelected = themeMode.equals(modeKey, ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) color.copy(alpha = 0.12f) else Color(0xFFF8FAFC),
+                                    border = BorderStroke(
+                                        if (isSelected) 1.8.dp else 1.dp,
+                                        if (isSelected) color else Color(0xFFE2E8F0)
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { themeMode = modeKey }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .background(color, CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) color else Color(0xFF475569),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

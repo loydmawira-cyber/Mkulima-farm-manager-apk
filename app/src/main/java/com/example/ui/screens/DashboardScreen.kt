@@ -82,8 +82,10 @@ import com.example.data.TaskCategory
 import com.example.data.TaskPriority
 import com.example.ui.TaskStatusFilter
 import com.example.ui.components.TaskCard
+import androidx.compose.material3.MaterialTheme
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.StatusUrgentRed
+import com.example.ui.theme.mkulimaColors
 import com.example.util.CattleLifecycleEngine
 import com.example.util.CattleStage
 import com.example.util.FarmReminder
@@ -96,18 +98,19 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-// Custom Mkulima Theme Palette matching Dashboard v2 Mockup
-private val DawnTop = Color(0xFFF2C879)
-private val DawnBottom = Color(0xFFE8935A)
-private val Soil = Color(0xFF3E2B1F)
-private val SoilSoft = Color(0xFF7A6552)
-private val Straw = Color(0xFFFBF3E3)
-private val Terracotta = Color(0xFFC4592F)
-private val TerracottaDeep = Color(0xFF9E3F1E)
-private val Sage = Color(0xFF6E8B5E)
-private val SageBg = Color(0xFFEEF2E7)
-private val RustBg = Color(0xFFFBEBE3)
-private val LineColor = Color(0xFFEFE4D2)
+// Custom Mkulima Theme Palette matching active theme mode
+private val DawnTop: Color @Composable get() = MaterialTheme.mkulimaColors.heroTop
+private val DawnBottom: Color @Composable get() = MaterialTheme.mkulimaColors.heroBottom
+private val Soil: Color @Composable get() = MaterialTheme.mkulimaColors.textPrimary
+private val SoilSoft: Color @Composable get() = MaterialTheme.mkulimaColors.textSecondary
+private val Straw: Color @Composable get() = MaterialTheme.colorScheme.background
+private val Terracotta: Color @Composable get() = MaterialTheme.mkulimaColors.primary
+private val TerracottaDeep: Color @Composable get() = MaterialTheme.mkulimaColors.primaryVariant
+private val Sage: Color @Composable get() = MaterialTheme.mkulimaColors.secondary
+private val SageBg: Color @Composable get() = MaterialTheme.mkulimaColors.secondaryContainer
+private val RustBg: Color @Composable get() = MaterialTheme.mkulimaColors.primaryContainer
+private val LineColor: Color @Composable get() = MaterialTheme.mkulimaColors.cardBorder
+
 
 enum class AlertPriority {
     ALL,
@@ -561,7 +564,7 @@ fun DashboardScreen(
                             .fillMaxWidth()
                             .testTag("dashboard_reminders_card"),
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.mkulimaColors.cardBackground),
                         border = BorderStroke(1.dp, LineColor)
                     ) {
                         Column(modifier = Modifier.padding(18.dp)) {
@@ -754,7 +757,7 @@ fun DashboardScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.mkulimaColors.cardBackground),
                         border = BorderStroke(1.dp, LineColor)
                     ) {
                         Column(modifier = Modifier.padding(18.dp)) {
@@ -901,7 +904,7 @@ fun DashboardScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.mkulimaColors.cardBackground),
                         border = BorderStroke(1.dp, LineColor)
                     ) {
                         Column(modifier = Modifier.padding(18.dp)) {
@@ -1030,9 +1033,10 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // Dashed Divider Line
+                            val dashedLineColor = Straw.copy(alpha = 0.25f)
                             Canvas(modifier = Modifier.fillMaxWidth().height(1.dp)) {
                                 drawLine(
-                                    color = Straw.copy(alpha = 0.25f),
+                                    color = dashedLineColor,
                                     start = Offset(0f, 0f),
                                     end = Offset(size.width, 0f),
                                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f), 0f),
@@ -1235,8 +1239,8 @@ private fun HeroGlassBadge(
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = Color.White.copy(alpha = 0.55f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
+        color = MaterialTheme.mkulimaColors.cardBackground.copy(alpha = 0.65f),
+        border = BorderStroke(1.dp, MaterialTheme.mkulimaColors.cardBorder.copy(alpha = 0.6f)),
         modifier = modifier
     ) {
         Column(
@@ -1462,8 +1466,8 @@ private fun QuickActionChip(
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = Color.White,
-        border = BorderStroke(1.5.dp, Soil),
+        color = MaterialTheme.mkulimaColors.cardBackground,
+        border = BorderStroke(1.5.dp, LineColor),
         modifier = modifier.clickable { onClick() }
     ) {
         Column(

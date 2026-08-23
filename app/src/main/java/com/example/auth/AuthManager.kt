@@ -519,7 +519,8 @@ class AuthManager(
 
         var cloudUid: String? = null
 
-        if (auth != null) {
+        
+if (auth != null) {
             try {
                 val authResult = auth.createUserWithEmailAndPassword(authEmail, password).awaitTask()
                 val createdUser = authResult?.user
@@ -531,15 +532,17 @@ class AuthManager(
                             .build()
                         createdUser.updateProfile(profileUpdate).awaitTask()
                     } catch (e: Throwable) {}
+                } else {
+                    return@withContext AuthResult.Error("DEBUG: createUserWithEmailAndPassword returned null user, no exception. authEmail=$authEmail")
                 }
             } catch (e: Throwable) {
                 val msg = e.message ?: ""
                 if (e is FirebaseAuthUserCollisionException || msg.contains("already in use", ignoreCase = true) || msg.contains("email-already-in-use", ignoreCase = true)) {
                     return@withContext AuthResult.AccountAlreadyExists("An account with this email/phone ($primaryContact) already exists. Please sign in instead.")
                 }
+                return@withContext AuthResult.Error("DEBUG AUTH ERROR: ${e.javaClass.simpleName}: ${e.message}")
             }
         }
-
         // Query Firestore farms collection for existing farm document matching ownerContact
         val existingFarmDoc = findExistingFarmByPhone(primaryContact, countryCode)
         val isExistingFarm = existingFarmDoc != null

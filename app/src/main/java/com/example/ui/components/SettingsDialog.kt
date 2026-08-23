@@ -233,40 +233,7 @@ fun SettingsDialog(
                             }
                         }
 
-                        // Debug: User UID badge (for diagnosing auth/farm matching)
-                        if (!userSession?.userId.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFFF1F5F9), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text("AUTH UID (DEBUG)", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF94A3B8))
-                                    Text(userSession?.userId ?: "", fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = Color(0xFF475569))
-                                }
-                                TextButton(
-                                    onClick = {
-                                        val uidVal = userSession?.userId ?: ""
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        clipboard.setPrimaryClip(ClipData.newPlainText("User UID", uidVal))
-                                        Toast.makeText(context, "UID copied to clipboard!", Toast.LENGTH_SHORT).show()
-                                    }
-                                ) {
-                                    Text("Copy UID", fontSize = 9.sp, color = Color(0xFF64748B))
-                                }
-                            }
-                        }
-
-                        // Owner actions: Manage Workers
-                        if (isOwner && onOpenWorkerManagement != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = {
-                                    onDismiss()
+                        onDismiss()
                                     onOpenWorkerManagement()
                                 },
                                 modifier = Modifier

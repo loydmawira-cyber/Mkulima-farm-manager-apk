@@ -50,7 +50,14 @@ class AuthManager(
         }
 
         fun extractPhoneDigits(fullPhoneOrRaw: String): String {
-            return fullPhoneOrRaw.replace(Regex("[^0-9]"), "").removePrefix("0")
+            val digits = fullPhoneOrRaw.replace(Regex("[^0-9]"), "")
+            val knownPrefixes = listOf("254", "255", "256", "250", "234", "27", "233", "251", "211", "252", "1", "44", "91", "61")
+            for (p in knownPrefixes) {
+                if (digits.startsWith(p) && digits.length > p.length) {
+                    return digits.removePrefix(p).removePrefix("0")
+                }
+            }
+            return digits.removePrefix("0")
         }
 
         fun getPhoneCandidateFormats(identifierOrPhone: String, defaultCountryCode: String = "+254"): List<String> {
@@ -58,38 +65,54 @@ class AuthManager(
             if (clean.isBlank()) return emptyList()
             if (clean.contains("@")) return listOf(clean.lowercase())
 
-            val rawDigits = clean.replace(Regex("[^0-9]"), "")
-            val stripped = rawDigits.removePrefix("0")
-            val codeDigits = defaultCountryCode.replace(Regex("[^0-9]"), "")
-
-            val candidates = mutableListOf<String>()
+            val candidates = LinkedHashSet<String>()
             candidates.add(clean)
-            if (rawDigits.isNotBlank()) {
-                candidates.add(rawDigits)
-                candidates.add("+$rawDigits")
+
+            val rawDigits = clean.replace(Regex("[^0-9]"), "")
+            if (rawDigits.isBlank()) return candidates.toList()
+
+            candidates.add(rawDigits)
+            candidates.add("+$rawDigits")
+
+            val codeDigits = defaultCountryCode.replace(Regex("[^0-9]"), "").ifBlank { "254" }
+            val knownPrefixes = listOf(codeDigits, "254", "255", "256", "250", "234", "27", "233", "251", "211", "252", "1", "44", "91", "61").distinct()
+
+            val localBases = LinkedHashSet<String>()
+            for (p in knownPrefixes) {
+                if (rawDigits.startsWith(p) && rawDigits.length > p.length) {
+                    val rem = rawDigits.removePrefix(p).removePrefix("0")
+                    if (rem.isNotBlank()) localBases.add(rem)
+                }
             }
-            if (stripped.isNotBlank()) {
-                candidates.add("0$stripped")
-                candidates.add(stripped)
-                candidates.add("+$stripped")
-                candidates.add("+$codeDigits$stripped")
-                candidates.add("$codeDigits$stripped")
+            if (rawDigits.startsWith("0")) {
+                val rem = rawDigits.removePrefix("0")
+                if (rem.isNotBlank()) localBases.add(rem)
+            }
+            localBases.add(rawDigits.removePrefix("0"))
+            localBases.add(rawDigits)
+
+            for (base in localBases) {
+                val b = base.removePrefix("0")
+                if (b.isBlank()) continue
+
+                // Standard full international format with plus (e.g. +254714854319)
+                candidates.add("+$codeDigits$b")
+                // Full international digits without plus (e.g. 254714854319)
+                candidates.add("$codeDigits$b")
+                // Standard national format with zero (e.g. 0714854319)
+                candidates.add("0$b")
+                // Bare local digits (e.g. 714854319)
+                candidates.add(b)
+                // Local digits with plus (e.g. +714854319)
+                candidates.add("+$b")
+
+                for (p in knownPrefixes) {
+                    candidates.add("+$p$b")
+                    candidates.add("$p$b")
+                }
             }
 
-            val knownPrefixes = listOf("254", "255", "256", "250", "234", "27", "233", "251", "211", "252", "1", "44", "91", "61")
-            for (p in knownPrefixes) {
-                if (stripped.isNotBlank()) {
-                    candidates.add("+$p$stripped")
-                    candidates.add("$p$stripped")
-                }
-                if (rawDigits.startsWith(p)) {
-                    val rem = rawDigits.removePrefix(p)
-                    candidates.add("0$rem")
-                    candidates.add(rem)
-                    candidates.add("+$rem")
-                }
-            }
-            return candidates.distinct()
+            return candidates.toList()
         }
 
         fun toAuthEmail(identifier: String, countryCode: String = "+254"): String {
@@ -97,9 +120,10 @@ class AuthManager(
             if (trimmed.contains("@")) {
                 return trimmed.lowercase()
             }
-            val cleanDigits = trimmed.replace(Regex("[^0-9]"), "").removePrefix("0")
-            val codeDigits = countryCode.replace(Regex("[^0-9]"), "")
-            val fullDigits = if (cleanDigits.startsWith(codeDigits)) cleanDigits else "$codeDigits$cleanDigits"
+            val codeDigits = countryCode.replace(Regex("[^0-9]"), "").ifBlank { "254" }
+            val rawDigits = trimmed.replace(Regex("[^0-9]"), "")
+            val localDigits = extractPhoneDigits(trimmed)
+            val fullDigits = if (rawDigits.startsWith(codeDigits) && rawDigits.length > codeDigits.length) rawDigits else "$codeDigits$localDigits"
             return "phone_${fullDigits}@mkulima.farm"
         }
     }

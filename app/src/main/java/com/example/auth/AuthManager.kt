@@ -140,15 +140,15 @@ class AuthManager(
         }
     }
 
+    var lastAuthInitError: String? = null
+
     private fun getFirebaseAuth(): FirebaseAuth? {
         return try {
             if (firebaseAuth != null) return firebaseAuth
-            if (FirebaseApp.getApps(context).isEmpty()) {
-                FirebaseApp.initializeApp(context)
-            }
             FirebaseAuth.getInstance().also { firebaseAuth = it }
         } catch (t: Throwable) {
             Log.e(TAG, "FirebaseAuth initialization failed", t)
+            lastAuthInitError = "${t.javaClass.simpleName}: ${t.message}"
             null
         }
     }

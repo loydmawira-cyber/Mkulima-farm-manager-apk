@@ -110,7 +110,7 @@ fun MkulimaApp(
 
 @Composable
 fun MkulimaThemeWrapper(viewModel: FarmViewModel, content: @Composable () -> Unit) {
-    val farmSettings by viewModel.farmSettings.collectAsState(initial = null)
+    val farmSettings by viewModel.farmSettings.collectAsState()
     if (farmSettings == null) {
         // Settings haven't loaded from Room yet — show nothing rather than
         // briefly flashing the wrong (system-default) theme colors.

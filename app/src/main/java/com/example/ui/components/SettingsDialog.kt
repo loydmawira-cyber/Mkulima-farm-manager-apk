@@ -233,9 +233,15 @@ fun SettingsDialog(
                             }
                         }
 
-                        onDismiss()
+                        // Owner actions: Manage Workers
+                        if (isOwner && onOpenWorkerManagement != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    onDismiss()
                                     onOpenWorkerManagement()
                                 },
+                                modifier = Modifier
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("btn_manage_workers_settings"),

@@ -864,6 +864,7 @@ class AuthManager(
         // 5. If Firebase Authentication Succeeded: Retrieve Profile
         if (authenticatedUser != null) {
             val uid = authenticatedUser.uid
+            Log.d(TAG, "=== DEBUG LOGIN: authenticatedUser.uid = $uid, email = ${authenticatedUser.email}, phone = ${authenticatedUser.phoneNumber} ===")
             var userDocData = preloadedFirestoreUser
 
             if (userDocData == null && db != null) {

@@ -242,7 +242,6 @@ fun SettingsDialog(
                                     onOpenWorkerManagement()
                                 },
                                 modifier = Modifier
-                                modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("btn_manage_workers_settings"),
                                 shape = RoundedCornerShape(8.dp),

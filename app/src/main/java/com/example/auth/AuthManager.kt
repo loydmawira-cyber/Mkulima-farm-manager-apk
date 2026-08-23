@@ -180,15 +180,9 @@ class AuthManager(
     val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
 
     private suspend fun checkAndRestoreFirebaseAuthSession() = withContext(Dispatchers.IO) {
-        val saved = _currentSession.value ?: loadSavedSession()
-        if (saved != null) {
-            _currentSession.value = saved
-            repository.syncEngine?.startSync(saved.farmId)
-            return@withContext
-        }
         if (prefs.getBoolean("is_logged_out", false)) return@withContext
 
-        // 1. Try Firebase Auth session
+        // 1. Try Firebase Auth session first and refresh from Firestore
         try {
             val auth = getFirebaseAuth()
             val currentUser = auth?.currentUser
@@ -196,32 +190,104 @@ class AuthManager(
                 val uid = currentUser.uid
                 val db = getFirestore()
 
-                var userDoc: DocumentSnapshot? = null
+                var userDocData: Map<String, Any>? = null
                 if (db != null) {
                     try {
-                        userDoc = db.collection("users").document(uid).get().awaitTask()
-                    } catch (e: Throwable) {
-                        // Offline fallback
+                        val doc = db.collection("users").document(uid).get().awaitTask()
+                        if (doc != null && doc.exists()) {
+                            userDocData = doc.data
+                        }
+                    } catch (e: Throwable) {}
+
+                    if (userDocData == null && currentUser.email != null) {
+                        try {
+                            val q = db.collection("users").whereEqualTo("authEmail", currentUser.email).limit(1).get().awaitTask()
+                            if (q != null && !q.isEmpty) {
+                                userDocData = q.documents[0].data
+                            }
+                        } catch (e: Throwable) {}
+                    }
+
+                    if (userDocData == null) {
+                        val phoneCandidate = currentUser.phoneNumber ?: prefs.getString("email_or_phone", null) ?: prefs.getString("last_email_or_phone", null) ?: ""
+                        val formats = getPhoneCandidateFormats(phoneCandidate)
+                        for (fmt in formats) {
+                            try {
+                                val q1 = db.collection("users").whereEqualTo("phone", fmt).limit(1).get().awaitTask()
+                                if (q1 != null && !q1.isEmpty) {
+                                    userDocData = q1.documents[0].data
+                                    break
+                                }
+                                val q2 = db.collection("users").whereEqualTo("phoneNumber", fmt).limit(1).get().awaitTask()
+                                if (q2 != null && !q2.isEmpty) {
+                                    userDocData = q2.documents[0].data
+                                    break
+                                }
+                            } catch (e: Throwable) {}
+                        }
                     }
                 }
 
-                val name = userDoc?.getString("name") ?: currentUser.displayName ?: "Farm Owner"
-                val role = userDoc?.getString("role") ?: "OWNER"
-                val farmId = userDoc?.getString("farmId") ?: prefs.getString("last_farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT"
-                val farmName = userDoc?.getString("farmName") ?: prefs.getString("last_farm_name", "My Farm") ?: "My Farm"
-                val phone = userDoc?.getString("phone") ?: userDoc?.getString("phoneNumber") ?: currentUser.phoneNumber ?: ""
-                val email = userDoc?.getString("email") ?: currentUser.email ?: ""
+                val name = (userDocData?.get("name") as? String)
+                    ?: currentUser.displayName
+                    ?: prefs.getString("user_name", null)
+                    ?: prefs.getString("last_user_name", "Farm Owner")
+                    ?: "Farm Owner"
+                val role = (userDocData?.get("role") as? String)
+                    ?: prefs.getString("user_role", "OWNER")
+                    ?: "OWNER"
+                var farmId = userDocData?.get("farmId") as? String
+                var farmName = userDocData?.get("farmName") as? String
+                val phone = (userDocData?.get("phone") as? String)
+                    ?: (userDocData?.get("phoneNumber") as? String)
+                    ?: currentUser.phoneNumber
+                    ?: prefs.getString("email_or_phone", "")
+                    ?: ""
+                val email = (userDocData?.get("email") as? String)
+                    ?: currentUser.email
+                    ?: ""
                 val identifier = if (phone.isNotBlank()) phone else if (email.isNotBlank()) email else uid
 
-                val isRevoked = userDoc?.getBoolean("isRevoked") ?: false
+                // If farmId is missing from user doc, query farms collection directly
+                if (farmId.isNullOrBlank() || farmName.isNullOrBlank()) {
+                    if (db != null) {
+                        try {
+                            val qOwner = db.collection("farms").whereEqualTo("ownerId", uid).limit(1).get().awaitTask()
+                            if (qOwner != null && !qOwner.isEmpty) {
+                                val fDoc = qOwner.documents[0]
+                                if (farmId.isNullOrBlank()) farmId = fDoc.getString("farmId") ?: fDoc.id
+                                if (farmName.isNullOrBlank()) farmName = fDoc.getString("farmName") ?: "My Farm"
+                            }
+                        } catch (e: Throwable) {}
+                    }
+
+                    if (farmId.isNullOrBlank() || farmName.isNullOrBlank()) {
+                        val farmDoc = findExistingFarmByPhone(phone) ?: findExistingFarmByPhone(identifier)
+                        if (farmDoc != null) {
+                            if (farmId.isNullOrBlank()) farmId = farmDoc["farmId"] as? String
+                            if (farmName.isNullOrBlank()) farmName = farmDoc["farmName"] as? String
+                        }
+                    }
+                }
+
+                val finalFarmId = farmId?.ifBlank { null }
+                    ?: prefs.getString("farm_id", null)
+                    ?: prefs.getString("last_farm_id", null)
+                    ?: "FARM-${uid.take(5).uppercase()}"
+                val finalFarmName = farmName?.ifBlank { null }
+                    ?: prefs.getString("farm_name", null)
+                    ?: prefs.getString("last_farm_name", null)
+                    ?: "My Farm"
+
+                val isRevoked = (userDocData?.get("isRevoked") as? Boolean) ?: false
                 if (!isRevoked) {
                     val session = UserSession(
                         userId = uid,
                         name = name,
                         emailOrPhone = identifier,
                         role = role,
-                        farmId = farmId,
-                        farmName = farmName,
+                        farmId = finalFarmId,
+                        farmName = finalFarmName,
                         isRevoked = false,
                         permissions = WorkerPermissions(
                             canViewLivestock = true,
@@ -235,12 +301,21 @@ class AuthManager(
                             canViewRequests = true
                         )
                     )
+                    // Overwrite SharedPreferences with fresh data from Firestore
                     saveSession(session)
                     return@withContext
                 }
             }
         } catch (e: Throwable) {
             // Ignored
+        }
+
+        // 2. If no active Firebase Auth session, fallback to local saved session or Room
+        val saved = _currentSession.value ?: loadSavedSession()
+        if (saved != null) {
+            _currentSession.value = saved
+            repository.syncEngine?.startSync(saved.farmId)
+            return@withContext
         }
 
         // 2. Try latest registered FarmAccount in local Room database
@@ -821,6 +896,24 @@ class AuthManager(
                         userDocData = q.documents[0].data
                     }
                 } catch (e: Throwable) {}
+            }
+
+            if (userDocData == null && db != null) {
+                val candidatePhones = getPhoneCandidateFormats(cleanIdentifier) + getPhoneCandidateFormats(authenticatedUser.phoneNumber ?: "")
+                for (phoneVariant in candidatePhones.distinct()) {
+                    try {
+                        val q1 = db.collection("users").whereEqualTo("phone", phoneVariant).limit(1).get().awaitTask()
+                        if (q1 != null && !q1.isEmpty) {
+                            userDocData = q1.documents[0].data
+                            break
+                        }
+                        val q2 = db.collection("users").whereEqualTo("phoneNumber", phoneVariant).limit(1).get().awaitTask()
+                        if (q2 != null && !q2.isEmpty) {
+                            userDocData = q2.documents[0].data
+                            break
+                        }
+                    } catch (e: Throwable) {}
+                }
             }
 
             val name = (userDocData?.get("name") as? String)

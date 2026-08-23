@@ -180,7 +180,15 @@ class AuthManager(
     val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
 
     private suspend fun checkAndRestoreFirebaseAuthSession() = withContext(Dispatchers.IO) {
-        if (prefs.getBoolean("is_logged_out", false)) return@withContext
+        if (prefs.getBoolean("is_logged_out", false)) {
+            try {
+                getFirebaseAuth()?.signOut()
+            } catch (e: Throwable) {}
+            try {
+                FirebaseAuth.getInstance().signOut()
+            } catch (e: Throwable) {}
+            return@withContext
+        }
 
         // 1. Try Firebase Auth session first and refresh from Firestore
         try {
@@ -310,44 +318,22 @@ class AuthManager(
             // Ignored
         }
 
-        // 2. If no active Firebase Auth session, fallback to local saved session or Room
+        // 2. If no active Firebase Auth session, fallback to local saved session
         val saved = _currentSession.value ?: loadSavedSession()
         if (saved != null) {
             _currentSession.value = saved
             repository.syncEngine?.startSync(saved.farmId)
             return@withContext
         }
-
-        // 2. Try latest registered FarmAccount in local Room database
-        try {
-            val allFarms = repository.getAllFarmAccounts()
-            val customFarm = allFarms.firstOrNull { it.farmId != "FARM-DEFAULT" && it.ownerEmailOrPhone.isNotBlank() }
-                ?: allFarms.lastOrNull { it.ownerEmailOrPhone.isNotBlank() }
-
-            if (customFarm != null) {
-                val session = UserSession(
-                    userId = customFarm.ownerId,
-                    name = customFarm.ownerName,
-                    emailOrPhone = customFarm.ownerEmailOrPhone,
-                    role = "OWNER",
-                    farmId = customFarm.farmId,
-                    farmName = customFarm.farmName,
-                    isRevoked = false
-                )
-                saveSession(session)
-                return@withContext
-            }
-        } catch (e: Throwable) {
-            // Ignored
-        }
     }
 
     private fun loadSavedSession(): UserSession? {
-        val userId = prefs.getString("user_id", null) ?: prefs.getString("last_user_id", null) ?: return null
+        if (prefs.getBoolean("is_logged_out", false)) return null
+        val userId = prefs.getString("user_id", null) ?: return null
         val name = prefs.getString("user_name", null) ?: prefs.getString("last_user_name", "Farm User") ?: "Farm User"
         val emailOrPhone = prefs.getString("email_or_phone", null) ?: prefs.getString("last_email_or_phone", "") ?: ""
         val role = prefs.getString("user_role", null) ?: prefs.getString("last_user_role", "OWNER") ?: "OWNER"
-        val farmId = prefs.getString("farm_id", null) ?: prefs.getString("last_farm_id", "FARM-DEFAULT") ?: "FARM-DEFAULT"
+        val farmId = prefs.getString("farm_id", null) ?: return null
         val farmName = prefs.getString("farm_name", null) ?: prefs.getString("last_farm_name", "My Farm") ?: "My Farm"
 
         val canViewLivestock = prefs.getBoolean("can_view_livestock", true)
@@ -1082,6 +1068,12 @@ class AuthManager(
             remove("user_role")
             remove("farm_id")
             remove("farm_name")
+            remove("last_user_id")
+            remove("last_user_name")
+            remove("last_email_or_phone")
+            remove("last_user_role")
+            remove("last_farm_id")
+            remove("last_farm_name")
             remove("can_view_livestock")
             remove("can_edit_livestock")
             remove("can_view_logs")
@@ -1096,6 +1088,9 @@ class AuthManager(
         _currentSession.value = null
         try {
             getFirebaseAuth()?.signOut()
+        } catch (e: Throwable) {}
+        try {
+            FirebaseAuth.getInstance().signOut()
         } catch (e: Throwable) {}
     }
 

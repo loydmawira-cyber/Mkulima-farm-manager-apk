@@ -1,8 +1,12 @@
 package com.example.data
 
 import kotlinx.coroutines.flow.Flow
+import java.util.UUID
 
-class FarmRepository(private val farmDao: FarmDao) {
+class FarmRepository(
+    val farmDao: FarmDao,
+    var syncEngine: FirestoreSyncEngine? = null
+) {
     val allTasks: Flow<List<FarmTask>> = farmDao.getAllTasks()
     val pendingTasks: Flow<List<FarmTask>> = farmDao.getPendingTasks()
     val completedTasks: Flow<List<FarmTask>> = farmDao.getCompletedTasks()
@@ -28,40 +32,219 @@ class FarmRepository(private val farmDao: FarmDao) {
     fun getWorkersForFarm(farmId: String): Flow<List<WorkerAccount>> = farmDao.getWorkersByFarm(farmId)
 
     suspend fun getTaskById(id: Long): FarmTask? = farmDao.getTaskById(id)
-    suspend fun insertTask(task: FarmTask): Long = farmDao.insertTask(task)
-    suspend fun updateTask(task: FarmTask) = farmDao.updateTask(task)
-    suspend fun deleteTask(id: Long) = farmDao.deleteTaskById(id)
 
-    suspend fun insertUnit(unit: FarmUnit): Long = farmDao.insertUnit(unit)
-    suspend fun updateUnit(unit: FarmUnit) = farmDao.updateUnit(unit)
-    suspend fun deleteUnit(id: Long) = farmDao.deleteUnitById(id)
+    suspend fun insertTask(task: FarmTask): Long {
+        val prepared = task.copy(
+            syncId = if (task.syncId.isBlank()) UUID.randomUUID().toString() else task.syncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertTask(prepared)
+        syncEngine?.triggerPush(task.farmId)
+        return id
+    }
 
-    suspend fun insertMilkLog(log: MilkLog): Long = farmDao.insertMilkLog(log)
-    suspend fun updateMilkLog(log: MilkLog) = farmDao.updateMilkLog(log)
-    suspend fun deleteMilkLog(id: Long) = farmDao.deleteMilkLogById(id)
+    suspend fun updateTask(task: FarmTask) {
+        val prepared = task.copy(
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateTask(prepared)
+        syncEngine?.triggerPush(task.farmId)
+    }
 
-    suspend fun insertEggLog(log: EggLog): Long = farmDao.insertEggLog(log)
-    suspend fun updateEggLog(log: EggLog) = farmDao.updateEggLog(log)
-    suspend fun deleteEggLog(id: Long) = farmDao.deleteEggLogById(id)
+    suspend fun deleteTask(id: Long) {
+        val task = farmDao.getTaskById(id)
+        val now = System.currentTimeMillis()
+        farmDao.softDeleteTask(id, now)
+        if (task != null) {
+            syncEngine?.triggerPush(task.farmId)
+        }
+    }
 
-    suspend fun insertFinanceRecord(record: FinanceRecord): Long = farmDao.insertFinanceRecord(record)
-    suspend fun deleteFinanceRecord(id: Long) = farmDao.deleteFinanceRecordById(id)
+    suspend fun insertUnit(unit: FarmUnit): Long {
+        val prepared = unit.copy(
+            syncId = if (unit.syncId.isBlank()) UUID.randomUUID().toString() else unit.syncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertUnit(prepared)
+        syncEngine?.triggerPush(unit.farmId)
+        return id
+    }
 
-    // New: update finance record
-    suspend fun updateFinanceRecord(record: FinanceRecord) = farmDao.updateFinanceRecord(record)
+    suspend fun updateUnit(unit: FarmUnit) {
+        val prepared = unit.copy(
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateUnit(prepared)
+        syncEngine?.triggerPush(unit.farmId)
+    }
 
-    suspend fun insertEmployeeRequest(request: EmployeeRequest): Long = farmDao.insertEmployeeRequest(request)
-    suspend fun updateEmployeeRequest(request: EmployeeRequest) = farmDao.updateEmployeeRequest(request)
-    suspend fun deleteEmployeeRequest(id: Long) = farmDao.deleteEmployeeRequestById(id)
+    suspend fun deleteUnit(id: Long) {
+        val unit = farmDao.getUnitById(id)
+        val now = System.currentTimeMillis()
+        farmDao.softDeleteUnit(id, now)
+        if (unit != null) {
+            syncEngine?.triggerPush(unit.farmId)
+        }
+    }
 
-    suspend fun updateSettings(settings: FarmSettings) = farmDao.insertSettings(settings)
+    suspend fun insertMilkLog(log: MilkLog): Long {
+        val prepared = log.copy(
+            syncId = if (log.syncId.isBlank()) UUID.randomUUID().toString() else log.syncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertMilkLog(prepared)
+        syncEngine?.triggerPush(log.farmId)
+        return id
+    }
+
+    suspend fun updateMilkLog(log: MilkLog) {
+        val prepared = log.copy(
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateMilkLog(prepared)
+        syncEngine?.triggerPush(log.farmId)
+    }
+
+    suspend fun deleteMilkLog(id: Long) {
+        val now = System.currentTimeMillis()
+        val allLogs = farmDao.getDirtyMilkLogs("FARM-DEFAULT", 0)
+        val log = allLogs.find { it.id == id }
+        farmDao.softDeleteMilkLog(id, now)
+        syncEngine?.triggerPush(log?.farmId)
+    }
+
+    suspend fun insertEggLog(log: EggLog): Long {
+        val prepared = log.copy(
+            syncId = if (log.syncId.isBlank()) UUID.randomUUID().toString() else log.syncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertEggLog(prepared)
+        syncEngine?.triggerPush(log.farmId)
+        return id
+    }
+
+    suspend fun updateEggLog(log: EggLog) {
+        val prepared = log.copy(
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateEggLog(prepared)
+        syncEngine?.triggerPush(log.farmId)
+    }
+
+    suspend fun deleteEggLog(id: Long) {
+        val now = System.currentTimeMillis()
+        val allLogs = farmDao.getDirtyEggLogs("FARM-DEFAULT", 0)
+        val log = allLogs.find { it.id == id }
+        farmDao.softDeleteEggLog(id, now)
+        syncEngine?.triggerPush(log?.farmId)
+    }
+
+    suspend fun insertFinanceRecord(record: FinanceRecord): Long {
+        val prepared = record.copy(
+            syncId = if (record.syncId.isBlank()) UUID.randomUUID().toString() else record.syncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertFinanceRecord(prepared)
+        syncEngine?.triggerPush(record.farmId)
+        return id
+    }
+
+    suspend fun updateFinanceRecord(record: FinanceRecord) {
+        val prepared = record.copy(
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateFinanceRecord(prepared)
+        syncEngine?.triggerPush(record.farmId)
+    }
+
+    suspend fun deleteFinanceRecord(id: Long) {
+        val now = System.currentTimeMillis()
+        val allRecs = farmDao.getDirtyFinanceRecords("FARM-DEFAULT", 0)
+        val rec = allRecs.find { it.id == id }
+        farmDao.softDeleteFinanceRecord(id, now)
+        syncEngine?.triggerPush(rec?.farmId)
+    }
+
+    suspend fun insertEmployeeRequest(request: EmployeeRequest): Long {
+        val prepared = request.copy(
+            syncId = if (request.syncId.isBlank()) UUID.randomUUID().toString() else request.syncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertEmployeeRequest(prepared)
+        syncEngine?.triggerPush(request.farmId)
+        return id
+    }
+
+    suspend fun updateEmployeeRequest(request: EmployeeRequest) {
+        val prepared = request.copy(
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateEmployeeRequest(prepared)
+        syncEngine?.triggerPush(request.farmId)
+    }
+
+    suspend fun deleteEmployeeRequest(id: Long) {
+        val now = System.currentTimeMillis()
+        val allReqs = farmDao.getDirtyEmployeeRequests("FARM-DEFAULT", 0)
+        val req = allReqs.find { it.id == id }
+        farmDao.softDeleteEmployeeRequest(id, now)
+        syncEngine?.triggerPush(req?.farmId)
+    }
+
+    suspend fun updateSettings(settings: FarmSettings) {
+        val prepared = settings.copy(
+            syncId = "settings",
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.insertSettings(prepared)
+        syncEngine?.triggerPush(settings.farmId)
+    }
 
     // Worker operations
-    suspend fun insertWorker(worker: WorkerAccount) = farmDao.insertWorker(worker)
-    suspend fun updateWorker(worker: WorkerAccount) = farmDao.updateWorker(worker)
-    suspend fun deleteWorker(workerId: String) = farmDao.deleteWorkerById(workerId)
-    suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean) = farmDao.setWorkerRevoked(workerId, isRevoked)
+    suspend fun insertWorker(worker: WorkerAccount) {
+        val prepared = worker.copy(
+            syncId = if (worker.syncId.isBlank()) worker.workerId else worker.syncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        farmDao.insertWorker(prepared)
+        syncEngine?.triggerPush(worker.farmId)
+    }
+
+    suspend fun updateWorker(worker: WorkerAccount) {
+        val prepared = worker.copy(
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateWorker(prepared)
+        syncEngine?.triggerPush(worker.farmId)
+    }
+
+    suspend fun deleteWorker(workerId: String) {
+        val worker = farmDao.getWorkerById(workerId)
+        val now = System.currentTimeMillis()
+        farmDao.softDeleteWorker(workerId, now)
+        if (worker != null) {
+            syncEngine?.triggerPush(worker.farmId)
+        }
+    }
+
+    suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean) {
+        val worker = farmDao.getWorkerById(workerId)
+        val now = System.currentTimeMillis()
+        farmDao.setWorkerRevoked(workerId, isRevoked, now)
+        if (worker != null) {
+            syncEngine?.triggerPush(worker.farmId)
+        }
+    }
+
     suspend fun getWorkerById(workerId: String): WorkerAccount? = farmDao.getWorkerById(workerId)
+
     suspend fun getWorkerByLoginIdentifier(identifier: String): WorkerAccount? {
         val trimmed = identifier.trim()
         val direct = farmDao.getWorkerByLoginIdentifier(trimmed)
@@ -86,9 +269,47 @@ class FarmRepository(private val farmDao: FarmDao) {
     // Cattle Events
     fun getCattleEventsForUnit(unitId: Long): Flow<List<CattleEvent>> = farmDao.getCattleEventsByUnit(unitId)
     fun getAllCattleEvents(farmId: String): Flow<List<CattleEvent>> = farmDao.getAllCattleEvents(farmId)
-    suspend fun insertCattleEvent(event: CattleEvent): Long = farmDao.insertCattleEvent(event)
-    suspend fun updateCattleEvent(event: CattleEvent) = farmDao.updateCattleEvent(event)
-    suspend fun deleteCattleEvent(id: Long) = farmDao.deleteCattleEventById(id)
+
+    suspend fun insertCattleEvent(event: CattleEvent): Long {
+        val resolvedUnitSyncId = if (event.unitSyncId.isNotBlank()) {
+            event.unitSyncId
+        } else if (event.unitId > 0) {
+            farmDao.getUnitById(event.unitId)?.syncId ?: ""
+        } else ""
+
+        val prepared = event.copy(
+            syncId = if (event.syncId.isBlank()) UUID.randomUUID().toString() else event.syncId,
+            unitSyncId = resolvedUnitSyncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertCattleEvent(prepared)
+        syncEngine?.triggerPush(event.farmId)
+        return id
+    }
+
+    suspend fun updateCattleEvent(event: CattleEvent) {
+        val resolvedUnitSyncId = if (event.unitSyncId.isNotBlank()) {
+            event.unitSyncId
+        } else if (event.unitId > 0) {
+            farmDao.getUnitById(event.unitId)?.syncId ?: ""
+        } else ""
+
+        val prepared = event.copy(
+            unitSyncId = resolvedUnitSyncId,
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateCattleEvent(prepared)
+        syncEngine?.triggerPush(event.farmId)
+    }
+
+    suspend fun deleteCattleEvent(id: Long) {
+        val now = System.currentTimeMillis()
+        val allEvents = farmDao.getDirtyCattleEvents("FARM-DEFAULT", 0)
+        val event = allEvents.find { it.id == id }
+        farmDao.softDeleteCattleEvent(id, now)
+        syncEngine?.triggerPush(event?.farmId)
+    }
 
     // Farm operations
     suspend fun insertFarmAccount(farm: FarmAccount) = farmDao.insertFarmAccount(farm)
@@ -103,7 +324,7 @@ class FarmRepository(private val farmDao: FarmDao) {
         if (cleanDigits.length >= 5) {
             val all = farmDao.getAllFarmAccounts()
             for (f in all) {
-                val p1 = f.phoneNumber?.replace(Regex("[^0-9]"), "")?.removePrefix("0") ?: ""
+                val p1 = f.phoneNumber.replace(Regex("[^0-9]"), "").removePrefix("0")
                 val p2 = f.ownerEmailOrPhone.replace(Regex("[^0-9]"), "").removePrefix("0")
                 if ((p1.isNotBlank() && (p1.endsWith(cleanDigits) || cleanDigits.endsWith(p1))) ||
                     (p2.isNotBlank() && (p2.endsWith(cleanDigits) || cleanDigits.endsWith(p2)))) {
@@ -116,6 +337,7 @@ class FarmRepository(private val farmDao: FarmDao) {
         }
         return null
     }
+
     suspend fun getAllFarmAccounts(): List<FarmAccount> = farmDao.getAllFarmAccounts()
     suspend fun updateOwnerPassword(emailOrPhone: String, newPass: String) = farmDao.updateOwnerPassword(emailOrPhone, newPass)
     suspend fun updateWorkerPassword(emailOrPhone: String, newPass: String) = farmDao.updateWorkerPassword(emailOrPhone, newPass)
@@ -123,16 +345,20 @@ class FarmRepository(private val farmDao: FarmDao) {
     suspend fun seedNewFarmStarterData(farmId: String, farmName: String) {
         val initialSettings = FarmSettings(
             farmId = farmId,
+            syncId = "settings",
             farmType = "Both",
-            currency = "KES"
+            currency = "KES",
+            updatedAt = System.currentTimeMillis()
         )
         farmDao.insertSettings(initialSettings)
+        syncEngine?.triggerPush(farmId)
     }
 
     suspend fun ensureInitialData(database: MkulimaDatabase) {
         // No sample data seeded automatically
     }
 
+    // Only explicit 'wipe everything' actions hard-delete, and those only ever touch local Room, never Firestore.
     suspend fun clearFarmData(farmId: String) {
         farmDao.deleteUnitsForFarm(farmId)
         farmDao.deleteTasksForFarm(farmId)

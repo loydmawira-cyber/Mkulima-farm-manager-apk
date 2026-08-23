@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isFarmOwner(farmId) {
+      return isSignedIn() && (
+        request.auth.uid == get(/databases/$(database)/documents/farms/$(farmId)).data.ownerId ||
+        (request.resource != null && request.resource.data.ownerId == request.auth.uid) ||
+        resource.data.ownerId == request.auth.uid
+      );
+    }
+    
+    function isFarmWorker(farmId) {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/farms/$(farmId)/worker_accounts/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/farms/$(farmId)/worker_accounts/$(request.auth.uid)).data.isRevoked == false
+      );
+    }
+    
+    function hasFarmAccess(farmId) {
+      return isSignedIn() && (isFarmOwner(farmId) || isFarmWorker(farmId));
+    }
+    
+    // User profile documents
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (request.auth.uid == userId || request.auth.token.email != null);
+    }
+    
+    // Farm root and sub-collections
+    match /farms/{farmId} {
+      allow read: if hasFarmAccess(farmId);
+      allow write: if isSignedIn() && (
+        !exists(/databases/$(database)/documents/farms/$(farmId)) ||
+        isFarmOwner(farmId)
+      );
+      
+      // Metadata (e.g. settings)
+      match /meta/{docId} {
+        allow read: if hasFarmAccess(farmId);
+        allow write: if isFarmOwner(farmId) || (isFarmWorker(farmId) && docId == "settings");
+      }
+      
+      // Worker accounts collection
+      match /worker_accounts/{workerDocId} {
+        allow read: if hasFarmAccess(farmId);
+        allow write: if isFarmOwner(farmId) || request.auth.uid == workerDocId;
+      }
+      
+      // Operational tables: tasks, units, milk_logs, egg_logs, finance_records, employee_requests, cattle_events
+      match /{table}/{syncId} {
+        allow read: if hasFarmAccess(farmId);
+        allow write: if hasFarmAccess(farmId);
+      }
+    }
+  }
+}

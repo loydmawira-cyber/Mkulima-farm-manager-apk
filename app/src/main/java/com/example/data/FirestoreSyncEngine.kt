@@ -1,0 +1,689 @@
+package com.example.data
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.ExecutionException
+
+class FirestoreSyncEngine(
+    private val context: Context,
+    private val farmDao: FarmDao
+) {
+    companion object {
+        private const val TAG = "FirestoreSyncEngine"
+        private const val PREFS_NAME = "mkulima_firestore_sync_prefs"
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private var activeFarmId: String? = null
+    private val activeListeners = mutableListOf<ListenerRegistration>()
+    private var pushJob: Job? = null
+
+    private fun getFirestore(): FirebaseFirestore? {
+        return try {
+            if (FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+            }
+            val db = FirebaseFirestore.getInstance()
+            try {
+                val currentSettings = db.firestoreSettings
+                if (!currentSettings.isPersistenceEnabled) {
+                    val settings = FirebaseFirestoreSettings.Builder(currentSettings)
+                        .setPersistenceEnabled(true)
+                        .build()
+                    db.firestoreSettings = settings
+                }
+            } catch (e: Throwable) {
+                // Settings can only be set before calling any other methods
+            }
+            db
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to get Firestore instance", e)
+            null
+        }
+    }
+
+    private fun <T> Task<T>.awaitTask(): T {
+        try {
+            return Tasks.await(this)
+        } catch (e: ExecutionException) {
+            throw e.cause ?: e
+        }
+    }
+
+    private fun getWatermark(farmId: String, key: String): Long {
+        return prefs.getLong("${farmId}_${key}", 0L)
+    }
+
+    private fun setWatermark(farmId: String, key: String, timestamp: Long) {
+        prefs.edit().putLong("${farmId}_${key}", timestamp).apply()
+    }
+
+    fun startSync(farmId: String) {
+        if (farmId.isBlank() || farmId == "FARM-DEFAULT") return
+        synchronized(this) {
+            if (activeFarmId == farmId && activeListeners.isNotEmpty()) return
+            stopSync()
+            activeFarmId = farmId
+        }
+
+        val db = getFirestore() ?: return
+        Log.d(TAG, "Starting Firestore sync for farm: $farmId")
+
+        // 1. Settings Listener
+        try {
+            val settingsListener = db.collection("farms").document(farmId)
+                .collection("meta").document("settings")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e(TAG, "Error in settings snapshot listener", error)
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null && snapshot.exists()) {
+                        scope.launch {
+                            applyRemoteSettings(farmId, snapshot)
+                        }
+                    }
+                }
+            activeListeners.add(settingsListener)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to attach settings listener", e)
+        }
+
+        // Helper for collection listeners
+        fun attachCollectionListener(table: String, onApply: suspend (DocumentSnapshot) -> Unit) {
+            try {
+                val listener = db.collection("farms").document(farmId)
+                    .collection(table)
+                    .addSnapshotListener { snapshots, error ->
+                        if (error != null) {
+                            Log.e(TAG, "Error in $table snapshot listener", error)
+                            return@addSnapshotListener
+                        }
+                        if (snapshots != null) {
+                            scope.launch {
+                                for (doc in snapshots.documents) {
+                                    try {
+                                        onApply(doc)
+                                    } catch (e: Throwable) {
+                                        Log.e(TAG, "Failed to apply remote $table doc ${doc.id}", e)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                activeListeners.add(listener)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed to attach listener for $table", e)
+            }
+        }
+
+        attachCollectionListener("tasks") { applyRemoteTask(farmId, it) }
+        attachCollectionListener("units") { applyRemoteUnit(farmId, it) }
+        attachCollectionListener("milk_logs") { applyRemoteMilkLog(farmId, it) }
+        attachCollectionListener("egg_logs") { applyRemoteEggLog(farmId, it) }
+        attachCollectionListener("finance_records") { applyRemoteFinanceRecord(farmId, it) }
+        attachCollectionListener("employee_requests") { applyRemoteEmployeeRequest(farmId, it) }
+        attachCollectionListener("cattle_events") { applyRemoteCattleEvent(farmId, it) }
+        attachCollectionListener("worker_accounts") { applyRemoteWorkerAccount(farmId, it) }
+
+        // Trigger initial push of any offline/dirty changes
+        triggerPush(farmId)
+    }
+
+    fun stopSync() {
+        synchronized(this) {
+            for (listener in activeListeners) {
+                try {
+                    listener.remove()
+                } catch (e: Throwable) {}
+            }
+            activeListeners.clear()
+            activeFarmId = null
+        }
+    }
+
+    fun triggerPush(farmId: String? = null) {
+        val targetFarmId = farmId ?: activeFarmId ?: return
+        if (targetFarmId == "FARM-DEFAULT") return
+
+        pushJob?.cancel()
+        pushJob = scope.launch {
+            delay(300) // Debounce rapid writes
+            pushDirtyRows(targetFarmId)
+        }
+    }
+
+    suspend fun pushDirtyRows(farmId: String) = withContext(Dispatchers.IO) {
+        val db = getFirestore() ?: return@withContext
+        try {
+            val farmRef = db.collection("farms").document(farmId)
+
+            // 1. Settings
+            val lastSettingsPush = getWatermark(farmId, "push_settings")
+            val dirtySettings = farmDao.getDirtySettings(farmId, lastSettingsPush)
+            for (setting in dirtySettings) {
+                val data = hashMapOf<String, Any>(
+                    "syncId" to setting.syncId,
+                    "farmId" to farmId,
+                    "farmType" to setting.farmType,
+                    "currency" to setting.currency,
+                    "weaningReminderDays" to setting.weaningReminderDays,
+                    "pregnancyCheckReminderDays" to setting.pregnancyCheckReminderDays,
+                    "dryingOffReminderDays" to setting.dryingOffReminderDays,
+                    "themeMode" to setting.themeMode,
+                    "updatedAt" to setting.updatedAt,
+                    "isDeleted" to setting.isDeleted
+                )
+                farmRef.collection("meta").document("settings").set(data, SetOptions.merge()).awaitTask()
+                setWatermark(farmId, "push_settings", setting.updatedAt)
+            }
+
+            // 2. Tasks
+            val lastTasksPush = getWatermark(farmId, "push_tasks")
+            val dirtyTasks = farmDao.getDirtyTasks(farmId, lastTasksPush)
+            var maxTaskUpdatedAt = lastTasksPush
+            for (task in dirtyTasks) {
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to task.syncId,
+                    "farmId" to farmId,
+                    "title" to task.title,
+                    "category" to task.category.name,
+                    "targetUnit" to task.targetUnit,
+                    "priority" to task.priority.name,
+                    "scheduledTime" to task.scheduledTime,
+                    "isCompleted" to task.isCompleted,
+                    "completedAt" to task.completedAt,
+                    "proofPhotoUri" to task.proofPhotoUri,
+                    "proofNotes" to task.proofNotes,
+                    "assignedWorker" to task.assignedWorker,
+                    "instructions" to task.instructions,
+                    "createdAt" to task.createdAt,
+                    "updatedAt" to task.updatedAt,
+                    "isDeleted" to task.isDeleted
+                )
+                farmRef.collection("tasks").document(task.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (task.updatedAt > maxTaskUpdatedAt) maxTaskUpdatedAt = task.updatedAt
+            }
+            if (maxTaskUpdatedAt > lastTasksPush) setWatermark(farmId, "push_tasks", maxTaskUpdatedAt)
+
+            // 3. Units
+            val lastUnitsPush = getWatermark(farmId, "push_units")
+            val dirtyUnits = farmDao.getDirtyUnits(farmId, lastUnitsPush)
+            var maxUnitUpdatedAt = lastUnitsPush
+            for (unit in dirtyUnits) {
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to unit.syncId,
+                    "farmId" to farmId,
+                    "name" to unit.name,
+                    "type" to unit.type,
+                    "headCount" to unit.headCount,
+                    "healthStatus" to unit.healthStatus,
+                    "location" to unit.location,
+                    "lastUpdated" to unit.lastUpdated,
+                    "tagNumber" to unit.tagNumber,
+                    "breed" to unit.breed,
+                    "dob" to unit.dob,
+                    "dateAdded" to unit.dateAdded,
+                    "weightAtBirth" to unit.weightAtBirth,
+                    "currentWeight" to unit.currentWeight,
+                    "sire" to unit.sire,
+                    "dam" to unit.dam,
+                    "photoUri" to unit.photoUri,
+                    "updatedAt" to unit.updatedAt,
+                    "isDeleted" to unit.isDeleted
+                )
+                farmRef.collection("units").document(unit.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (unit.updatedAt > maxUnitUpdatedAt) maxUnitUpdatedAt = unit.updatedAt
+            }
+            if (maxUnitUpdatedAt > lastUnitsPush) setWatermark(farmId, "push_units", maxUnitUpdatedAt)
+
+            // 4. Milk Logs
+            val lastMilkPush = getWatermark(farmId, "push_milk_logs")
+            val dirtyMilk = farmDao.getDirtyMilkLogs(farmId, lastMilkPush)
+            var maxMilkUpdatedAt = lastMilkPush
+            for (log in dirtyMilk) {
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to log.syncId,
+                    "farmId" to farmId,
+                    "cowName" to log.cowName,
+                    "unitName" to log.unitName,
+                    "litres" to log.litres,
+                    "session" to log.session,
+                    "fatPercentage" to log.fatPercentage,
+                    "date" to log.date,
+                    "loggedAt" to log.loggedAt,
+                    "notes" to log.notes,
+                    "updatedAt" to log.updatedAt,
+                    "isDeleted" to log.isDeleted
+                )
+                farmRef.collection("milk_logs").document(log.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (log.updatedAt > maxMilkUpdatedAt) maxMilkUpdatedAt = log.updatedAt
+            }
+            if (maxMilkUpdatedAt > lastMilkPush) setWatermark(farmId, "push_milk_logs", maxMilkUpdatedAt)
+
+            // 5. Egg Logs
+            val lastEggPush = getWatermark(farmId, "push_egg_logs")
+            val dirtyEgg = farmDao.getDirtyEggLogs(farmId, lastEggPush)
+            var maxEggUpdatedAt = lastEggPush
+            for (log in dirtyEgg) {
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to log.syncId,
+                    "farmId" to farmId,
+                    "unitName" to log.unitName,
+                    "totalEggs" to log.totalEggs,
+                    "damagedEggs" to log.damagedEggs,
+                    "grade" to log.grade,
+                    "loggedAt" to log.loggedAt,
+                    "notes" to log.notes,
+                    "updatedAt" to log.updatedAt,
+                    "isDeleted" to log.isDeleted
+                )
+                farmRef.collection("egg_logs").document(log.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (log.updatedAt > maxEggUpdatedAt) maxEggUpdatedAt = log.updatedAt
+            }
+            if (maxEggUpdatedAt > lastEggPush) setWatermark(farmId, "push_egg_logs", maxEggUpdatedAt)
+
+            // 6. Finance Records
+            val lastFinancePush = getWatermark(farmId, "push_finance_records")
+            val dirtyFinance = farmDao.getDirtyFinanceRecords(farmId, lastFinancePush)
+            var maxFinanceUpdatedAt = lastFinancePush
+            for (rec in dirtyFinance) {
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to rec.syncId,
+                    "farmId" to farmId,
+                    "type" to rec.type.name,
+                    "category" to rec.category,
+                    "amount" to rec.amount,
+                    "date" to rec.date,
+                    "description" to rec.description,
+                    "updatedAt" to rec.updatedAt,
+                    "isDeleted" to rec.isDeleted
+                )
+                farmRef.collection("finance_records").document(rec.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (rec.updatedAt > maxFinanceUpdatedAt) maxFinanceUpdatedAt = rec.updatedAt
+            }
+            if (maxFinanceUpdatedAt > lastFinancePush) setWatermark(farmId, "push_finance_records", maxFinanceUpdatedAt)
+
+            // 7. Employee Requests
+            val lastReqPush = getWatermark(farmId, "push_employee_requests")
+            val dirtyReqs = farmDao.getDirtyEmployeeRequests(farmId, lastReqPush)
+            var maxReqUpdatedAt = lastReqPush
+            for (req in dirtyReqs) {
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to req.syncId,
+                    "farmId" to farmId,
+                    "workerId" to req.workerId,
+                    "workerEmailOrPhone" to req.workerEmailOrPhone,
+                    "employeeName" to req.employeeName,
+                    "requestType" to req.requestType,
+                    "amount" to req.amount,
+                    "startDate" to req.startDate,
+                    "endDate" to req.endDate,
+                    "reason" to req.reason,
+                    "status" to req.status.name,
+                    "submittedAt" to req.submittedAt,
+                    "reviewNotes" to req.reviewNotes,
+                    "updatedAt" to req.updatedAt,
+                    "isDeleted" to req.isDeleted
+                )
+                farmRef.collection("employee_requests").document(req.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (req.updatedAt > maxReqUpdatedAt) maxReqUpdatedAt = req.updatedAt
+            }
+            if (maxReqUpdatedAt > lastReqPush) setWatermark(farmId, "push_employee_requests", maxReqUpdatedAt)
+
+            // 8. Cattle Events
+            val lastEventPush = getWatermark(farmId, "push_cattle_events")
+            val dirtyEvents = farmDao.getDirtyCattleEvents(farmId, lastEventPush)
+            var maxEventUpdatedAt = lastEventPush
+            for (event in dirtyEvents) {
+                val resolvedUnitSyncId = if (event.unitSyncId.isNotBlank()) {
+                    event.unitSyncId
+                } else if (event.unitId > 0) {
+                    farmDao.getUnitById(event.unitId)?.syncId ?: ""
+                } else ""
+
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to event.syncId,
+                    "farmId" to farmId,
+                    "unitSyncId" to resolvedUnitSyncId,
+                    "category" to event.category,
+                    "title" to event.title,
+                    "date" to event.date,
+                    "details" to event.details,
+                    "notes" to event.notes,
+                    "metricValue" to event.metricValue,
+                    "updatedAt" to event.updatedAt,
+                    "isDeleted" to event.isDeleted
+                )
+                farmRef.collection("cattle_events").document(event.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (event.updatedAt > maxEventUpdatedAt) maxEventUpdatedAt = event.updatedAt
+            }
+            if (maxEventUpdatedAt > lastEventPush) setWatermark(farmId, "push_cattle_events", maxEventUpdatedAt)
+
+            // 9. Worker Accounts
+            val lastWorkerPush = getWatermark(farmId, "push_worker_accounts")
+            val dirtyWorkers = farmDao.getDirtyWorkers(farmId, lastWorkerPush)
+            var maxWorkerUpdatedAt = lastWorkerPush
+            for (worker in dirtyWorkers) {
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to worker.syncId,
+                    "workerId" to worker.workerId,
+                    "farmId" to farmId,
+                    "name" to worker.name,
+                    "emailOrPhone" to worker.emailOrPhone,
+                    "role" to worker.role,
+                    "isRevoked" to worker.isRevoked,
+                    "createdAt" to worker.createdAt,
+                    "updatedAt" to worker.updatedAt,
+                    "isDeleted" to worker.isDeleted,
+                    "canViewLivestock" to worker.canViewLivestock,
+                    "canEditLivestock" to worker.canEditLivestock,
+                    "canViewLogs" to worker.canViewLogs,
+                    "canEditLogs" to worker.canEditLogs,
+                    "canViewFinance" to worker.canViewFinance,
+                    "canEditFinance" to worker.canEditFinance,
+                    "canViewTasks" to worker.canViewTasks,
+                    "canCompleteTasks" to worker.canCompleteTasks,
+                    "canViewRequests" to worker.canViewRequests
+                )
+                farmRef.collection("worker_accounts").document(worker.workerId).set(data, SetOptions.merge()).awaitTask()
+                if (worker.updatedAt > maxWorkerUpdatedAt) maxWorkerUpdatedAt = worker.updatedAt
+            }
+            if (maxWorkerUpdatedAt > lastWorkerPush) setWatermark(farmId, "push_worker_accounts", maxWorkerUpdatedAt)
+
+            Log.d(TAG, "Successfully pushed dirty rows for farm: $farmId")
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to push dirty rows for farm $farmId", e)
+        }
+    }
+
+    // ================= Remote Row Application (Last-Write-Wins) =================
+
+    private suspend fun applyRemoteSettings(farmId: String, doc: DocumentSnapshot) {
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val existing = farmDao.getSettingsSync(farmId)
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val updated = FarmSettings(
+                id = existing?.id ?: 1,
+                syncId = doc.getString("syncId") ?: "settings",
+                farmId = farmId,
+                farmType = doc.getString("farmType") ?: "Both",
+                currency = doc.getString("currency") ?: "KES",
+                weaningReminderDays = doc.getLong("weaningReminderDays")?.toInt() ?: 180,
+                pregnancyCheckReminderDays = doc.getLong("pregnancyCheckReminderDays")?.toInt() ?: 30,
+                dryingOffReminderDays = doc.getLong("dryingOffReminderDays")?.toInt() ?: 60,
+                themeMode = doc.getString("themeMode") ?: "SYSTEM",
+                updatedAt = remoteUpdatedAt,
+                isDeleted = doc.getBoolean("isDeleted") ?: false
+            )
+            farmDao.insertSettings(updated)
+        }
+    }
+
+    private suspend fun applyRemoteTask(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getTaskBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val categoryStr = doc.getString("category") ?: "GENERAL"
+            val category = try { TaskCategory.valueOf(categoryStr) } catch (e: Exception) { TaskCategory.GENERAL }
+            val priorityStr = doc.getString("priority") ?: "MEDIUM"
+            val priority = try { TaskPriority.valueOf(priorityStr) } catch (e: Exception) { TaskPriority.MEDIUM }
+
+            val task = FarmTask(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                title = doc.getString("title") ?: "Farm Task",
+                category = category,
+                targetUnit = doc.getString("targetUnit") ?: "Farm Area",
+                priority = priority,
+                scheduledTime = doc.getString("scheduledTime") ?: "Today",
+                isCompleted = doc.getBoolean("isCompleted") ?: false,
+                completedAt = doc.getString("completedAt"),
+                proofPhotoUri = doc.getString("proofPhotoUri"),
+                proofNotes = doc.getString("proofNotes"),
+                assignedWorker = doc.getString("assignedWorker") ?: "Lead Farm Operator",
+                instructions = doc.getString("instructions"),
+                createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis(),
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            farmDao.insertTask(task)
+        }
+    }
+
+    private suspend fun applyRemoteUnit(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getUnitBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val unit = FarmUnit(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                name = doc.getString("name") ?: "Farm Unit",
+                type = doc.getString("type") ?: "Cattle",
+                headCount = doc.getLong("headCount")?.toInt() ?: 0,
+                healthStatus = doc.getString("healthStatus") ?: "Optimal",
+                location = doc.getString("location") ?: "Main Sector",
+                lastUpdated = doc.getString("lastUpdated") ?: "",
+                tagNumber = doc.getString("tagNumber") ?: "",
+                breed = doc.getString("breed") ?: "",
+                dob = doc.getString("dob") ?: "",
+                dateAdded = doc.getString("dateAdded") ?: "",
+                weightAtBirth = doc.getString("weightAtBirth") ?: "",
+                currentWeight = doc.getString("currentWeight") ?: "",
+                sire = doc.getString("sire") ?: "",
+                dam = doc.getString("dam") ?: "",
+                photoUri = doc.getString("photoUri"),
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            val rowId = farmDao.insertUnit(unit)
+            val effectiveUnitId = if (unit.id > 0) unit.id else rowId
+
+            // Re-resolve any pending cattle events that reference this unitSyncId
+            if (effectiveUnitId > 0) {
+                farmDao.updateCattleEventsUnitIdByUnitSyncId(syncId, effectiveUnitId)
+            }
+        }
+    }
+
+    private suspend fun applyRemoteMilkLog(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getMilkLogBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val log = MilkLog(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                cowName = doc.getString("cowName") ?: "Daisy",
+                unitName = doc.getString("unitName") ?: "Dairy Herd",
+                litres = doc.getDouble("litres") ?: 0.0,
+                session = doc.getString("session") ?: "Morning",
+                fatPercentage = doc.getDouble("fatPercentage") ?: 3.8,
+                date = doc.getString("date") ?: "",
+                loggedAt = doc.getString("loggedAt") ?: "",
+                notes = doc.getString("notes"),
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            farmDao.insertMilkLog(log)
+        }
+    }
+
+    private suspend fun applyRemoteEggLog(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getEggLogBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val log = EggLog(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                unitName = doc.getString("unitName") ?: "Poultry Flock",
+                totalEggs = doc.getLong("totalEggs")?.toInt() ?: 0,
+                damagedEggs = doc.getLong("damagedEggs")?.toInt() ?: 0,
+                grade = doc.getString("grade") ?: "Grade A",
+                loggedAt = doc.getString("loggedAt") ?: "",
+                notes = doc.getString("notes"),
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            farmDao.insertEggLog(log)
+        }
+    }
+
+    private suspend fun applyRemoteFinanceRecord(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getFinanceRecordBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val typeStr = doc.getString("type") ?: "INCOME"
+            val type = try { FinanceType.valueOf(typeStr) } catch (e: Exception) { FinanceType.INCOME }
+
+            val rec = FinanceRecord(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                type = type,
+                category = doc.getString("category") ?: "General",
+                amount = doc.getDouble("amount") ?: 0.0,
+                date = doc.getString("date") ?: "",
+                description = doc.getString("description") ?: "Transaction",
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            farmDao.insertFinanceRecord(rec)
+        }
+    }
+
+    private suspend fun applyRemoteEmployeeRequest(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getEmployeeRequestBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val statusStr = doc.getString("status") ?: "PENDING"
+            val status = try { RequestStatus.valueOf(statusStr) } catch (e: Exception) { RequestStatus.PENDING }
+
+            val req = EmployeeRequest(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                workerId = doc.getString("workerId") ?: "",
+                workerEmailOrPhone = doc.getString("workerEmailOrPhone") ?: "",
+                employeeName = doc.getString("employeeName") ?: "Farm Worker",
+                requestType = doc.getString("requestType") ?: "Salary Advance",
+                amount = doc.getDouble("amount") ?: 0.0,
+                startDate = doc.getString("startDate") ?: "",
+                endDate = doc.getString("endDate") ?: "",
+                reason = doc.getString("reason") ?: "",
+                status = status,
+                submittedAt = doc.getString("submittedAt") ?: "",
+                reviewNotes = doc.getString("reviewNotes"),
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            farmDao.insertEmployeeRequest(req)
+        }
+    }
+
+    private suspend fun applyRemoteCattleEvent(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getCattleEventBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val unitSyncId = doc.getString("unitSyncId") ?: ""
+            // Re-resolve local FK unitId from unitSyncId
+            val localUnitId = if (unitSyncId.isNotBlank()) {
+                farmDao.getUnitBySyncId(unitSyncId)?.id ?: 0L
+            } else 0L
+
+            val event = CattleEvent(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                unitId = localUnitId,
+                unitSyncId = unitSyncId,
+                category = doc.getString("category") ?: "PD",
+                title = doc.getString("title") ?: "Breeding Event",
+                date = doc.getString("date") ?: "",
+                details = doc.getString("details") ?: "",
+                notes = doc.getString("notes"),
+                metricValue = doc.getString("metricValue"),
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            farmDao.insertCattleEvent(event)
+        }
+    }
+
+    private suspend fun applyRemoteWorkerAccount(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val workerId = doc.getString("workerId") ?: syncId
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getWorkerById(workerId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val worker = WorkerAccount(
+                workerId = workerId,
+                syncId = syncId,
+                farmId = farmId,
+                name = doc.getString("name") ?: "Worker",
+                emailOrPhone = doc.getString("emailOrPhone") ?: doc.getString("phone") ?: "",
+                password = "", // Firebase Auth owns credentials
+                role = doc.getString("role") ?: "WORKER",
+                isRevoked = doc.getBoolean("isRevoked") ?: false,
+                createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis(),
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted,
+                canViewLivestock = doc.getBoolean("canViewLivestock") ?: true,
+                canEditLivestock = doc.getBoolean("canEditLivestock") ?: true,
+                canViewLogs = doc.getBoolean("canViewLogs") ?: true,
+                canEditLogs = doc.getBoolean("canEditLogs") ?: true,
+                canViewFinance = doc.getBoolean("canViewFinance") ?: false,
+                canEditFinance = doc.getBoolean("canEditFinance") ?: false,
+                canViewTasks = doc.getBoolean("canViewTasks") ?: true,
+                canCompleteTasks = doc.getBoolean("canCompleteTasks") ?: true,
+                canViewRequests = doc.getBoolean("canViewRequests") ?: true
+            )
+            farmDao.insertWorker(worker)
+        }
+    }
+}

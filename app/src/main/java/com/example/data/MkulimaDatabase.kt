@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
         WorkerAccount::class,
         FarmAccount::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -62,7 +62,7 @@ abstract class MkulimaDatabase : RoomDatabase() {
         }
 
         suspend fun populateInitialData(farmDao: FarmDao) {
-            farmDao.insertSettings(FarmSettings(farmId = "FARM-DEFAULT"))
+            farmDao.insertSettings(FarmSettings(farmId = "FARM-DEFAULT", syncId = "settings"))
 
             // Default Farm Account without mock operational data
             val defaultFarm = FarmAccount(

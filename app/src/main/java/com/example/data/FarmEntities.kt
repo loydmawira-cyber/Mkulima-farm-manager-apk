@@ -223,7 +223,7 @@ data class FarmSettings(
     val weaningReminderDays: Int = 180, // e.g. 6 months
     val pregnancyCheckReminderDays: Int = 30,
     val dryingOffReminderDays: Int = 60,
-    val themeMode: String = "SYSTEM", // "LIGHT", "DARK", "SYSTEM"
+    val themeMode: String = "CLASSIC", // matches the app's default palette, so the first frame (before settings load from Room) doesn't flash a different theme
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity

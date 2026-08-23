@@ -53,6 +53,45 @@ class AuthManager(
             return fullPhoneOrRaw.replace(Regex("[^0-9]"), "").removePrefix("0")
         }
 
+        fun getPhoneCandidateFormats(identifierOrPhone: String, defaultCountryCode: String = "+254"): List<String> {
+            val clean = identifierOrPhone.trim()
+            if (clean.isBlank()) return emptyList()
+            if (clean.contains("@")) return listOf(clean.lowercase())
+
+            val rawDigits = clean.replace(Regex("[^0-9]"), "")
+            val stripped = rawDigits.removePrefix("0")
+            val codeDigits = defaultCountryCode.replace(Regex("[^0-9]"), "")
+
+            val candidates = mutableListOf<String>()
+            candidates.add(clean)
+            if (rawDigits.isNotBlank()) {
+                candidates.add(rawDigits)
+                candidates.add("+$rawDigits")
+            }
+            if (stripped.isNotBlank()) {
+                candidates.add("0$stripped")
+                candidates.add(stripped)
+                candidates.add("+$stripped")
+                candidates.add("+$codeDigits$stripped")
+                candidates.add("$codeDigits$stripped")
+            }
+
+            val knownPrefixes = listOf("254", "255", "256", "250", "234", "27", "233", "251", "211", "252", "1", "44", "91", "61")
+            for (p in knownPrefixes) {
+                if (stripped.isNotBlank()) {
+                    candidates.add("+$p$stripped")
+                    candidates.add("$p$stripped")
+                }
+                if (rawDigits.startsWith(p)) {
+                    val rem = rawDigits.removePrefix(p)
+                    candidates.add("0$rem")
+                    candidates.add(rem)
+                    candidates.add("+$rem")
+                }
+            }
+            return candidates.distinct()
+        }
+
         fun toAuthEmail(identifier: String, countryCode: String = "+254"): String {
             val trimmed = identifier.trim()
             if (trimmed.contains("@")) {
@@ -280,16 +319,59 @@ class AuthManager(
         return "FARM-$code"
     }
 
+    suspend fun findExistingFarmByPhone(fullPhoneOrRaw: String, defaultCountryCode: String = "+254"): Map<String, Any>? = withContext(Dispatchers.IO) {
+        val db = getFirestore() ?: return@withContext null
+        val formats = getPhoneCandidateFormats(fullPhoneOrRaw, defaultCountryCode)
+        for (fmt in formats) {
+            try {
+                // 1. Check farms collection where ownerContact matches phone format
+                val q1 = db.collection("farms").whereEqualTo("ownerContact", fmt).limit(1).get().awaitTask()
+                if (q1 != null && !q1.isEmpty) {
+                    val farmDoc = q1.documents[0]
+                    val data = farmDoc.data?.toMutableMap() ?: mutableMapOf<String, Any>()
+                    if (!data.containsKey("farmId")) {
+                        data["farmId"] = farmDoc.id
+                    }
+                    return@withContext data
+                }
+
+                // 2. Check farms collection where ownerPhone matches phone format
+                val q2 = db.collection("farms").whereEqualTo("ownerPhone", fmt).limit(1).get().awaitTask()
+                if (q2 != null && !q2.isEmpty) {
+                    val farmDoc = q2.documents[0]
+                    val data = farmDoc.data?.toMutableMap() ?: mutableMapOf<String, Any>()
+                    if (!data.containsKey("farmId")) {
+                        data["farmId"] = farmDoc.id
+                    }
+                    return@withContext data
+                }
+
+                // 3. Check farms collection where phone matches phone format
+                val q3 = db.collection("farms").whereEqualTo("phone", fmt).limit(1).get().awaitTask()
+                if (q3 != null && !q3.isEmpty) {
+                    val farmDoc = q3.documents[0]
+                    val data = farmDoc.data?.toMutableMap() ?: mutableMapOf<String, Any>()
+                    if (!data.containsKey("farmId")) {
+                        data["farmId"] = farmDoc.id
+                    }
+                    return@withContext data
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "Error querying farms for format $fmt", e)
+            }
+        }
+        return@withContext null
+    }
+
     suspend fun checkPhoneNumberExists(fullPhoneNumber: String): Boolean = withContext(Dispatchers.IO) {
         val cleanPhone = fullPhoneNumber.trim()
         if (cleanPhone.isBlank()) return@withContext false
-        val digits = cleanPhone.replace(Regex("[^0-9]"), "")
+        val formatsToCheck = getPhoneCandidateFormats(cleanPhone)
 
         // 1. Query Cloud Firestore "users" collection
         try {
             val db = getFirestore()
             if (db != null) {
-                val formatsToCheck = listOf(cleanPhone, digits, "+$digits").distinct()
                 for (fmt in formatsToCheck) {
                     val q1 = db.collection("users").whereEqualTo("phone", fmt).limit(1).get().awaitTask()
                     if (q1 != null && !q1.isEmpty) return@withContext true
@@ -373,7 +455,14 @@ class AuthManager(
             }
         }
 
-        val farmId = generateUniqueFarmId()
+        // Query Firestore farms collection for existing farm document matching ownerContact
+        val existingFarmDoc = findExistingFarmByPhone(primaryContact, countryCode)
+        val isExistingFarm = existingFarmDoc != null
+        val existingFarmId = existingFarmDoc?.get("farmId") as? String
+        val existingFarmName = existingFarmDoc?.get("farmName") as? String
+
+        val farmId = if (!existingFarmId.isNullOrBlank()) existingFarmId else generateUniqueFarmId()
+        val finalFarmName = if (!existingFarmName.isNullOrBlank()) existingFarmName else cleanFarmName
         val finalUserId = cloudUid ?: "OWNER_${UUID.randomUUID().toString().take(8)}"
         val emailValue = if (primaryContact.contains("@")) primaryContact else ""
 
@@ -390,7 +479,7 @@ class AuthManager(
                     "countryCode" to countryCode,
                     "role" to "OWNER",
                     "farmId" to farmId,
-                    "farmName" to cleanFarmName,
+                    "farmName" to finalFarmName,
                     "createdAt" to System.currentTimeMillis(),
                     "updatedAt" to System.currentTimeMillis()
                 )
@@ -398,20 +487,22 @@ class AuthManager(
 
                 val farmData = hashMapOf<String, Any>(
                     "farmId" to farmId,
-                    "farmName" to cleanFarmName,
+                    "farmName" to finalFarmName,
                     "ownerId" to finalUserId,
                     "ownerName" to cleanName,
                     "ownerContact" to primaryContact,
-                    "createdAt" to System.currentTimeMillis(),
                     "updatedAt" to System.currentTimeMillis()
                 )
+                if (!isExistingFarm) {
+                    farmData["createdAt"] = System.currentTimeMillis()
+                }
                 db.collection("farms").document(farmId).set(farmData, SetOptions.merge()).awaitTask()
             } catch (e: Throwable) {}
         }
 
         val farmAccount = FarmAccount(
             farmId = farmId,
-            farmName = cleanFarmName,
+            farmName = finalFarmName,
             ownerId = finalUserId,
             ownerName = cleanName,
             ownerEmailOrPhone = primaryContact,
@@ -420,7 +511,9 @@ class AuthManager(
             phoneNumber = cleanPhone
         )
         repository.insertFarmAccount(farmAccount)
-        repository.seedNewFarmStarterData(farmId, cleanFarmName)
+        if (!isExistingFarm) {
+            repository.seedNewFarmStarterData(farmId, finalFarmName)
+        }
 
         val session = UserSession(
             userId = finalUserId,
@@ -428,7 +521,7 @@ class AuthManager(
             emailOrPhone = primaryContact,
             role = "OWNER",
             farmId = farmId,
-            farmName = cleanFarmName,
+            farmName = finalFarmName,
             isRevoked = false,
             permissions = WorkerPermissions(
                 canViewLivestock = true,
@@ -505,27 +598,11 @@ class AuthManager(
         if (cleanIdentifier.contains("@")) {
             candidateAuthEmails.add(cleanIdentifier.lowercase())
         } else {
-            val cleanDigits = cleanIdentifier.replace(Regex("[^0-9]"), "").removePrefix("0")
-            val possiblePhoneFormats = mutableListOf(
-                cleanIdentifier,
-                "+$cleanDigits",
-                cleanDigits,
-                "0$cleanDigits"
-            )
-
-            val knownPrefixes = listOf("254", "255", "256", "250", "234", "27", "233", "251", "1", "44", "91")
-            for (prefix in knownPrefixes) {
-                possiblePhoneFormats.add("+$prefix$cleanDigits")
-                possiblePhoneFormats.add("$prefix$cleanDigits")
-                if (cleanDigits.startsWith(prefix)) {
-                    val withoutPrefix = cleanDigits.removePrefix(prefix)
-                    possiblePhoneFormats.add("0$withoutPrefix")
-                    possiblePhoneFormats.add(withoutPrefix)
-                }
-            }
+            val possiblePhoneFormats = getPhoneCandidateFormats(cleanIdentifier)
+            val cleanDigits = extractPhoneDigits(cleanIdentifier)
 
             if (db != null) {
-                for (phoneVariant in possiblePhoneFormats.distinct()) {
+                for (phoneVariant in possiblePhoneFormats) {
                     try {
                         val q1 = db.collection("users").whereEqualTo("phone", phoneVariant).limit(1).get().awaitTask()
                         if (q1 != null && !q1.isEmpty) {
@@ -552,10 +629,14 @@ class AuthManager(
             }
 
             candidateAuthEmails.add("phone_${cleanDigits}@mkulima.farm")
+            val knownPrefixes = listOf("254", "255", "256", "250", "234", "27", "233", "251", "211", "252", "1", "44", "91", "61")
             for (prefix in knownPrefixes) {
                 candidateAuthEmails.add("phone_${prefix}${cleanDigits}@mkulima.farm")
                 if (cleanDigits.startsWith(prefix)) {
+                    val rem = cleanDigits.removePrefix(prefix)
                     candidateAuthEmails.add("phone_${cleanDigits}@mkulima.farm")
+                    candidateAuthEmails.add("phone_${rem}@mkulima.farm")
+                    candidateAuthEmails.add("phone_${prefix}${rem}@mkulima.farm")
                 }
             }
         }
@@ -722,14 +803,37 @@ class AuthManager(
                 ?: authenticatedUser.displayName
                 ?: "Farm Owner"
             val role = (userDocData?.get("role") as? String) ?: "OWNER"
-            val farmId = (userDocData?.get("farmId") as? String)
-                ?: "FARM-${uid.take(5).uppercase()}"
-            val farmName = (userDocData?.get("farmName") as? String)
-                ?: "My Farm"
+            var farmId = (userDocData?.get("farmId") as? String)
+            var farmName = (userDocData?.get("farmName") as? String)
             val phone = (userDocData?.get("phone") as? String)
                 ?: (userDocData?.get("phoneNumber") as? String)
                 ?: authenticatedUser.phoneNumber
                 ?: cleanIdentifier
+
+            // If farmId is missing from user doc or user doc didn't exist, query farms collection directly
+            if (farmId.isNullOrBlank() || farmName.isNullOrBlank()) {
+                if (db != null) {
+                    try {
+                        val qOwner = db.collection("farms").whereEqualTo("ownerId", uid).limit(1).get().awaitTask()
+                        if (qOwner != null && !qOwner.isEmpty) {
+                            val fDoc = qOwner.documents[0]
+                            if (farmId.isNullOrBlank()) farmId = fDoc.getString("farmId") ?: fDoc.id
+                            if (farmName.isNullOrBlank()) farmName = fDoc.getString("farmName") ?: "My Farm"
+                        }
+                    } catch (e: Throwable) {}
+                }
+
+                if (farmId.isNullOrBlank() || farmName.isNullOrBlank()) {
+                    val farmDoc = findExistingFarmByPhone(phone) ?: findExistingFarmByPhone(cleanIdentifier)
+                    if (farmDoc != null) {
+                        if (farmId.isNullOrBlank()) farmId = farmDoc["farmId"] as? String
+                        if (farmName.isNullOrBlank()) farmName = farmDoc["farmName"] as? String
+                    }
+                }
+            }
+
+            val finalFarmId = farmId?.ifBlank { null } ?: "FARM-${uid.take(5).uppercase()}"
+            val finalFarmName = farmName?.ifBlank { null } ?: "My Farm"
 
             val isRevoked = (userDocData?.get("isRevoked") as? Boolean) ?: false
             if (isRevoked) {
@@ -740,7 +844,7 @@ class AuthManager(
             if (role.equals("WORKER", ignoreCase = true)) {
                 val workerAccount = WorkerAccount(
                     workerId = uid,
-                    farmId = farmId,
+                    farmId = finalFarmId,
                     name = name,
                     emailOrPhone = cleanIdentifier,
                     password = "",
@@ -759,8 +863,8 @@ class AuthManager(
                 repository.insertWorker(workerAccount)
             } else {
                 val farmAccount = FarmAccount(
-                    farmId = farmId,
-                    farmName = farmName,
+                    farmId = finalFarmId,
+                    farmName = finalFarmName,
                     ownerId = uid,
                     ownerName = name,
                     ownerEmailOrPhone = cleanIdentifier,
@@ -776,8 +880,8 @@ class AuthManager(
                 name = name,
                 emailOrPhone = cleanIdentifier,
                 role = role,
-                farmId = farmId,
-                farmName = farmName,
+                farmId = finalFarmId,
+                farmName = finalFarmName,
                 isRevoked = false,
                 permissions = WorkerPermissions(
                     canViewLivestock = true,

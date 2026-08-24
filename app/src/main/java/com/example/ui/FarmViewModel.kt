@@ -129,11 +129,12 @@ class FarmViewModel(
     )
 
     fun updateSettings(settings: FarmSettings) {
-        viewModelScope.launch {
-            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            repository.updateSettings(settings.copy(farmId = farmId))
-        }
+    authManager.cacheThemeMode(settings.themeMode)
+    viewModelScope.launch {
+        val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+        repository.updateSettings(settings.copy(farmId = farmId))
     }
+}
 
     val rawTasks: StateFlow<List<FarmTask>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"

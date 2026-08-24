@@ -1,4 +1,4 @@
-package com.example.ui.screens
+Package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -214,19 +214,18 @@ fun DashboardScreen(
     }
 
     // Milk Production Calculations
-    val todayMilkLitres = remember(milkLogs) {
-        val now = Date()
-        val fmt1 = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(now)
-        val fmt2 = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
-        val fmt3 = SimpleDateFormat("dd MMM", Locale.getDefault()).format(now)
+    val todayFormatted1 = remember { java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date()) }
+    val todayFormatted2 = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()) }
+    val todayFormatted3 = remember { java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()).format(java.util.Date()) }
 
+    val todayMilkLitres = remember(milkLogs) {
         val todayLogs = milkLogs.filter { log ->
-            log.date.contains(fmt1, ignoreCase = true) ||
-            log.date.contains(fmt2, ignoreCase = true) ||
-            log.date.contains(fmt3, ignoreCase = true) ||
+            log.date.contains(todayFormatted1, ignoreCase = true) ||
+            log.date.contains(todayFormatted2, ignoreCase = true) ||
+            log.date.contains(todayFormatted3, ignoreCase = true) ||
             log.date.contains("Today", ignoreCase = true) ||
-            log.loggedAt.contains(fmt1, ignoreCase = true) ||
-            log.loggedAt.contains(fmt3, ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted1, ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted3, ignoreCase = true) ||
             log.loggedAt.contains("Today", ignoreCase = true)
         }
         todayLogs.sumOf { it.litres }
@@ -237,21 +236,70 @@ fun DashboardScreen(
 
     // Egg Production Calculations
     val todayEggsCount = remember(eggLogs) {
-        val now = Date()
-        val fmt1 = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(now)
-        val fmt2 = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now)
-        val fmt3 = SimpleDateFormat("dd MMM", Locale.getDefault()).format(now)
-
         val todayLogs = eggLogs.filter { log ->
-            log.loggedAt.contains(fmt1, ignoreCase = true) ||
-            log.loggedAt.contains(fmt2, ignoreCase = true) ||
-            log.loggedAt.contains(fmt3, ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted1, ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted2, ignoreCase = true) ||
+            log.loggedAt.contains(todayFormatted3, ignoreCase = true) ||
             log.loggedAt.contains("Today", ignoreCase = true)
         }
         todayLogs.sumOf { it.totalEggs }
     }
     val weeklyEggsCount = remember(eggLogs) {
         eggLogs.sumOf { it.totalEggs }
+    }
+
+    // Cattle Stage Breakdown Counts
+    val cattleStages = remember(cattleUnits, milkLogs, allCattleEvents) {
+        val stageCounts = mutableMapOf(
+            "Milking" to 0,
+            "In-calf" to 0,
+            "Heifers" to 0,
+            "Calves" to 0,
+            "Bulls" to 0,
+            "Dry" to 0,
+            "Inseminated" to 0,
+            "Disposed" to 0
+        )
+        val evaluated = cattleUnits.map { unit ->
+            val unitDbEvents = allCattleEvents.filter { it.unitId == unit.id }.map {
+                com.example.ui.screens.CattleEventItem(
+                    id = it.id.toString(),
+                    category = it.category,
+                    title = it.title,
+                    date = it.date,
+                    details = it.details,
+                    notes = it.notes ?: "",
+                    metricValue = it.metricValue ?: ""
+                )
+            }
+            val mockDetail = com.example.ui.screens.AnimalDetailData(
+                id = "unit_${unit.id}",
+                name = unit.name,
+                tagNumber = "#${unit.id}",
+                breed = unit.breed,
+                category = "CATTLE",
+                status = unit.healthStatus,
+                age = unit.dob,
+                weight = unit.currentWeight,
+                lastMilk = "",
+                breedingStatus = "ACTIVE",
+                dateOfBirth = unit.dob,
+                weightAtBirth = unit.weightAtBirth,
+                sire = unit.sire,
+                dam = unit.dam
+            )
+            val cowLogs = milkLogs.filter { it.cowName.equals(unit.name, ignoreCase = true) }
+            CattleLifecycleEngine.evaluateCattleStage(mockDetail, unitDbEvents, if (cowLogs.isNotEmpty()) cowLogs else milkLogs)
+        }
+        stageCounts["Milking"] = evaluated.count { it.stage == CattleStage.MILKING }
+        stageCounts["In-calf"] = evaluated.count { it.stage == CattleStage.INCALF || it.stage == CattleStage.INCALF_MILKING }
+        stageCounts["Heifers"] = evaluated.count { it.stage == CattleStage.HEIFER }
+        stageCounts["Calves"] = evaluated.count { it.stage == CattleStage.CALF }
+        stageCounts["Bulls"] = evaluated.count { it.stage == CattleStage.BULL }
+        stageCounts["Dry"] = evaluated.count { it.stage == CattleStage.DRY }
+        stageCounts["Inseminated"] = evaluated.count { it.stage == CattleStage.INSEMINATED }
+        stageCounts["Disposed"] = evaluated.count { it.stage == CattleStage.DISPOSED }
+        stageCounts
     }
 
     // Finance Calculations
@@ -295,7 +343,7 @@ fun DashboardScreen(
         )
     }
 
-    val todayTasksCount = remember(tasks, farmReminders, todayDateVariants) {
+    val todayTasksCount = remember(tasks, farmReminders) {
         val isDateMatchingToday: (String?) -> Boolean = { str ->
             if (str.isNullOrBlank()) false
             else {
@@ -938,7 +986,7 @@ fun DashboardScreen(
                     showRemindersDialog = false
                     onNavigateToTab(1)
                 },
-                onAddTaskClick = {
+                onAddNewTaskClick = {
                     showRemindersDialog = false
                     onAddTaskClick()
                 },
@@ -984,6 +1032,198 @@ private fun HeroGlassBadge(
                 maxLines = 1
             )
         }
+    }
+}
+
+@Composable
+private fun UrgentItemRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    isLast: Boolean = false
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = subtitle,
+                    fontSize = 10.5.sp,
+                    color = Color.White.copy(alpha = 0.8f)
+                )
+            }
+            Text(
+                text = "›",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+        }
+        if (!isLast) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color.White.copy(alpha = 0.18f))
+            )
+        }
+    }
+}
+
+@Composable
+private fun StageGridCell(
+    count: String,
+    label: String,
+    isAttn: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isAttn) RustBg else SageBg,
+        border = BorderStroke(1.dp, if (isAttn) Color(0xFFFDE68A) else Color(0xFFE2E8F0)),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 9.dp, horizontal = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = count,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isAttn) TerracottaDeep else Soil,
+                fontFamily = FontFamily.Serif
+            )
+            Text(
+                text = label,
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = SoilSoft,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun PoultrySummaryCell(
+    number: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Straw,
+        border = BorderStroke(1.5.dp, LineColor),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = number,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Soil,
+                fontFamily = FontFamily.Serif
+            )
+            Text(
+                text = label,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = SoilSoft,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimelineItemRow(
+    name: String,
+    meta: String,
+    isWarning: Boolean,
+    isLast: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(bottom = if (isLast) 0.dp else 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Dot + Connecting line
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .background(if (isWarning) Terracotta else Sage, CircleShape)
+                    .shadow(1.dp, CircleShape)
+            )
+            if (!isLast) {
+                Box(
+                    modifier = Modifier
+                        .width(1.5.dp)
+                        .height(34.dp)
+                        .background(LineColor)
+                )
+            }
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = name,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = Soil
+            )
+            Text(
+                text = meta,
+                fontSize = 10.5.sp,
+                color = SoilSoft
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReceiptLineItem(
+    label: String,
+    amount: String,
+    isPositive: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.5.sp,
+            color = Straw
+        )
+        Text(
+            text = amount,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (isPositive) Color(0xFFA8C99A) else Color(0xFFF0A98C)
+        )
     }
 }
 
@@ -1059,7 +1299,7 @@ private fun ProductionSparkline(
                 val cx2 = prevX + (x - prevX) / 2f
                 val cy2 = y
 
-                path.cubicTo(cx1, cx1, cx2, cy2, x, y)
+                path.cubicTo(cx1, cy1, cx2, cy2, x, y)
                 fillPath.cubicTo(cx1, cy1, cx2, cy2, x, y)
             }
 
@@ -1069,6 +1309,7 @@ private fun ProductionSparkline(
             }
         }
 
+        // Draw soft gradient fill underneath
         drawPath(
             path = fillPath,
             brush = Brush.verticalGradient(
@@ -1078,12 +1319,14 @@ private fun ProductionSparkline(
             )
         )
 
+        // Draw smooth spline stroke
         drawPath(
             path = path,
             color = strokeColor,
             style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
 
+        // Draw endpoint circle marker
         val lastNormalized = (points.last() - minVal) / range
         val lastX = w
         val lastY = h - (lastNormalized * (h - 16f)) - 8f
@@ -1094,3 +1337,8 @@ private fun ProductionSparkline(
         )
     }
 }
+
+
+
+
+This is the dashboard screen

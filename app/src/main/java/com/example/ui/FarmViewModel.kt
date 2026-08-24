@@ -150,7 +150,6 @@ class FarmViewModel(
         selectedCategoryFilter,
         selectedStatusFilter
     ) { tasks, query, categoryFilter, statusFilter ->
-        // Offloaded heavy filtering calculations to Dispatchers.Default
         withContext(Dispatchers.Default) {
             tasks.filter { task ->
                 val matchesQuery = query.isBlank() ||
@@ -604,13 +603,17 @@ class FarmViewModel(
         }
     }
 
-    // Cattle Events
+    // Cattle Events (Optimized as StateFlow)
     fun getCattleEventsFlow(unitId: Long): Flow<List<CattleEvent>> = repository.getCattleEventsForUnit(unitId)
 
-    val allCattleEvents: Flow<List<CattleEvent>> = currentSession.flatMapLatest { session ->
+    val allCattleEvents: StateFlow<List<CattleEvent>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getAllCattleEvents(farmId)
-    }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     fun addCattleEvent(unitId: Long, category: String, title: String, date: String, details: String, notes: String?, metricValue: String?) {
         viewModelScope.launch {

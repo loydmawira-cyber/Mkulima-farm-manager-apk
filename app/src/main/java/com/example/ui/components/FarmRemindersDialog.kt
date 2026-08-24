@@ -508,3 +508,4 @@ fun FarmReminderCard(
         }
     }
 }
+}

@@ -619,6 +619,17 @@ fun MkulimaAppContent(
                         onAddUnitClick = { showAddUnitDialog = true },
                         onAddMilkLogClick = { showAddMilkLogDialog = true },
                         onAddEggLogClick = { showAddEggLogDialog = true },
+                        onCompleteReminderClick = { reminder ->
+                            viewModel.completeReminderAsTask(
+                                title = reminder.title,
+                                targetUnit = reminder.targetName,
+                                dueDateStr = reminder.dueDateStr,
+                                details = reminder.details
+                            )
+                        },
+                        onDismissReminderClick = { reminderId ->
+                            dismissedReminderIds = dismissedReminderIds + reminderId
+                        },
                         userRole = userRole,
                         farmSettings = farmSettings
                     )

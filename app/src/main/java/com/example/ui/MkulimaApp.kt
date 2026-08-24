@@ -112,23 +112,10 @@ fun MkulimaApp(
 
 @Composable
 fun MkulimaThemeWrapper(viewModel: FarmViewModel, content: @Composable () -> Unit) {
-    val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("mkulima_theme_prefs", android.content.Context.MODE_PRIVATE) }
-    var cachedThemeMode by remember {
-        mutableStateOf(prefs.getString("last_theme_mode", "CLASSIC") ?: "CLASSIC")
-    }
-
     val farmSettings by viewModel.farmSettings.collectAsState()
-    val activeThemeMode = farmSettings.themeMode.ifBlank { cachedThemeMode }
-
-    LaunchedEffect(activeThemeMode) {
-        if (activeThemeMode.isNotBlank()) {
-            cachedThemeMode = activeThemeMode
-            prefs.edit().putString("last_theme_mode", activeThemeMode).apply()
-        }
-    }
-
-    MkulimaTheme(themeMode = activeThemeMode) {
+    val cachedThemeMode = remember { viewModel.authManager.getCachedThemeMode() }
+    val effectiveThemeMode = cachedThemeMode ?: farmSettings.themeMode
+    MkulimaTheme(themeMode = effectiveThemeMode) {
         content()
     }
 }

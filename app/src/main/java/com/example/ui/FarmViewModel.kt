@@ -174,6 +174,18 @@ class FarmViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+    val farmReminders: StateFlow<List<com.example.util.FarmReminder>> = combine(
+        allUnits,
+        rawTasks
+    ) { units, tasks ->
+        withContext(Dispatchers.Default) {
+            com.example.util.FarmReminderEngine.computeAllReminders(units = units, tasks = tasks)
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     // Auth Actions
     fun login(emailOrPhone: String, pass: String, onError: (String) -> Unit, onSuccess: () -> Unit = {}) {

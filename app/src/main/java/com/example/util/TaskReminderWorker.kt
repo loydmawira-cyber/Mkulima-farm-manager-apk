@@ -4,11 +4,9 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.data.MkulimaDatabase
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 
 class TaskReminderWorker(
     context: Context,
@@ -21,17 +19,11 @@ class TaskReminderWorker(
             val farmId = getActiveFarmId(context) ?: return Result.success()
 
             val db = MkulimaDatabase.getDatabase(context, CoroutineScope(Dispatchers.IO))
-val farmDao = db.farmDao()
-
-            val todayFormats = listOf(
-                SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()),
-                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            )
+            val farmDao = db.farmDao()
 
             val tasks = farmDao.getTasksByFarm(farmId).first()
-    .filter { task ->
-                    !task.isCompleted &&
-                        todayFormats.any { fmt -> task.dueDateStr.contains(fmt) }
+                .filter { task ->
+                    !task.isCompleted && task.scheduledTime.startsWith("Today", ignoreCase = true)
                 }
 
             tasks.forEach { task ->

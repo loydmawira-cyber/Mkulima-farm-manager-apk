@@ -129,6 +129,13 @@ class AuthManager(
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences("mkulima_auth_prefs", Context.MODE_PRIVATE)
+    fun cacheThemeMode(themeMode: String) {
+        prefs.edit().putString("cached_theme_mode", themeMode).apply()
+    }
+
+    fun getCachedThemeMode(): String? {
+        return prefs.getString("cached_theme_mode", null)
+    }
     private var firebaseAuth: FirebaseAuth? = null
     private var firestore: FirebaseFirestore? = null
 

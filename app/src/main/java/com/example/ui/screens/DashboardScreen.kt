@@ -149,6 +149,8 @@ fun DashboardScreen(
     onViewProofClick: (FarmTask) -> Unit = {},
     onDeleteTaskClick: (FarmTask) -> Unit = {},
     onAddTaskClick: () -> Unit = {},
+    onCompleteReminderClick: (com.example.util.FarmReminder) -> Unit = {},
+    onDismissReminderClick: (String) -> Unit = {},
     onRestockClick: () -> Unit = {},
     onNavigateToTab: (Int) -> Unit = {},
     onAddUnitClick: () -> Unit = {},

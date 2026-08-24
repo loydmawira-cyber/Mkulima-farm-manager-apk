@@ -42,7 +42,7 @@ class TaskReminderWorker(
     }
 
     private fun getActiveFarmId(context: Context): String? {
-        val prefs = context.getSharedPreferences("mkulima_session", Context.MODE_PRIVATE)
-        return prefs.getString("active_farm_id", null)
+        val prefs = context.getSharedPreferences("mkulima_auth_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("farm_id", null)
     }
 }

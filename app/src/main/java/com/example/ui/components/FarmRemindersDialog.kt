@@ -230,13 +230,16 @@ fun FarmRemindersDialog(
                                     if (reminder.unitId != null) {
                                         onNavigateToAnimal(reminder.unitId)
                                         onDismiss()
-                                    } else {
-                                        onMarkTaskDone(reminder.id)
                                     }
+                                },
+                                onCompleteClick = {
+                                    onMarkTaskDone(reminder)
+                                },
+                                onDeleteClick = {
+                                    onDismissReminder(reminder.id)
                                 }
                             )
                         }
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))

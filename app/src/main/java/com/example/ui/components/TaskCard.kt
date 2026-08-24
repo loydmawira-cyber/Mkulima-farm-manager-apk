@@ -58,6 +58,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.request.CachePolicy
+import com.example.R
 import com.example.data.FarmTask
 import com.example.data.TaskCategory
 import com.example.data.TaskPriority
@@ -376,6 +378,10 @@ fun TaskCard(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(task.proofPhotoUri)
                             .crossfade(true)
+                            .placeholder(R.drawable.ic_livestock_placeholder)
+                            .error(R.drawable.ic_livestock_placeholder)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .diskCachePolicy(CachePolicy.ENABLED)
                             .build(),
                         contentDescription = "Task Proof Photo",
                         contentScale = ContentScale.Crop,

@@ -43,11 +43,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -110,13 +112,23 @@ fun MkulimaApp(
 
 @Composable
 fun MkulimaThemeWrapper(viewModel: FarmViewModel, content: @Composable () -> Unit) {
-    val farmSettings by viewModel.farmSettings.collectAsState()
-    if (farmSettings == null) {
-        // Settings haven't loaded from Room yet — show nothing rather than
-        // briefly flashing the wrong (system-default) theme colors.
-        return
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("mkulima_theme_prefs", android.content.Context.MODE_PRIVATE) }
+    var cachedThemeMode by remember {
+        mutableStateOf(prefs.getString("last_theme_mode", "CLASSIC") ?: "CLASSIC")
     }
-    MkulimaTheme(themeMode = farmSettings!!.themeMode) {
+
+    val farmSettings by viewModel.farmSettings.collectAsState()
+    val activeThemeMode = farmSettings.themeMode.ifBlank { cachedThemeMode }
+
+    LaunchedEffect(activeThemeMode) {
+        if (activeThemeMode.isNotBlank()) {
+            cachedThemeMode = activeThemeMode
+            prefs.edit().putString("last_theme_mode", activeThemeMode).apply()
+        }
+    }
+
+    MkulimaTheme(themeMode = activeThemeMode) {
         content()
     }
 }

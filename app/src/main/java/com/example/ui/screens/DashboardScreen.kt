@@ -322,20 +322,55 @@ fun DashboardScreen(
             .mapValues { entry -> entry.value.sumOf { it.amount } }
     }
 
-    // Attention / Urgent items (only active/pending items)
+    // Today Tasks and Reminders (Scheduled for Current Day)
     var showRemindersDialog by remember { mutableStateOf(false) }
     var selectedReminderFilter by remember { mutableStateOf<ReminderType?>(null) }
     val farmReminders = remember(units, tasks) {
         FarmReminderEngine.computeAllReminders(units = units, tasks = tasks)
     }
 
-    val pendingRequests = remember(employeeRequests) {
-        employeeRequests.filter { it.status == RequestStatus.PENDING }
+    val todayDateVariants = remember {
+        val now = Date()
+        listOf(
+            SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(now),
+            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(now),
+            SimpleDateFormat("dd MMM", Locale.getDefault()).format(now),
+            SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(now),
+            SimpleDateFormat("d MMM", Locale.getDefault()).format(now),
+            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(now),
+            SimpleDateFormat("MM/dd/yyyy", Locale.getDefault()).format(now),
+            SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(now)
+        )
     }
-    val pendingTasks = remember(tasks) {
-        tasks.filter { !it.isCompleted }
+
+    val todayTasksCount = remember(tasks, farmReminders) {
+        val isDateMatchingToday: (String?) -> Boolean = { str ->
+            if (str.isNullOrBlank()) false
+            else {
+                val trimmed = str.trim()
+                trimmed.contains("Today", ignoreCase = true) ||
+                        todayDateVariants.any { trimmed.contains(it, ignoreCase = true) }
+            }
+        }
+
+        val todayTasks = tasks.filter { task ->
+            !task.isCompleted && (
+                isDateMatchingToday(task.scheduledTime) ||
+                task.scheduledTime.isBlank() ||
+                task.priority == TaskPriority.HIGH
+            )
+        }
+
+        val todayReminders = farmReminders.filter { reminder ->
+            !reminder.id.startsWith("task_") && !reminder.isCompleted && (
+                reminder.urgency == ReminderUrgency.TODAY ||
+                reminder.daysRemaining == 0 ||
+                isDateMatchingToday(reminder.dueDateStr)
+            )
+        }
+
+        todayTasks.size + todayReminders.size
     }
-    val urgentCount = pendingRequests.size + pendingTasks.size + farmReminders.count { it.urgency == ReminderUrgency.OVERDUE || it.urgency == ReminderUrgency.TODAY }
 
     Box(
         modifier = modifier
@@ -397,8 +432,8 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             HeroGlassBadge(
-                                number = "$urgentCount",
-                                label = "Need attention",
+                                number = "$todayTasksCount",
+                                label = "Today tasks",
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable { onNavigateToTab(4) }

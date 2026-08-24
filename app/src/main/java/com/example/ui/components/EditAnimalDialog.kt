@@ -68,6 +68,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.request.CachePolicy
+import com.example.R
 import com.example.ui.screens.AnimalDetailData
 import com.example.ui.theme.ForestGreenPrimary
 
@@ -234,9 +236,13 @@ fun EditAnimalDialog(
                             ) {
                                 if (!photoUri.isNullOrBlank()) {
                                     AsyncImage(
-                                        model = ImageRequest.Builder(context)
+                                        model = ImageRequest.Builder(LocalContext.current)
                                             .data(photoUri)
                                             .crossfade(true)
+                                            .placeholder(R.drawable.ic_livestock_placeholder)
+                                            .error(R.drawable.ic_livestock_placeholder)
+                                            .memoryCachePolicy(CachePolicy.ENABLED)
+                                            .diskCachePolicy(CachePolicy.ENABLED)
                                             .build(),
                                         contentDescription = "Animal Photo",
                                         contentScale = ContentScale.Crop,

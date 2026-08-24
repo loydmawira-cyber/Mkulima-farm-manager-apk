@@ -80,6 +80,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -98,6 +99,8 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.AlertDialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.request.CachePolicy
+import com.example.R
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
@@ -1628,9 +1631,13 @@ fun FlocksScreen(
                                     Box(contentAlignment = Alignment.Center) {
                                         if (!animal.photoUri.isNullOrBlank()) {
                                             AsyncImage(
-                                                model = ImageRequest.Builder(context)
+                                                model = ImageRequest.Builder(LocalContext.current)
                                                     .data(animal.photoUri)
                                                     .crossfade(true)
+                                                    .placeholder(R.drawable.ic_livestock_placeholder)
+                                                    .error(R.drawable.ic_livestock_placeholder)
+                                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                                    .diskCachePolicy(CachePolicy.ENABLED)
                                                     .build(),
                                                 contentDescription = "${animal.name} Photo",
                                                 contentScale = ContentScale.Crop,
@@ -2347,9 +2354,13 @@ fun AnimalDetailsView(
                         ) {
                             if (!animal.photoUri.isNullOrBlank()) {
                                 AsyncImage(
-                                    model = ImageRequest.Builder(context)
+                                    model = ImageRequest.Builder(LocalContext.current)
                                         .data(animal.photoUri)
                                         .crossfade(true)
+                                        .placeholder(R.drawable.ic_livestock_placeholder)
+                                        .error(R.drawable.ic_livestock_placeholder)
+                                        .memoryCachePolicy(CachePolicy.ENABLED)
+                                        .diskCachePolicy(CachePolicy.ENABLED)
                                         .build(),
                                     contentDescription = "${animal.name} Photo",
                                     contentScale = ContentScale.Crop,
@@ -4218,9 +4229,13 @@ fun FlockDetailsView(
                             ) {
                                 if (!flock.photoUri.isNullOrBlank()) {
                                     AsyncImage(
-                                        model = ImageRequest.Builder(context)
+                                        model = ImageRequest.Builder(LocalContext.current)
                                             .data(flock.photoUri)
                                             .crossfade(true)
+                                            .placeholder(R.drawable.ic_livestock_placeholder)
+                                            .error(R.drawable.ic_livestock_placeholder)
+                                            .memoryCachePolicy(CachePolicy.ENABLED)
+                                            .diskCachePolicy(CachePolicy.ENABLED)
                                             .build(),
                                         contentDescription = "${flock.name} Photo",
                                         contentScale = ContentScale.Crop,

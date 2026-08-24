@@ -451,23 +451,8 @@ class AuthManager(
     suspend fun checkPhoneNumberExists(fullPhoneNumber: String): Boolean = withContext(Dispatchers.IO) {
         val cleanPhone = fullPhoneNumber.trim()
         if (cleanPhone.isBlank()) return@withContext false
-        val formatsToCheck = getPhoneCandidateFormats(cleanPhone)
 
-        // 1. Query Cloud Firestore "users" collection
-        try {
-            val db = getFirestore()
-            if (db != null) {
-                for (fmt in formatsToCheck) {
-                    val q1 = db.collection("users").whereEqualTo("phone", fmt).limit(1).get().awaitTask()
-                    if (q1 != null && !q1.isEmpty) return@withContext true
-
-                    val q2 = db.collection("users").whereEqualTo("phoneNumber", fmt).limit(1).get().awaitTask()
-                    if (q2 != null && !q2.isEmpty) return@withContext true
-                }
-            }
-        } catch (e: Throwable) {}
-
-        // 2. Check local Room database cache
+        // Fast check in local Room database cache first (0ms)
         val localOwner = repository.getFarmAccountByOwner(cleanPhone)
         if (localOwner != null) return@withContext true
         val localWorker = repository.getWorkerByLoginIdentifier(cleanPhone)
@@ -507,54 +492,43 @@ class AuthManager(
         val primaryContact = if (fullPhoneNumber.isNotBlank()) fullPhoneNumber else cleanIdentifier
         val authEmail = if (primaryContact.contains("@")) primaryContact.lowercase() else toAuthEmail(primaryContact, countryCode)
 
-        if (fullPhoneNumber.isNotBlank()) {
-            val exists = checkPhoneNumberExists(fullPhoneNumber)
-            if (exists) {
-                return@withContext AuthResult.AccountAlreadyExists("An account with this phone number ($fullPhoneNumber) already exists. Please sign in instead.")
-            }
+        if (fullPhoneNumber.isNotBlank() && checkPhoneNumberExists(fullPhoneNumber)) {
+            return@withContext AuthResult.AccountAlreadyExists("An account with this phone number ($fullPhoneNumber) already exists. Please sign in instead.")
         }
 
         val auth = getFirebaseAuth()
         val db = getFirestore()
 
         if (auth == null) {
-            return@withContext AuthResult.Error("DEBUG: FirebaseAuth is null. Init error: ${lastAuthInitError ?: "none captured"}")
+            return@withContext AuthResult.Error("Authentication service is currently unavailable.")
         }
 
         var cloudUid: String? = null
 
-        
-if (auth != null) {
-            try {
-                val authResult = auth.createUserWithEmailAndPassword(authEmail, password).awaitTask()
-                val createdUser = authResult?.user
-                if (createdUser != null) {
-                    cloudUid = createdUser.uid
-                    try {
-                        val profileUpdate = UserProfileChangeRequest.Builder()
-                            .setDisplayName(cleanName)
-                            .build()
-                        createdUser.updateProfile(profileUpdate).awaitTask()
-                    } catch (e: Throwable) {}
-                } else {
-                    return@withContext AuthResult.Error("DEBUG: createUserWithEmailAndPassword returned null user, no exception. authEmail=$authEmail")
-                }
-            } catch (e: Throwable) {
-                val msg = e.message ?: ""
-                if (e is FirebaseAuthUserCollisionException || msg.contains("already in use", ignoreCase = true) || msg.contains("email-already-in-use", ignoreCase = true)) {
-                    return@withContext AuthResult.AccountAlreadyExists("An account with this email/phone ($primaryContact) already exists. Please sign in instead.")
-                }
-                return@withContext AuthResult.Error("DEBUG AUTH ERROR: ${e.javaClass.simpleName}: ${e.message}")
+        try {
+            val authResult = auth.createUserWithEmailAndPassword(authEmail, password).awaitTask()
+            val createdUser = authResult?.user
+            if (createdUser != null) {
+                cloudUid = createdUser.uid
+                try {
+                    val profileUpdate = UserProfileChangeRequest.Builder()
+                        .setDisplayName(cleanName)
+                        .build()
+                    createdUser.updateProfile(profileUpdate).awaitTask()
+                } catch (e: Throwable) {}
+            } else {
+                return@withContext AuthResult.Error("Registration failed. Please try again.")
             }
+        } catch (e: Throwable) {
+            val msg = e.message ?: ""
+            if (e is FirebaseAuthUserCollisionException || msg.contains("already in use", ignoreCase = true) || msg.contains("email-already-in-use", ignoreCase = true)) {
+                return@withContext AuthResult.AccountAlreadyExists("An account with this email/phone ($primaryContact) already exists. Please sign in instead.")
+            }
+            return@withContext AuthResult.Error(e.localizedMessage ?: "Registration error: ${e.message}")
         }
-        // Query Firestore farms collection for existing farm document matching ownerContact
-        val existingFarmDoc = findExistingFarmByPhone(primaryContact, countryCode)
-        val isExistingFarm = existingFarmDoc != null
-        val existingFarmId = existingFarmDoc?.get("farmId") as? String
-        val existingFarmName = existingFarmDoc?.get("farmName") as? String
 
-        val farmId = if (!existingFarmId.isNullOrBlank()) existingFarmId else generateUniqueFarmId()
-        val finalFarmName = if (!existingFarmName.isNullOrBlank()) existingFarmName else cleanFarmName
+        val farmId = generateUniqueFarmId()
+        val finalFarmName = cleanFarmName
         val finalUserId = cloudUid ?: "OWNER_${UUID.randomUUID().toString().take(8)}"
         val emailValue = if (primaryContact.contains("@")) primaryContact else ""
 
@@ -575,7 +549,7 @@ if (auth != null) {
                     "createdAt" to System.currentTimeMillis(),
                     "updatedAt" to System.currentTimeMillis()
                 )
-                db.collection("users").document(finalUserId).set(userData, SetOptions.merge()).awaitTask()
+                db.collection("users").document(finalUserId).set(userData, SetOptions.merge())
 
                 val farmData = hashMapOf<String, Any>(
                     "farmId" to farmId,
@@ -583,12 +557,10 @@ if (auth != null) {
                     "ownerId" to finalUserId,
                     "ownerName" to cleanName,
                     "ownerContact" to primaryContact,
+                    "createdAt" to System.currentTimeMillis(),
                     "updatedAt" to System.currentTimeMillis()
                 )
-                if (!isExistingFarm) {
-                    farmData["createdAt"] = System.currentTimeMillis()
-                }
-                db.collection("farms").document(farmId).set(farmData, SetOptions.merge()).awaitTask()
+                db.collection("farms").document(farmId).set(farmData, SetOptions.merge())
             } catch (e: Throwable) {}
         }
 
@@ -603,9 +575,7 @@ if (auth != null) {
             phoneNumber = cleanPhone
         )
         repository.insertFarmAccount(farmAccount)
-        if (!isExistingFarm) {
-            repository.seedNewFarmStarterData(farmId, finalFarmName)
-        }
+        repository.seedNewFarmStarterData(farmId, finalFarmName)
 
         val session = UserSession(
             userId = finalUserId,
@@ -683,53 +653,21 @@ if (auth != null) {
             return@withContext AuthResult.Success(session)
         }
 
-        // 2. Resolve Candidate Auth Emails for Firebase Authentication
-        val candidateAuthEmails = mutableListOf<String>()
-        var preloadedFirestoreUser: Map<String, Any>? = null
+        // 2. Resolve Candidate Auth Emails for Firebase Authentication (Prioritized for instant sign-in)
+        val candidateAuthEmails = LinkedHashSet<String>()
 
         if (cleanIdentifier.contains("@")) {
             candidateAuthEmails.add(cleanIdentifier.lowercase())
         } else {
-            val possiblePhoneFormats = getPhoneCandidateFormats(cleanIdentifier)
+            val primaryCanonical = toAuthEmail(cleanIdentifier)
+            candidateAuthEmails.add(primaryCanonical)
+
             val cleanDigits = extractPhoneDigits(cleanIdentifier)
-
-            if (db != null) {
-                for (phoneVariant in possiblePhoneFormats) {
-                    try {
-                        val q1 = db.collection("users").whereEqualTo("phone", phoneVariant).limit(1).get().awaitTask()
-                        if (q1 != null && !q1.isEmpty) {
-                            val doc = q1.documents[0]
-                            preloadedFirestoreUser = doc.data
-                            val authEmailField = doc.getString("authEmail")
-                            val emailField = doc.getString("email")
-                            if (!authEmailField.isNullOrBlank()) candidateAuthEmails.add(authEmailField.lowercase())
-                            if (!emailField.isNullOrBlank()) candidateAuthEmails.add(emailField.lowercase())
-                            break
-                        }
-                        val q2 = db.collection("users").whereEqualTo("phoneNumber", phoneVariant).limit(1).get().awaitTask()
-                        if (q2 != null && !q2.isEmpty) {
-                            val doc = q2.documents[0]
-                            preloadedFirestoreUser = doc.data
-                            val authEmailField = doc.getString("authEmail")
-                            val emailField = doc.getString("email")
-                            if (!authEmailField.isNullOrBlank()) candidateAuthEmails.add(authEmailField.lowercase())
-                            if (!emailField.isNullOrBlank()) candidateAuthEmails.add(emailField.lowercase())
-                            break
-                        }
-                    } catch (e: Throwable) {}
-                }
-            }
-
             candidateAuthEmails.add("phone_${cleanDigits}@mkulima.farm")
-            val knownPrefixes = listOf("254", "255", "256", "250", "234", "27", "233", "251", "211", "252", "1", "44", "91", "61")
-            for (prefix in knownPrefixes) {
-                candidateAuthEmails.add("phone_${prefix}${cleanDigits}@mkulima.farm")
-                if (cleanDigits.startsWith(prefix)) {
-                    val rem = cleanDigits.removePrefix(prefix)
-                    candidateAuthEmails.add("phone_${cleanDigits}@mkulima.farm")
-                    candidateAuthEmails.add("phone_${rem}@mkulima.farm")
-                    candidateAuthEmails.add("phone_${prefix}${rem}@mkulima.farm")
-                }
+            candidateAuthEmails.add("phone_254${cleanDigits}@mkulima.farm")
+            if (cleanDigits.startsWith("0")) {
+                candidateAuthEmails.add("phone_${cleanDigits.removePrefix("0")}@mkulima.farm")
+                candidateAuthEmails.add("phone_254${cleanDigits.removePrefix("0")}@mkulima.farm")
             }
         }
 
@@ -738,7 +676,7 @@ if (auth != null) {
         var lastAuthException: Exception? = null
 
         if (auth != null) {
-            for (targetEmail in candidateAuthEmails.distinct()) {
+            for (targetEmail in candidateAuthEmails) {
                 try {
                     val result = auth.signInWithEmailAndPassword(targetEmail, password).awaitTask()
                     if (result?.user != null) {
@@ -747,6 +685,9 @@ if (auth != null) {
                     }
                 } catch (e: Exception) {
                     lastAuthException = e
+                    if (e is FirebaseAuthInvalidCredentialsException && (e.message?.contains("password", ignoreCase = true) == true || e.errorCode == "ERROR_WRONG_PASSWORD")) {
+                        break
+                    }
                 }
             }
         }
@@ -872,7 +813,7 @@ if (auth != null) {
         if (authenticatedUser != null) {
             val uid = authenticatedUser.uid
             Log.d(TAG, "=== DEBUG LOGIN: authenticatedUser.uid = $uid, email = ${authenticatedUser.email}, phone = ${authenticatedUser.phoneNumber} ===")
-            var userDocData = preloadedFirestoreUser
+            var userDocData: Map<String, Any>? = null
 
             if (userDocData == null && db != null) {
                 try {

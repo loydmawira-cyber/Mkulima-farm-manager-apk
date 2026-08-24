@@ -24,7 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Logout
@@ -71,7 +70,6 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onSaveSettings: (FarmSettings) -> Unit,
     onOpenWorkerManagement: (() -> Unit)? = null,
-    onClearFarmData: (() -> Unit)? = null,
     onLogout: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -81,27 +79,8 @@ fun SettingsDialog(
     var pdDays by remember { mutableStateOf(settings.pregnancyCheckReminderDays.toString()) }
     var dryOffDays by remember { mutableStateOf(settings.dryingOffReminderDays.toString()) }
     var themeMode by remember { mutableStateOf(settings.themeMode) }
-    var showClearDataConfirm by remember { mutableStateOf(false) }
 
     val isOwner = userSession?.role?.equals("OWNER", ignoreCase = true) ?: true
-
-    if (showClearDataConfirm) {
-        com.example.ui.components.ConfirmDeleteDialog(
-            title = "Clear All Farm Records?",
-            message = "This will delete all livestock units, flocks, tasks, daily milk logs, egg logs, finance transactions, and events. This action cannot be undone.",
-            confirmButtonText = "Delete All Data",
-            confirmButtonColor = Color(0xFFDC2626),
-            onConfirm = {
-                showClearDataConfirm = false
-                onClearFarmData?.invoke()
-                Toast.makeText(context, "All sample and operational data deleted", Toast.LENGTH_LONG).show()
-                onDismiss()
-            },
-            onDismiss = {
-                showClearDataConfirm = false
-            }
-        )
-    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -415,24 +394,6 @@ fun SettingsDialog(
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
-
-                    if (onClearFarmData != null) {
-                        OutlinedButton(
-                            onClick = { showClearDataConfirm = true },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("btn_clear_farm_data"),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
-                            border = BorderStroke(1.dp, Color(0xFFFCA5A5))
-                        ) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete All Data", modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Delete All Farm / Sample Data", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                    }
                 }
 
                 // Logout Button

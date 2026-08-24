@@ -294,6 +294,15 @@ object CattleLifecycleEngine {
             it.title.contains("Estrus", ignoreCase = true)
         }
 
+        val abortedEvents = sortedEvents.filter {
+            it.category.equals("ABORTED", ignoreCase = true) ||
+            it.title.contains("Aborted", ignoreCase = true) ||
+            it.title.contains("Abortion", ignoreCase = true) ||
+            it.title.contains("Pregnancy Loss", ignoreCase = true) ||
+            it.details.contains("Abortion", ignoreCase = true) ||
+            it.details.contains("Aborted", ignoreCase = true)
+        }
+
         // Check Calving History
         val latestCalving = calvingEvents.firstOrNull()
         val latestCalvingDate = latestCalving?.date?.let { parseDateOrNull(it) }
@@ -358,13 +367,40 @@ object CattleLifecycleEngine {
             heatEvents
         }
 
+        val currentCycleAbortedEvents = if (latestCalvingDate != null) {
+            abortedEvents.filter { ev ->
+                val d = parseDateOrNull(ev.date)
+                d != null && d.after(latestCalvingDate)
+            }
+        } else {
+            abortedEvents
+        }
+
         // Current cycle latest AI
         val latestCurrentAi = currentCycleAiEvents.firstOrNull()
         val latestCurrentAiDate = latestCurrentAi?.date?.let { parseDateOrNull(it) }
 
         // Current cycle latest PD
         val latestCurrentPd = currentCyclePdEvents.firstOrNull()
-        val isPositivePd = latestCurrentPd != null && (
+        val latestCurrentPdDate = latestCurrentPd?.date?.let { parseDateOrNull(it) }
+
+        // Current cycle latest Aborted
+        val latestCurrentAborted = currentCycleAbortedEvents.firstOrNull()
+        val latestCurrentAbortedDate = latestCurrentAborted?.date?.let { parseDateOrNull(it) }
+
+        // Check if Abortion is the most recent relevant event in the cycle compared to AI/PD
+        val isAbortionMostRecent = latestCurrentAborted != null && (
+            (latestCurrentAbortedDate != null &&
+                (latestCurrentPdDate == null || !latestCurrentAbortedDate.before(latestCurrentPdDate)) &&
+                (latestCurrentAiDate == null || !latestCurrentAbortedDate.before(latestCurrentAiDate))
+            ) || (
+                latestCurrentAbortedDate == null &&
+                (latestCurrentPd == null || sortedEvents.indexOf(latestCurrentAborted) <= sortedEvents.indexOf(latestCurrentPd)) &&
+                (latestCurrentAi == null || sortedEvents.indexOf(latestCurrentAborted) <= sortedEvents.indexOf(latestCurrentAi))
+            )
+        )
+
+        val isPositivePd = !isAbortionMostRecent && latestCurrentPd != null && (
             latestCurrentPd.title.contains("Positive", ignoreCase = true) ||
             latestCurrentPd.details.contains("Positive", ignoreCase = true) ||
             latestCurrentPd.metricValue.contains("Positive", ignoreCase = true) ||
@@ -416,7 +452,7 @@ object CattleLifecycleEngine {
                 calvingDateEst = dateFormat.format(pdCal.time)
                 dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             }
-        } else if (!isNegativePd && latestCalving == null && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
+        } else if (!isNegativePd && !isAbortionMostRecent && latestCalving == null && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
             isInCalf = true
             if (latestCurrentAiDate != null && latestCurrentAi != null) {
                 val aiCal = Calendar.getInstance().apply {
@@ -538,8 +574,60 @@ object CattleLifecycleEngine {
             )
         }
 
+        // CASE: ABORTION IN CURRENT CYCLE (Pregnancy Loss - Reset to Open Milking / Open Heifer)
+        if (isAbortionMostRecent && latestCurrentAborted != null) {
+            val abDateStr = latestCurrentAborted.date
+            return if (hasGivenBirthPreviously || isCurrentlyMilking) {
+                val dimStr = if (daysInMilk != null) " • Day $daysInMilk In Milk" else ""
+                val parityStr = if (parityCount > 0) "Parity $parityCount" else ""
+                CattleStageEvaluation(
+                    stage = CattleStage.MILKING,
+                    stageKey = CattleStage.MILKING.key,
+                    label = "Milking",
+                    summaryReason = "Abortion / Pregnancy loss on $abDateStr${if (parityStr.isNotBlank()) " ($parityStr$dimStr)" else ""} • Open / Active Lactation.",
+                    breedingStatusText = "OPEN (In Milk)",
+                    isInCalf = false,
+                    isMilking = true,
+                    badgeBgColor = Color(0xFFE0F2FE),
+                    badgeTextColor = Color(0xFF0369A1),
+                    gestationDays = null,
+                    expectedCalvingDate = null,
+                    expectedDryOffDate = null,
+                    lastEventSummary = latestCurrentAborted.title.ifBlank { "Abortion / Pregnancy Loss Logged" },
+                    lastInseminationDate = null,
+                    lastCalvingDate = latestCalving?.date,
+                    hasGivenBirthPreviously = hasGivenBirthPreviously,
+                    parityCount = parityCount,
+                    daysInMilk = daysInMilk,
+                    isDriedOff = false
+                )
+            } else {
+                CattleStageEvaluation(
+                    stage = CattleStage.HEIFER,
+                    stageKey = CattleStage.HEIFER.key,
+                    label = "Heifer",
+                    summaryReason = "Abortion on $abDateStr • Open maiden heifer available for breeding.",
+                    breedingStatusText = "OPEN HEIFER",
+                    isInCalf = false,
+                    isMilking = false,
+                    badgeBgColor = Color(0xFFFEF9C3),
+                    badgeTextColor = Color(0xFF854D0E),
+                    gestationDays = null,
+                    expectedCalvingDate = null,
+                    expectedDryOffDate = null,
+                    lastEventSummary = latestCurrentAborted.title.ifBlank { "Abortion / Pregnancy Loss Logged" },
+                    lastInseminationDate = null,
+                    lastCalvingDate = null,
+                    hasGivenBirthPreviously = false,
+                    parityCount = 0,
+                    daysInMilk = null,
+                    isDriedOff = false
+                )
+            }
+        }
+
         // CASE 4: SERVED AI IN CURRENT CYCLE (Pending PD)
-        if (latestCurrentAi != null && !isNegativePd) {
+        if (latestCurrentAi != null && !isNegativePd && !isAbortionMostRecent) {
             val serviceDate = latestCurrentAi.date
             val estCalvingIfConceived = calculateExpectedCalving(serviceDate)
             return if (isCurrentlyMilking) {

@@ -345,9 +345,6 @@ fun MkulimaAppContent(
                 showSettingsDialog = false
             },
             onOpenWorkerManagement = { showWorkerManagementScreen = true },
-            onClearFarmData = {
-                viewModel.clearCurrentFarmData()
-            },
             onLogout = {
                 viewModel.logout()
                 showSettingsDialog = false
@@ -408,10 +405,13 @@ fun MkulimaAppContent(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.weight(1f, fill = false)
                             ) {
-                                IconButton(onClick = { }) {
+                                IconButton(
+                                    onClick = { showSettingsDialog = true },
+                                    modifier = Modifier.testTag("topbar_menu_settings_button")
+                                ) {
                                     Icon(
                                         imageVector = Icons.Filled.Menu,
-                                        contentDescription = "Menu",
+                                        contentDescription = "Settings & Menu",
                                         tint = MaterialTheme.mkulimaColors.textPrimary
                                     )
                                 }
@@ -459,13 +459,6 @@ fun MkulimaAppContent(
                                             tint = MaterialTheme.mkulimaColors.textPrimary
                                         )
                                     }
-                                }
-                                IconButton(onClick = { showSettingsDialog = true }) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Settings,
-                                        contentDescription = "Settings",
-                                        tint = MaterialTheme.mkulimaColors.textPrimary
-                                    )
                                 }
                             }
                         }

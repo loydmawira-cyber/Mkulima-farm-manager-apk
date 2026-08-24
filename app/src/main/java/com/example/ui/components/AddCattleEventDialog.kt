@@ -49,6 +49,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+data class CalvingCalfInfo(
+    val calfName: String,
+    val calfTag: String,
+    val calfGender: String, // "Heifer Calf (Female)", "Bull Calf (Male)", "Twins"
+    val birthWeight: String,
+    val calvingEase: String,
+    val colostrumFed: String
+)
+
 @Composable
 fun AddCattleEventDialog(
     animalName: String,
@@ -68,10 +77,11 @@ fun AddCattleEventDialog(
         details: String,
         notes: String,
         metricValue: String,
-        reminderText: String
+        reminderText: String,
+        calfInfo: CalvingCalfInfo?
     ) -> Unit
 ) {
-    var selectedCategory by remember { mutableStateOf(initialCategory) } // PD, INSEMINATION, CALVING, DRY_OFF, HEAT, WEIGHT, HEALTH, OTHER
+    var selectedCategory by remember { mutableStateOf(initialCategory) } // PD, INSEMINATION, CALVING, DRY_OFF, ABORTED, HEAT, WEIGHT, HEALTH, OTHER
     var pdResult by remember {
         mutableStateOf(
             if (initialCategory == "PD" && (initialTitle?.contains("Negative", ignoreCase = true) == true || initialMetricValue?.contains("Negative", ignoreCase = true) == true))
@@ -82,11 +92,17 @@ fun AddCattleEventDialog(
     } // CONFIRMED_POSITIVE, NEGATIVE
 
     // Calving specific fields
+    var calfName by remember { mutableStateOf("") }
     var calfGender by remember { mutableStateOf("Heifer Calf (Female)") } // Heifer Calf (Female), Bull Calf (Male), Twins
     var calfTag by remember { mutableStateOf("#134") }
     var calfBirthWeight by remember { mutableStateOf("34 kg") }
     var calvingEase by remember { mutableStateOf("Normal (Unassisted)") } // Normal (Unassisted), Assisted, Vet Cesarean
     var colostrumFed by remember { mutableStateOf("Fed colostrum within 2 hours") }
+
+    fun buildCalvingDetails(): String {
+        val namePart = if (calfName.isNotBlank()) "Name: $calfName, " else ""
+        return "Delivered $calfGender (${namePart}Tag $calfTag, Birth Wt: $calfBirthWeight). Calving ease: $calvingEase. $colostrumFed. Mother entered active lactation."
+    }
 
     // Health specific fields
     var healthType by remember { mutableStateOf("Vaccination") } // Vaccination, Deworming, Antibiotic, Mastitis Care, Hoof Care, Routine Check, Other
@@ -106,8 +122,9 @@ fun AddCattleEventDialog(
             } else {
                 when (selectedCategory) {
                     "INSEMINATION" -> "Inseminated with high-grade dairy semen straw."
-                    "CALVING" -> "Delivered healthy calf. Mother transitioned to fresh milking lactation."
+                    "CALVING" -> buildCalvingDetails()
                     "DRY_OFF" -> "Milking stopped. Administered intramammary dry cow therapy."
+                    "ABORTED" -> "Pregnancy loss / abortion recorded. Cow treated and resting."
                     "HEAT" -> "Observed standing heat, clear mucus discharge."
                     "WEIGHT" -> "Weighed on herd scale."
                     "HEALTH" -> "Routine vaccination / health treatment administered."
@@ -125,8 +142,9 @@ fun AddCattleEventDialog(
             } else {
                 when (selectedCategory) {
                     "INSEMINATION" -> "Straw #88"
-                    "CALVING" -> "Birth Wt: 34 kg"
+                    "CALVING" -> "Birth Wt: $calfBirthWeight"
                     "DRY_OFF" -> "Dry period started"
+                    "ABORTED" -> "Pregnancy Terminated"
                     "HEAT" -> "Standing Heat"
                     "WEIGHT" -> "480 kg"
                     "HEALTH" -> "2 ml"
@@ -142,6 +160,7 @@ fun AddCattleEventDialog(
                 "INSEMINATION" -> "PD Check in 60-90 days"
                 "CALVING" -> "First Heat Check in 45-60 days"
                 "DRY_OFF" -> "Expected Calving in ~60 days"
+                "ABORTED" -> "Vet reproductive check / Heat check in 21-30 days"
                 "HEAT" -> "AI Insemination within 12-18 hours"
                 "WEIGHT" -> "Weight check in 30 days"
                 "HEALTH" -> "Booster shot in 6 months"
@@ -173,7 +192,7 @@ fun AddCattleEventDialog(
                 reminderText = "In 21 days (Repeat Heat / PD Check)"
             }
             "CALVING" -> {
-                detailsText = "Delivered $calfGender (Tag $calfTag). Calving ease: $calvingEase. $colostrumFed. Mother entered active lactation."
+                detailsText = buildCalvingDetails()
                 notesText = "Attended by: Dr. Otieno (Vet)"
                 metricText = "Birth Wt: $calfBirthWeight"
                 reminderText = "First post-calving heat check in 45-60 days"
@@ -183,6 +202,12 @@ fun AddCattleEventDialog(
                 notesText = "Administered Dry Cow Cloxacillin intramammary"
                 metricText = "Teats Sealed"
                 reminderText = "Close-up transitional feed in 4 weeks"
+            }
+            "ABORTED" -> {
+                detailsText = "Pregnancy loss / abortion recorded. Cow treated and resting."
+                notesText = "Attending Vet: Dr. Otieno (Vet)"
+                metricText = "Pregnancy Terminated"
+                reminderText = "Vet reproductive exam / Next heat check in 21-30 days"
             }
             "HEAT" -> {
                 detailsText = "Clear mucus discharge and standing heat recorded during morning herd inspection."
@@ -301,12 +326,16 @@ fun AddCattleEventDialog(
                 val eventTypesRow1 = listOf(
                     "PD" to "🧪 PD",
                     "INSEMINATION" to "🧬 AI / Service",
-                    "CALVING" to "🍼 Calving",
-                    "DRY_OFF" to "🍂 Dry Off"
+                    "CALVING" to "🍼 Calving"
                 )
 
                 val eventTypesRow2 = listOf(
-                    "HEAT" to "🔥 Heat",
+                    "DRY_OFF" to "🍂 Dry Off",
+                    "ABORTED" to "💔 Aborted",
+                    "HEAT" to "🔥 Heat"
+                )
+
+                val eventTypesRow3 = listOf(
                     "WEIGHT" to "⚖️ Weight",
                     "HEALTH" to "🩺 Health",
                     "OTHER" to "📌 Other"
@@ -323,7 +352,7 @@ fun AddCattleEventDialog(
                                 .weight(1f)
                                 .height(38.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9))
+                                .background(if (isSelected) (if (typeKey == "ABORTED") Color(0xFFDC2626) else ForestGreenPrimary) else Color(0xFFF1F5F9))
                                 .clickable { updateDefaultsForCategory(typeKey) },
                             contentAlignment = Alignment.Center
                         ) {
@@ -344,6 +373,33 @@ fun AddCattleEventDialog(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     eventTypesRow2.forEach { (typeKey, label) ->
+                        val isSelected = selectedCategory == typeKey
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) (if (typeKey == "ABORTED") Color(0xFFDC2626) else ForestGreenPrimary) else Color(0xFFF1F5F9))
+                                .clickable { updateDefaultsForCategory(typeKey) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color.White else Color(0xFF475569)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    eventTypesRow3.forEach { (typeKey, label) ->
                         val isSelected = selectedCategory == typeKey
                         Box(
                             modifier = Modifier
@@ -444,8 +500,8 @@ fun AddCattleEventDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf("Heifer (Female)", "Bull (Male)", "Twins").forEach { genderOption ->
-                            val isSel = calfGender.contains(genderOption.split(" ")[0])
+                        listOf("Heifer Calf (Female)", "Bull Calf (Male)", "Twins").forEach { genderOption ->
+                            val isSel = calfGender == genderOption || (genderOption.startsWith("Heifer") && calfGender.startsWith("Heifer")) || (genderOption.startsWith("Bull") && calfGender.startsWith("Bull")) || (genderOption.startsWith("Twins") && calfGender.startsWith("Twins"))
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
@@ -453,12 +509,12 @@ fun AddCattleEventDialog(
                                     .weight(1f)
                                     .clickable {
                                         calfGender = genderOption
-                                        detailsText = "Delivered $calfGender (Tag $calfTag). Calving ease: $calvingEase. $colostrumFed."
+                                        detailsText = buildCalvingDetails()
                                     }
                             ) {
                                 Text(
                                     text = genderOption,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSel) Color.White else Color(0xFF475569),
                                     modifier = Modifier.padding(vertical = 8.dp),
@@ -470,19 +526,61 @@ fun AddCattleEventDialog(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    // Row 1: Calf Name & Calf Tag ID
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedTextField(
+                            value = calfName,
+                            onValueChange = {
+                                calfName = it
+                                detailsText = buildCalvingDetails()
+                            },
+                            label = { Text("Calf Name") },
+                            placeholder = { Text("e.g. Daisy Jr / Bella") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("calving_calf_name_input"),
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
                             value = calfTag,
                             onValueChange = {
                                 calfTag = it
-                                detailsText = "Delivered $calfGender (Tag $calfTag). Calving ease: $calvingEase. $colostrumFed."
+                                detailsText = buildCalvingDetails()
                             },
                             label = { Text("Calf Tag ID") },
                             placeholder = { Text("e.g. #145") },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("calving_calf_tag_input"),
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Row 2: Birth Weight & Calving Ease
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = calfBirthWeight,
+                            onValueChange = {
+                                calfBirthWeight = it
+                                metricText = "Birth Wt: $calfBirthWeight"
+                                detailsText = buildCalvingDetails()
+                            },
+                            label = { Text("Birth Weight") },
+                            placeholder = { Text("e.g. 34 kg") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("calving_birth_weight_input"),
                             shape = RoundedCornerShape(10.dp),
                             singleLine = true
                         )
@@ -491,14 +589,62 @@ fun AddCattleEventDialog(
                             value = calvingEase,
                             onValueChange = {
                                 calvingEase = it
-                                detailsText = "Delivered $calfGender (Tag $calfTag). Calving ease: $calvingEase. $colostrumFed."
+                                detailsText = buildCalvingDetails()
                             },
                             label = { Text("Calving Ease") },
-                            placeholder = { Text("e.g. Normal unassisted") },
-                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("e.g. Normal (Unassisted)") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("calving_ease_input"),
                             shape = RoundedCornerShape(10.dp),
                             singleLine = true
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Row 3: Colostrum Fed Status
+                    OutlinedTextField(
+                        value = colostrumFed,
+                        onValueChange = {
+                            colostrumFed = it
+                            detailsText = buildCalvingDetails()
+                        },
+                        label = { Text("Colostrum Fed Status") },
+                        placeholder = { Text("e.g. Fed colostrum within 2 hours") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("calving_colostrum_input"),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, Color(0xFF93C5FD)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = Color(0xFF1D4ED8),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "A new animal record will automatically be created in the farm's animal list for this calf upon saving.",
+                                fontSize = 11.sp,
+                                color = Color(0xFF1E40AF),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
 
@@ -604,6 +750,7 @@ fun AddCattleEventDialog(
                                     "INSEMINATION" -> "Straw / Sire ID"
                                     "CALVING" -> "Calf Weight"
                                     "DRY_OFF" -> "Treatment"
+                                    "ABORTED" -> "Abortion Stage / Notes"
                                     "WEIGHT" -> "Weight (kg)"
                                     "HEALTH" -> "Dosage"
                                     else -> "Details / Metric"
@@ -614,6 +761,7 @@ fun AddCattleEventDialog(
                             Text(
                                 when (selectedCategory) {
                                     "WEIGHT" -> "480 kg"
+                                    "ABORTED" -> "e.g. Pregnancy Terminated"
                                     "OTHER" -> "e.g. Hoof trim"
                                     else -> "Details"
                                 }
@@ -690,6 +838,7 @@ fun AddCattleEventDialog(
                                     "INSEMINATION" -> "Artificial Insemination (AI)"
                                     "CALVING" -> "Calving & Calf Delivery"
                                     "DRY_OFF" -> "Dry Off"
+                                    "ABORTED" -> "Pregnancy Loss / Abortion"
                                     "HEAT" -> "Estrus (Heat Period) Observed"
                                     "WEIGHT" -> "Weight Measurement"
                                     "HEALTH" -> "Health & Treatment"
@@ -697,6 +846,17 @@ fun AddCattleEventDialog(
                                     else -> selectedCategory.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
                                 }
                             }
+                            val calfInfo = if (selectedCategory == "CALVING") {
+                                CalvingCalfInfo(
+                                    calfName = calfName.trim(),
+                                    calfTag = calfTag.trim(),
+                                    calfGender = calfGender.trim(),
+                                    birthWeight = calfBirthWeight.trim(),
+                                    calvingEase = calvingEase.trim(),
+                                    colostrumFed = colostrumFed.trim()
+                                )
+                            } else null
+
                             onSaveEvent(
                                 selectedCategory,
                                 computedTitle,
@@ -704,7 +864,8 @@ fun AddCattleEventDialog(
                                 detailsText,
                                 notesText,
                                 metricText,
-                                reminderText
+                                reminderText,
+                                calfInfo
                             )
                         },
                         shape = RoundedCornerShape(10.dp),

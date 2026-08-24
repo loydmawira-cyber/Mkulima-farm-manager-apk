@@ -85,31 +85,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
-
-data class CountryCodeItem(
-    val countryName: String,
-    val dialCode: String,
-    val flagEmoji: String,
-    val samplePlaceholder: String
-)
-
-val DEFAULT_COUNTRY_CODES = listOf(
-    CountryCodeItem("Kenya", "+254", "🇰🇪", "712 345 678"),
-    CountryCodeItem("Tanzania", "+255", "🇹🇿", "712 345 678"),
-    CountryCodeItem("Uganda", "+256", "🇺🇬", "772 345 678"),
-    CountryCodeItem("Rwanda", "+250", "🇷🇼", "788 123 456"),
-    CountryCodeItem("Nigeria", "+234", "🇳🇬", "802 345 6789"),
-    CountryCodeItem("South Africa", "+27", "🇿🇦", "71 234 5678"),
-    CountryCodeItem("Ghana", "+233", "🇬🇭", "24 123 4567"),
-    CountryCodeItem("Ethiopia", "+251", "🇪🇹", "91 123 4567"),
-    CountryCodeItem("South Sudan", "+211", "🇸🇸", "92 123 4567"),
-    CountryCodeItem("Somalia", "+252", "🇸🇴", "61 123 4567"),
-    CountryCodeItem("United States", "+1", "🇺🇸", "415 555 2671"),
-    CountryCodeItem("United Kingdom", "+44", "🇬🇧", "7911 123456"),
-    CountryCodeItem("India", "+91", "🇮🇳", "98765 43210"),
-    CountryCodeItem("Australia", "+61", "🇦🇺", "412 345 678"),
-    CountryCodeItem("Canada", "+1", "🇨🇦", "416 555 0192")
-)
+import com.example.util.CountryCodeItem
+import com.example.util.DEFAULT_COUNTRY_CODES
+import com.example.util.DEFAULT_KENYA_COUNTRY
+import com.example.util.WORLD_COUNTRY_CODES
 
 enum class AuthMode {
     LOGIN,
@@ -151,13 +130,13 @@ fun AuthScreen(
     var name by remember { mutableStateOf("") }
     var emailOrPhone by remember { mutableStateOf("") }
     var rawPhoneNumber by remember { mutableStateOf("") }
-    var selectedCountry by remember { mutableStateOf(DEFAULT_COUNTRY_CODES[0]) }
+    var selectedCountry by remember { mutableStateOf(DEFAULT_KENYA_COUNTRY) }
     var showCountryPicker by remember { mutableStateOf(false) }
 
     // Sign in specific phone state & toggle
     var loginMethodPhone by remember { mutableStateOf(true) } // true: Phone with country code, false: Email or Worker ID
     var loginPhoneNumber by remember { mutableStateOf("") }
-    var loginSelectedCountry by remember { mutableStateOf(DEFAULT_COUNTRY_CODES[0]) }
+    var loginSelectedCountry by remember { mutableStateOf(DEFAULT_KENYA_COUNTRY) }
     var showLoginCountryPicker by remember { mutableStateOf(false) }
 
     var password by remember { mutableStateOf("") }
@@ -1103,11 +1082,14 @@ fun CountryCodePickerDialog(
     var searchQuery by remember { mutableStateOf("") }
     val filteredCountries = remember(searchQuery) {
         if (searchQuery.isBlank()) {
-            DEFAULT_COUNTRY_CODES
+            WORLD_COUNTRY_CODES
         } else {
-            DEFAULT_COUNTRY_CODES.filter {
-                it.countryName.contains(searchQuery, ignoreCase = true) ||
-                        it.dialCode.contains(searchQuery)
+            val q = searchQuery.trim().lowercase()
+            val cleanCodeQuery = q.replace("+", "")
+            WORLD_COUNTRY_CODES.filter {
+                it.countryName.lowercase().contains(q) ||
+                it.dialCode.contains(q) ||
+                (cleanCodeQuery.isNotBlank() && it.dialCode.replace("+", "").contains(cleanCodeQuery))
             }
         }
     }
@@ -1116,7 +1098,7 @@ fun CountryCodePickerDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(480.dp),
+                .height(520.dp),
             shape = RoundedCornerShape(20.dp),
             color = Color.White,
             shadowElevation = 12.dp
@@ -1131,12 +1113,19 @@ fun CountryCodePickerDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Select Country Code",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        color = Color(0xFF0F172A)
-                    )
+                    Column {
+                        Text(
+                            text = "Select Country Code",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "${filteredCountries.size} countries available",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color(0xFF64748B))
                     }
@@ -1147,8 +1136,15 @@ fun CountryCodePickerDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search country or dial code...") },
+                    placeholder = { Text("Search country or dial code (e.g. 254, Kenya)...", fontSize = 13.sp) },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear search", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -1157,48 +1153,63 @@ fun CountryCodePickerDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                LazyColumn(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    items(filteredCountries) { country ->
-                        val isSelected = country.dialCode == selectedCountry.dialCode && country.countryName == selectedCountry.countryName
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) Color(0xFFF0FDF4) else Color.Transparent)
-                                .clickable { onSelectCountry(country) }
-                                .padding(horizontal = 12.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(text = country.flagEmoji, fontSize = 22.sp)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = country.countryName,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp,
-                                        color = Color(0xFF1E293B)
-                                    )
-                                    Text(
-                                        text = country.dialCode,
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF64748B)
+                if (filteredCountries.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No countries match \"$searchQuery\"",
+                            color = Color(0xFF64748B),
+                            fontSize = 13.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(filteredCountries, key = { it.countryName + it.dialCode }) { country ->
+                            val isSelected = country.dialCode == selectedCountry.dialCode && country.countryName == selectedCountry.countryName
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) Color(0xFFF0FDF4) else Color.Transparent)
+                                    .clickable { onSelectCountry(country) }
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = country.flagEmoji, fontSize = 22.sp)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = country.countryName,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 14.sp,
+                                            color = Color(0xFF1E293B)
+                                        )
+                                        Text(
+                                            text = country.dialCode,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = "Selected",
+                                        tint = ForestGreenPrimary,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
-                            if (isSelected) {
-                                Icon(
-                                    imageVector = Icons.Filled.Check,
-                                    contentDescription = "Selected",
-                                    tint = ForestGreenPrimary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                            Divider(color = Color(0xFFF1F5F9))
                         }
-                        Divider(color = Color(0xFFF1F5F9))
                     }
                 }
             }

@@ -88,6 +88,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.LaunchedEffect
 import com.example.ui.FarmViewModel
 import com.example.ui.components.AddCattleEventDialog
+import com.example.ui.components.CalvingCalfInfo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Info
@@ -3087,6 +3088,7 @@ fun AnimalDetailsView(
                                                                 "INSEMINATION" -> Color(0xFFE0F2FE)
                                                                 "WEIGHT" -> Color(0xFFF3E8FF)
                                                                 "DRY_OFF" -> Color(0xFFECFDF5)
+                                                                "ABORTED" -> Color(0xFFFEE2E2)
                                                                 else -> Color(0xFFFEE2E2)
                                                             }
                                                         ) {
@@ -3098,6 +3100,7 @@ fun AnimalDetailsView(
                                                                     "INSEMINATION" -> "AI"
                                                                     "WEIGHT" -> "WEIGHT"
                                                                     "DRY_OFF" -> "DRY OFF"
+                                                                    "ABORTED" -> "ABORTED"
                                                                     else -> "HEALTH"
                                                                 },
                                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -3110,6 +3113,7 @@ fun AnimalDetailsView(
                                                                     "INSEMINATION" -> Color(0xFF0369A1)
                                                                     "WEIGHT" -> Color(0xFF7E22CE)
                                                                     "DRY_OFF" -> Color(0xFF047857)
+                                                                    "ABORTED" -> Color(0xFFDC2626)
                                                                     else -> Color(0xFF991B1B)
                                                                 }
                                                             )
@@ -3537,7 +3541,7 @@ fun AnimalDetailsView(
             unitId = unitId,
             initialCategory = cattleEventDialogCategory,
             onDismiss = { showAddCattleEventDialog = false },
-            onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String ->
+            onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String, calfInfo: CalvingCalfInfo? ->
                 viewModel.addCattleEvent(
                     unitId = unitId,
                     category = type,
@@ -3547,6 +3551,44 @@ fun AnimalDetailsView(
                     notes = notes,
                     metricValue = metricValue
                 )
+
+                // Automatically create a new animal/unit record for the calf in the farm's animal list
+                if (type.equals("CALVING", ignoreCase = true) && calfInfo != null) {
+                    val finalCalfName = when {
+                        calfInfo.calfName.isNotBlank() -> calfInfo.calfName
+                        calfInfo.calfTag.isNotBlank() -> "Calf ${calfInfo.calfTag}"
+                        else -> "Calf of ${animal.name}"
+                    }
+                    val isMale = calfInfo.calfGender.contains("Bull", ignoreCase = true) || calfInfo.calfGender.contains("Male", ignoreCase = true)
+                    val isTwins = calfInfo.calfGender.contains("Twins", ignoreCase = true)
+                    val calfSubType = when {
+                        isMale -> "Bull Calf"
+                        isTwins -> "Twin Calves"
+                        else -> "Heifer Calf"
+                    }
+                    val birthWeight = calfInfo.birthWeight.ifBlank { "34 kg" }
+                    val headCount = if (isTwins) 2 else 1
+                    val tagNumber = calfInfo.calfTag.ifBlank { "#${System.currentTimeMillis() % 1000}" }
+                    val damName = animal.name
+                    val sireName = animal.sire.takeIf { it.isNotBlank() && it != "N/A" } ?: ""
+
+                    viewModel.addNewUnit(
+                        name = finalCalfName,
+                        type = "Cattle",
+                        headCount = headCount,
+                        healthStatus = "Healthy",
+                        location = "Calf Pen",
+                        tagNumber = tagNumber,
+                        breed = calfSubType,
+                        dob = date,
+                        dateAdded = date,
+                        weightAtBirth = birthWeight,
+                        currentWeight = birthWeight,
+                        sire = sireName,
+                        dam = damName
+                    )
+                }
+
                 val hasCalvedOrMilking = animalEvents.any { it.category.equals("CALVING", ignoreCase = true) } ||
                     currentStatus.contains("Milking", ignoreCase = true) ||
                     currentStatus.contains("Lactating", ignoreCase = true) ||
@@ -3564,6 +3606,7 @@ fun AnimalDetailsView(
                     "INSEMINATION" -> (if (hasCalvedOrMilking) "MILKING" else "INSEMINATED") to "SERVED AI (Pending PD)"
                     "CALVING" -> "MILKING" to "OPEN (In Milk)"
                     "DRY_OFF" -> "DRY" to (if (cattleEval?.isInCalf == true) "IN-CALF (Dry)" else "DRY COW (Open)")
+                    "ABORTED" -> (if (hasCalvedOrMilking) "MILKING" else "HEIFER") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
                     else -> null to null
                 }
                 if (immediateStage != null && breedingDesc != null) {
@@ -3588,7 +3631,7 @@ fun AnimalDetailsView(
             initialNotes = ev.notes,
             initialMetricValue = ev.metricValue,
             onDismiss = { eventToEdit = null },
-            onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String ->
+            onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String, _ ->
                 val evId = ev.id.toLongOrNull()
                 if (evId != null) {
                     viewModel.updateCattleEvent(
@@ -3631,6 +3674,7 @@ fun AnimalDetailsView(
                     "INSEMINATION" -> (if (hasCalvedOrMilking) "MILKING" else "INSEMINATED") to "SERVED AI (Pending PD)"
                     "CALVING" -> "MILKING" to "OPEN (In Milk)"
                     "DRY_OFF" -> "DRY" to (if (cattleEval?.isInCalf == true) "IN-CALF (Dry)" else "DRY COW (Open)")
+                    "ABORTED" -> (if (hasCalvedOrMilking) "MILKING" else "HEIFER") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
                     else -> null to null
                 }
                 if (immediateStage != null && breedingDesc != null) {

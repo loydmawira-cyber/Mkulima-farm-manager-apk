@@ -254,6 +254,35 @@ class FarmViewModel(
             repository.insertTask(newTask)
         }
     }
+    }
+
+    fun completeReminderAsTask(
+        title: String,
+        targetUnit: String,
+        dueDateStr: String,
+        details: String?
+    ) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+            val newTask = FarmTask(
+                farmId = farmId,
+                title = title.ifBlank { "Farm Reminder" },
+                category = TaskCategory.LIVESTOCK,
+                targetUnit = targetUnit.ifBlank { "General Farm Area" },
+                priority = TaskPriority.HIGH,
+                scheduledTime = dueDateStr.ifBlank { "Today" },
+                instructions = details,
+                assignedWorker = "Lead Operator",
+                isCompleted = true,
+                completedAt = nowFormatted,
+                proofNotes = "Auto-created from completed reminder."
+            )
+            repository.insertTask(newTask)
+        }
+    }
+
+    fun completeTaskWithProof(
 
     fun completeTaskWithProof(
         taskId: Long,

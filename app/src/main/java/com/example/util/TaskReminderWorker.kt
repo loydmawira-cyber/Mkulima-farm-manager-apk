@@ -28,7 +28,7 @@ val farmDao = db.farmDao()
                 SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             )
 
-            val tasks = farmDao.getTasksForFarm(farmId).first()
+            val tasks = farmDao.getTasksByFarm(farmId).first()
     .filter { task ->
                     !task.isCompleted &&
                         todayFormats.any { fmt -> task.dueDateStr.contains(fmt) }

@@ -3,7 +3,9 @@ package com.example.util
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.example.data.AppDatabase
+import com.example.data.MkulimaDatabase
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CoroutineScope
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -18,16 +20,16 @@ class TaskReminderWorker(
             val context = applicationContext
             val farmId = getActiveFarmId(context) ?: return Result.success()
 
-            val db = AppDatabase.getInstance(context)
-            val farmDao = db.farmDao()
+            val db = MkulimaDatabase.getDatabase(context, CoroutineScope(Dispatchers.IO))
+val farmDao = db.farmDao()
 
             val todayFormats = listOf(
                 SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()),
                 SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             )
 
-            val tasks = farmDao.getTasksForFarmSync(farmId)
-                .filter { task ->
+            val tasks = farmDao.getTasksForFarm(farmId).first()
+    .filter { task ->
                     !task.isCompleted &&
                         todayFormats.any { fmt -> task.dueDateStr.contains(fmt) }
                 }

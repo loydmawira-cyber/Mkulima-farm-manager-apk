@@ -724,7 +724,12 @@ fun FlocksScreen(
                 category = if (isPoultry) "POULTRY" else "CATTLE",
                 status = unit.healthStatus.ifBlank { "ACTIVE" },
                 age = calculatedAge,
-                weight = unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
+                weight = unitDbEvents
+                    .filter { it.category.equals("WEIGHT", ignoreCase = true) }
+                    .maxByOrNull { CattleLifecycleEngine.parseDateOrNull(it.date)?.time ?: 0L }
+                    ?.metricValue
+                    ?.takeIf { it.isNotBlank() }
+                    ?: unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
                 lastMilk = lastMilkStr,
                 breedingStatus = "HEALTHY",
                 dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },

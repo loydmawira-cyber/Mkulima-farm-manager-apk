@@ -15,7 +15,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         if (FirebaseApp.getApps(this).isEmpty()) {
-            FirebaseApp.initializeApp(this)
+            FirebaseApp.initializeApp(this)com.example.util.NotificationHelper.createChannel(this)
         }
         enableEdgeToEdge()
         setContent {

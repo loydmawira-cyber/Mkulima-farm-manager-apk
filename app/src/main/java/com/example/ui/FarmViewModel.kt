@@ -23,6 +23,7 @@ import com.example.data.TaskPriority
 import com.example.data.UserSession
 import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -148,22 +150,25 @@ class FarmViewModel(
         selectedCategoryFilter,
         selectedStatusFilter
     ) { tasks, query, categoryFilter, statusFilter ->
-        tasks.filter { task ->
-            val matchesQuery = query.isBlank() ||
-                    task.title.contains(query, ignoreCase = true) ||
-                    task.targetUnit.contains(query, ignoreCase = true) ||
-                    (task.instructions?.contains(query, ignoreCase = true) == true)
+        // Offloaded heavy filtering calculations to Dispatchers.Default
+        withContext(Dispatchers.Default) {
+            tasks.filter { task ->
+                val matchesQuery = query.isBlank() ||
+                        task.title.contains(query, ignoreCase = true) ||
+                        task.targetUnit.contains(query, ignoreCase = true) ||
+                        (task.instructions?.contains(query, ignoreCase = true) == true)
 
-            val matchesCategory = categoryFilter == null || task.category == categoryFilter
+                val matchesCategory = categoryFilter == null || task.category == categoryFilter
 
-            val matchesStatus = when (statusFilter) {
-                TaskStatusFilter.ALL -> true
-                TaskStatusFilter.PENDING -> !task.isCompleted
-                TaskStatusFilter.COMPLETED -> task.isCompleted
-                TaskStatusFilter.HIGH_PRIORITY -> task.priority == TaskPriority.HIGH
+                val matchesStatus = when (statusFilter) {
+                    TaskStatusFilter.ALL -> true
+                    TaskStatusFilter.PENDING -> !task.isCompleted
+                    TaskStatusFilter.COMPLETED -> task.isCompleted
+                    TaskStatusFilter.HIGH_PRIORITY -> task.priority == TaskPriority.HIGH
+                }
+
+                matchesQuery && matchesCategory && matchesStatus
             }
-
-            matchesQuery && matchesCategory && matchesStatus
         }
     }.stateIn(
         scope = viewModelScope,
@@ -541,8 +546,6 @@ class FarmViewModel(
         }
     }
 
-    // ... other helpers (photo save, workers, cattle events) remain unchanged
-
     fun savePhotoToInternalStorage(context: Context, sourceUri: Uri): String? {
         return try {
             val inputStream = context.contentResolver.openInputStream(sourceUri) ?: return null
@@ -581,7 +584,22 @@ class FarmViewModel(
     fun createWorker(name: String, emailOrPhone: String, password: String, permissions: WorkerPermissions) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val worker = WorkerAccount(workerId = java.util.UUID.randomUUID().toString(), farmId = farmId, name = name, emailOrPhone = emailOrPhone, password = password, canViewLivestock = permissions.canViewLivestock, canEditLivestock = permissions.canEditLivestock, canViewLogs = permissions.canViewLogs, canEditLogs = permissions.canEditLogs, canViewFinance = permissions.canViewFinance, canEditFinance = permissions.canEditFinance, canViewTasks = permissions.canViewTasks, canCompleteTasks = permissions.canCompleteTasks, canViewRequests = permissions.canViewRequests)
+            val worker = WorkerAccount(
+                workerId = java.util.UUID.randomUUID().toString(),
+                farmId = farmId,
+                name = name,
+                emailOrPhone = emailOrPhone,
+                password = password,
+                canViewLivestock = permissions.canViewLivestock,
+                canEditLivestock = permissions.canEditLivestock,
+                canViewLogs = permissions.canViewLogs,
+                canEditLogs = permissions.canEditLogs,
+                canViewFinance = permissions.canViewFinance,
+                canEditFinance = permissions.canEditFinance,
+                canViewTasks = permissions.canViewTasks,
+                canCompleteTasks = permissions.canCompleteTasks,
+                canViewRequests = permissions.canViewRequests
+            )
             repository.insertWorker(worker)
         }
     }

@@ -1337,8 +1337,3 @@ private fun ProductionSparkline(
         )
     }
 }
-
-
-
-
-This is the dashboard screen

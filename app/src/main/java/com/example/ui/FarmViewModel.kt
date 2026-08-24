@@ -254,7 +254,6 @@ class FarmViewModel(
             repository.insertTask(newTask)
         }
     }
-    }
 
     fun completeReminderAsTask(
         title: String,
@@ -281,8 +280,6 @@ class FarmViewModel(
             repository.insertTask(newTask)
         }
     }
-
-    fun completeTaskWithProof(
 
     fun completeTaskWithProof(
         taskId: Long,

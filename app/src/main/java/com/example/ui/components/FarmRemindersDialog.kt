@@ -71,7 +71,8 @@ fun FarmRemindersDialog(
     onDismiss: () -> Unit,
     onNavigateToAnimal: (Long) -> Unit = {},
     onAddNewTaskClick: () -> Unit = {},
-    onMarkTaskDone: (String) -> Unit = {}
+    onMarkTaskDone: (FarmReminder) -> Unit = {},
+    onDismissReminder: (String) -> Unit = {}
 ) {
     var selectedFilter by remember { mutableStateOf<ReminderType?>(null) }
 
@@ -359,7 +360,7 @@ fun FarmReminderCard(
                                 text = { Text("Complete Task", fontWeight = FontWeight.Bold, color = ForestGreenPrimary) },
                                 onClick = {
                                     reminderMenuExpanded = false
-                                    onActionClick()
+                                    onCompleteClick()
                                 },
                                 leadingIcon = {
                                     Icon(
@@ -374,7 +375,7 @@ fun FarmReminderCard(
                                 text = { Text("Delete / Dismiss", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626)) },
                                 onClick = {
                                     reminderMenuExpanded = false
-                                    onActionClick()
+                                    onDeleteClick()
                                 },
                                 leadingIcon = {
                                     Icon(

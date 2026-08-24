@@ -955,12 +955,11 @@ fun DashboardScreen(
                     showRemindersDialog = false
                     onAddTaskClick()
                 },
-                onMarkTaskDone = { taskId ->
-                    val pureId = taskId.removePrefix("task_").toLongOrNull()
-                    val task = tasks.find { it.id == pureId }
-                    if (task != null) {
-                        onCompleteTaskClick(task)
-                    }
+                onMarkTaskDone = { reminder ->
+                    onCompleteReminderClick(reminder)
+                },
+                onDismissReminder = { reminderId ->
+                    onDismissReminderClick(reminderId)
                 }
             )
         }

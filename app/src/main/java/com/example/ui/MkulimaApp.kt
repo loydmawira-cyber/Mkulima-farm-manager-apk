@@ -98,6 +98,8 @@ import com.example.ui.theme.TagLivestockBg
 import com.example.ui.theme.TagLivestockText
 import com.example.ui.theme.MkulimaTheme
 import com.example.ui.theme.mkulimaColors
+import com.example.util.RequestNotificationPermission
+import com.example.util.scheduleTaskReminders
 
 @Composable
 fun MkulimaApp(
@@ -139,7 +141,16 @@ fun MkulimaAppContent(
     val farmSettings by viewModel.farmSettings.collectAsState()
     val farmWorkers by viewModel.farmWorkers.collectAsState()
     val userSession by viewModel.currentSession.collectAsState()
-    val userRole = userSession?.role ?: "Worker"
+val userRole = userSession?.role ?: "Worker"
+
+LaunchedEffect(userSession) {
+    if (userSession != null) {
+        scheduleTaskReminders(context)
+    }
+}
+if (userSession != null) {
+    RequestNotificationPermission()
+}
 
     if (userSession == null) {
         AuthScreen(

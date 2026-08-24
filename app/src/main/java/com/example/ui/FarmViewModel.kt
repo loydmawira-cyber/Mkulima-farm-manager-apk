@@ -174,18 +174,6 @@ class FarmViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
-    val farmReminders: StateFlow<List<com.example.util.FarmReminder>> = combine(
-        allUnits,
-        rawTasks
-    ) { units, tasks ->
-        withContext(Dispatchers.Default) {
-            com.example.util.FarmReminderEngine.computeAllReminders(units = units, tasks = tasks)
-        }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
 
     // Auth Actions
     fun login(emailOrPhone: String, pass: String, onError: (String) -> Unit, onSuccess: () -> Unit = {}) {
@@ -621,6 +609,33 @@ class FarmViewModel(
     val allCattleEvents: StateFlow<List<CattleEvent>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getAllCattleEvents(farmId)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val farmReminders: StateFlow<List<com.example.util.FarmReminder>> = combine(
+        allUnits,
+        rawTasks,
+        allCattleEvents
+    ) { units, tasks, cattleEvents ->
+        withContext(Dispatchers.Default) {
+            val eventsMap = cattleEvents.groupBy { it.unitId }.mapValues { entry ->
+                entry.value.map {
+                    com.example.ui.screens.CattleEventItem(
+                        id = it.id.toString(),
+                        category = it.category,
+                        title = it.title,
+                        date = it.date,
+                        details = it.details,
+                        notes = it.notes ?: "",
+                        metricValue = it.metricValue ?: ""
+                    )
+                }
+            }
+            com.example.util.FarmReminderEngine.computeAllReminders(units = units, cattleEventsMap = eventsMap, tasks = tasks)
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),

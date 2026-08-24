@@ -367,11 +367,16 @@ fun MkulimaAppContent(
                 showRemindersDialog = false
                 showAddTaskDialog = true
             },
-            onMarkTaskDone = { taskId ->
-                val pureId = taskId.removePrefix("task_").toLongOrNull()
-                if (pureId != null) {
-                    viewModel.markTaskComplete(pureId, null, "Completed via reminders")
-                }
+            onMarkTaskDone = { reminder ->
+                viewModel.completeReminderAsTask(
+                    title = reminder.title,
+                    targetUnit = reminder.targetName,
+                    dueDateStr = reminder.dueDateStr,
+                    details = reminder.details
+                )
+            },
+            onDismissReminder = { reminderId ->
+                dismissedReminderIds = dismissedReminderIds + reminderId
             }
         )
     }

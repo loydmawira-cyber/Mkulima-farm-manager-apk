@@ -274,7 +274,9 @@ fun FarmRemindersDialog(
 @Composable
 fun FarmReminderCard(
     reminder: FarmReminder,
-    onActionClick: () -> Unit
+    onActionClick: () -> Unit,
+    onCompleteClick: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
     val urgencyBg = when (reminder.urgency) {
         ReminderUrgency.OVERDUE -> Color(0xFFFEE2E2)

@@ -136,6 +136,7 @@ fun DashboardScreen(
     eggLogs: List<EggLog> = emptyList(),
     units: List<FarmUnit> = emptyList(),
     allCattleEvents: List<com.example.data.CattleEvent> = emptyList(),
+    farmRemindersParam: List<com.example.util.FarmReminder> = emptyList(),
     financeRecords: List<FinanceRecord> = emptyList(),
     employeeRequests: List<EmployeeRequest> = emptyList(),
     searchQuery: String = "",
@@ -325,9 +326,7 @@ fun DashboardScreen(
     // Today Tasks and Reminders (Scheduled for Current Day)
     var showRemindersDialog by remember { mutableStateOf(false) }
     var selectedReminderFilter by remember { mutableStateOf<ReminderType?>(null) }
-    val farmReminders = remember(units, tasks) {
-        FarmReminderEngine.computeAllReminders(units = units, tasks = tasks)
-    }
+    val farmReminders = farmRemindersParam
 
     val todayDateVariants = remember {
         val now = Date()

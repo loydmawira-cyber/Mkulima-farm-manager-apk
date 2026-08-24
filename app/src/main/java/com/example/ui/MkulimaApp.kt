@@ -187,22 +187,7 @@ fun MkulimaAppContent(
     var showRemindersDialog by remember { mutableStateOf(false) }
     var dismissedReminderIds by remember { mutableStateOf(setOf<String>()) }
 
-    val farmReminders = remember(allUnits, allTasks, allCattleEvents) {
-        val eventsMap = allCattleEvents.groupBy { it.unitId }.mapValues { entry ->
-            entry.value.map {
-                com.example.ui.screens.CattleEventItem(
-                    id = it.id.toString(),
-                    category = it.category,
-                    title = it.title,
-                    date = it.date,
-                    details = it.details,
-                    notes = it.notes ?: "",
-                    metricValue = it.metricValue ?: ""
-                )
-            }
-        }
-        FarmReminderEngine.computeAllReminders(units = allUnits, cattleEventsMap = eventsMap, tasks = allTasks)
-    }
+    val farmReminders by viewModel.farmReminders.collectAsState()
 
     // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
     val hasOpenOverlay = showWorkerManagementScreen || showSettingsDialog || showRemindersDialog || showAddTaskDialog ||
@@ -623,6 +608,7 @@ fun MkulimaAppContent(
                         eggLogs = eggLogs,
                         units = allUnits,
                         allCattleEvents = allCattleEvents,
+                        farmRemindersParam = farmReminders,
                         financeRecords = financeRecords,
                         employeeRequests = employeeRequests,
                         onRestockClick = { showAddFinanceDialog = true },

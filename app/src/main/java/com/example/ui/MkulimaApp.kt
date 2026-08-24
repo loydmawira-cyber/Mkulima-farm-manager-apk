@@ -173,6 +173,7 @@ fun MkulimaAppContent(
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showWorkerManagementScreen by remember { mutableStateOf(false) }
     var showRemindersDialog by remember { mutableStateOf(false) }
+    var dismissedReminderIds by remember { mutableStateOf(setOf<String>()) }
 
     val farmReminders = remember(allUnits, allTasks, allCattleEvents) {
         val eventsMap = allCattleEvents.groupBy { it.unitId }.mapValues { entry ->

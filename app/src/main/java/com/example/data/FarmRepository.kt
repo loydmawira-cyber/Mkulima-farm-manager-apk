@@ -25,6 +25,8 @@ class FarmRepository(
     fun getUnitsForFarm(farmId: String): Flow<List<FarmUnit>> = farmDao.getUnitsByFarm(farmId)
     fun getMilkLogsForFarm(farmId: String): Flow<List<MilkLog>> = farmDao.getMilkLogsByFarm(farmId)
     fun getInventoryItemsForFarm(farmId: String): Flow<List<InventoryItem>> = farmDao.getInventoryItemsByFarm(farmId)
+    fun getFeedPlansForFarm(farmId: String): Flow<List<FeedPlan>> = farmDao.getFeedPlansByFarm(farmId)
+    fun getInventoryMovementsForFarm(farmId: String): Flow<List<InventoryMovement>> = farmDao.getInventoryMovementsByFarm(farmId)
     fun getFieldPlansForFarm(farmId: String): Flow<List<FieldPlan>> = farmDao.getFieldPlansByFarm(farmId)
     fun getEggLogsForFarm(farmId: String): Flow<List<EggLog>> = farmDao.getEggLogsByFarm(farmId)
     fun getFinanceRecordsForFarm(farmId: String): Flow<List<FinanceRecord>> = farmDao.getFinanceRecordsByFarm(farmId)
@@ -564,4 +566,32 @@ class FarmRepository(
         farmDao.deleteAllPoultryLogs()
         farmDao.deleteAllReminderCompletions()
     }
+
+    suspend fun saveFeedPlan(plan: FeedPlan) { farmDao.insertFeedPlan(plan.copy(updatedAt = System.currentTimeMillis())) }
+    suspend fun deleteFeedPlan(id: Long) { farmDao.softDeleteFeedPlan(id) }
+
+    /** Idempotent: sourceKey is deterministic for a plan + calendar day, so app restarts cannot deduct twice. */
+    suspend fun processAutomaticFeedDeductions(farmId: String, settings: FarmSettings, dateKey: String) {
+        if (!settings.automaticFeedDeductionEnabled) return
+        for (plan in farmDao.getEnabledFeedPlans(farmId)) {
+            val sourceKey = "auto-feed-${plan.syncId}-$dateKey"
+            if (farmDao.getInventoryMovementBySourceKey(sourceKey) != null) continue
+            val item = farmDao.getInventoryItemById(plan.inventoryItemId) ?: continue
+            val usableQuantity = item.quantityAvailable.coerceAtLeast(0.0)
+            val deduction = plan.dailyQuantityKg.coerceAtMost(usableQuantity)
+            if (deduction <= 0.0) continue
+            val newBalance = usableQuantity - deduction
+            farmDao.updateInventoryItem(item.copy(quantityAvailable = newBalance, updatedAt = System.currentTimeMillis()))
+            farmDao.insertInventoryMovement(InventoryMovement(
+                farmId = farmId, inventoryItemId = item.id, inventoryItemName = item.itemName,
+                targetUnitId = plan.targetUnitId, targetUnitName = plan.targetUnitName,
+                movementType = if (plan.consumptionKind == "SILAGE") "DAILY_SILAGE_USE" else "DAILY_FEED_USE",
+                quantityDeltaKg = -deduction, balanceAfterKg = newBalance, occurredOn = dateKey,
+                sourceKey = sourceKey,
+                notes = "Automatic ${plan.consumptionKind.lowercase()} consumption: ${plan.dailyQuantityKg} kg/day"
+            ))
+            farmDao.updateFeedPlan(plan.copy(lastProcessedDate = dateKey, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
 }

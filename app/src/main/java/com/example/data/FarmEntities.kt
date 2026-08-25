@@ -264,3 +264,19 @@ data class CattleEvent(
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity
+
+// Tracks when a computed (non-task) reminder — vaccination, deworming, PD check, etc. —
+// was marked done, since those reminders are derived on the fly from unit/event state
+// rather than stored as their own row. ruleKey mirrors the same id string FarmReminderEngine
+// builds for that reminder (e.g. "poultry_vac_${unitId}_${ruleId}").
+@Entity(tableName = "reminder_completions")
+data class ReminderCompletion(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    override val syncId: String = UUID.randomUUID().toString(),
+    override val farmId: String = "FARM-DEFAULT",
+    val ruleKey: String,
+    val unitId: Long = 0,
+    val completedAt: Long = System.currentTimeMillis(),
+    override val updatedAt: Long = System.currentTimeMillis(),
+    override val isDeleted: Boolean = false
+) : SyncableEntity

@@ -148,6 +148,8 @@ class FirestoreSyncEngine(
         attachCollectionListener("reminder_completions") { applyRemoteReminderCompletion(farmId, it) }
         attachCollectionListener("inventory_items") { applyRemoteInventoryItem(farmId, it) }
         attachCollectionListener("field_plans") { applyRemoteFieldPlan(farmId, it) }
+        attachCollectionListener("feed_plans") { applyRemoteFeedPlan(farmId, it) }
+        attachCollectionListener("inventory_movements") { applyRemoteInventoryMovement(farmId, it) }
 
         // Trigger initial push of any offline/dirty changes
         triggerPush(farmId)
@@ -194,6 +196,8 @@ class FirestoreSyncEngine(
                     "pregnancyCheckReminderDays" to setting.pregnancyCheckReminderDays,
                     "dryingOffReminderDays" to setting.dryingOffReminderDays,
                     "themeMode" to setting.themeMode,
+                    "automaticFeedDeductionEnabled" to setting.automaticFeedDeductionEnabled,
+                    "feedDeductionLastRunDate" to setting.feedDeductionLastRunDate,
                     "updatedAt" to setting.updatedAt,
                     "isDeleted" to setting.isDeleted
                 )
@@ -488,6 +492,29 @@ class FirestoreSyncEngine(
                 if (field.updatedAt > maxFieldUpdatedAt) maxFieldUpdatedAt = field.updatedAt
             }
             if (maxFieldUpdatedAt > lastFieldPush) setWatermark(farmId, "push_field_plans", maxFieldUpdatedAt)
+
+
+            // 14. Feed plans
+            val lastFeedPlanPush = getWatermark(farmId, "push_feed_plans")
+            val dirtyFeedPlans = farmDao.getDirtyFeedPlans(farmId, lastFeedPlanPush)
+            var maxFeedPlanUpdatedAt = lastFeedPlanPush
+            for (plan in dirtyFeedPlans) {
+                val data = hashMapOf<String, Any>("syncId" to plan.syncId, "farmId" to farmId, "targetUnitId" to plan.targetUnitId, "targetUnitSyncId" to plan.targetUnitSyncId, "targetUnitName" to plan.targetUnitName, "livestockType" to plan.livestockType, "inventoryItemId" to plan.inventoryItemId, "inventoryItemSyncId" to plan.inventoryItemSyncId, "inventoryItemName" to plan.inventoryItemName, "consumptionKind" to plan.consumptionKind, "dailyQuantityKg" to plan.dailyQuantityKg, "isEnabled" to plan.isEnabled, "lastProcessedDate" to plan.lastProcessedDate, "updatedAt" to plan.updatedAt, "isDeleted" to plan.isDeleted)
+                farmRef.collection("feed_plans").document(plan.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (plan.updatedAt > maxFeedPlanUpdatedAt) maxFeedPlanUpdatedAt = plan.updatedAt
+            }
+            if (maxFeedPlanUpdatedAt > lastFeedPlanPush) setWatermark(farmId, "push_feed_plans", maxFeedPlanUpdatedAt)
+
+            // 15. Immutable inventory movement ledger
+            val lastMovementPush = getWatermark(farmId, "push_inventory_movements")
+            val dirtyMovements = farmDao.getDirtyInventoryMovements(farmId, lastMovementPush)
+            var maxMovementUpdatedAt = lastMovementPush
+            for (movement in dirtyMovements) {
+                val data = hashMapOf<String, Any>("syncId" to movement.syncId, "farmId" to farmId, "inventoryItemId" to movement.inventoryItemId, "inventoryItemName" to movement.inventoryItemName, "targetUnitId" to movement.targetUnitId, "targetUnitName" to movement.targetUnitName, "movementType" to movement.movementType, "quantityDeltaKg" to movement.quantityDeltaKg, "balanceAfterKg" to movement.balanceAfterKg, "occurredOn" to movement.occurredOn, "sourceKey" to movement.sourceKey, "notes" to movement.notes, "updatedAt" to movement.updatedAt, "isDeleted" to movement.isDeleted)
+                farmRef.collection("inventory_movements").document(movement.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (movement.updatedAt > maxMovementUpdatedAt) maxMovementUpdatedAt = movement.updatedAt
+            }
+            if (maxMovementUpdatedAt > lastMovementPush) setWatermark(farmId, "push_inventory_movements", maxMovementUpdatedAt)
 
             Log.d(TAG, "Successfully pushed dirty rows for farm: $farmId")
         } catch (e: Throwable) {
@@ -800,6 +827,18 @@ class FirestoreSyncEngine(
         if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
             farmDao.insertFieldPlan(FieldPlan(id = existing?.id ?: 0, syncId = doc.id, farmId = farmId, fieldName = doc.getString("fieldName") ?: "Field", location = doc.getString("location") ?: "", sizeAcres = doc.getDouble("sizeAcres") ?: 0.0, cropName = doc.getString("cropName") ?: "Maize", variety = doc.getString("variety") ?: "", plantedDate = doc.getString("plantedDate") ?: "", daysToHarvest = (doc.getLong("daysToHarvest") ?: 120L).toInt(), estimatedHarvestDate = doc.getString("estimatedHarvestDate") ?: "", plantingNotes = doc.getString("plantingNotes") ?: "", status = doc.getString("status") ?: "GROWING", harvestedDate = doc.getString("harvestedDate") ?: "", harvestOutcome = doc.getString("harvestOutcome") ?: "", harvestedTonnes = doc.getDouble("harvestedTonnes") ?: 0.0, saleAmount = doc.getDouble("saleAmount") ?: 0.0, updatedAt = remoteUpdatedAt, isDeleted = doc.getBoolean("isDeleted") ?: false))
         }
+    }
+
+
+    private suspend fun applyRemoteFeedPlan(farmId: String, doc: DocumentSnapshot) {
+        val updatedAt = doc.getLong("updatedAt") ?: 0L
+        val existing = farmDao.getFeedPlanBySyncId(doc.id)
+        if (existing == null || updatedAt >= existing.updatedAt) farmDao.insertFeedPlan(FeedPlan(id = existing?.id ?: 0, syncId = doc.id, farmId = farmId, targetUnitId = doc.getLong("targetUnitId") ?: 0L, targetUnitSyncId = doc.getString("targetUnitSyncId") ?: "", targetUnitName = doc.getString("targetUnitName") ?: "", livestockType = doc.getString("livestockType") ?: "POULTRY", inventoryItemId = doc.getLong("inventoryItemId") ?: 0L, inventoryItemSyncId = doc.getString("inventoryItemSyncId") ?: "", inventoryItemName = doc.getString("inventoryItemName") ?: "", consumptionKind = doc.getString("consumptionKind") ?: "FEED", dailyQuantityKg = doc.getDouble("dailyQuantityKg") ?: 0.0, isEnabled = doc.getBoolean("isEnabled") ?: true, lastProcessedDate = doc.getString("lastProcessedDate") ?: "", updatedAt = updatedAt, isDeleted = doc.getBoolean("isDeleted") ?: false))
+    }
+    private suspend fun applyRemoteInventoryMovement(farmId: String, doc: DocumentSnapshot) {
+        val updatedAt = doc.getLong("updatedAt") ?: 0L
+        val existing = farmDao.getInventoryMovementBySyncId(doc.id)
+        if (existing == null || updatedAt >= existing.updatedAt) farmDao.insertInventoryMovement(InventoryMovement(id = existing?.id ?: 0, syncId = doc.id, farmId = farmId, inventoryItemId = doc.getLong("inventoryItemId") ?: 0L, inventoryItemName = doc.getString("inventoryItemName") ?: "", targetUnitId = doc.getLong("targetUnitId") ?: 0L, targetUnitName = doc.getString("targetUnitName") ?: "", movementType = doc.getString("movementType") ?: "MANUAL_ADJUSTMENT", quantityDeltaKg = doc.getDouble("quantityDeltaKg") ?: 0.0, balanceAfterKg = doc.getDouble("balanceAfterKg") ?: 0.0, occurredOn = doc.getString("occurredOn") ?: "", sourceKey = doc.getString("sourceKey") ?: "", notes = doc.getString("notes") ?: "", updatedAt = updatedAt, isDeleted = doc.getBoolean("isDeleted") ?: false))
     }
 
     private suspend fun applyRemoteWorkerAccount(farmId: String, doc: DocumentSnapshot) {

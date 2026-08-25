@@ -144,23 +144,6 @@ fun MkulimaAppContent(
     val userSession by viewModel.currentSession.collectAsState()
     val userRole = userSession?.role ?: "Worker"
 
-    // The Room query supports legacy FARM-DEFAULT rows. Do not allow those rows
-    // (or deleted/non-poultry units) to reach the egg-yield flock selector.
-    val activeFarmUnits = remember(allUnits, userSession?.farmId) {
-        val farmId = userSession?.farmId.orEmpty()
-        allUnits.filter { unit ->
-            unit.farmId == farmId && !unit.isDeleted
-        }
-    }
-    val activePoultryUnits = remember(activeFarmUnits) {
-        activeFarmUnits.filter { unit ->
-            unit.type.equals("Poultry", ignoreCase = true) ||
-                unit.type.equals("Flock", ignoreCase = true) ||
-                unit.breed.contains("Layer", ignoreCase = true) ||
-                unit.breed.contains("Flock", ignoreCase = true)
-        }
-    }
-
     if (userSession == null) {
         AuthScreen(
             onLogin = { email, pass, onError -> viewModel.login(email, pass, onError) },
@@ -195,8 +178,29 @@ fun MkulimaAppContent(
     var dismissedReminderIds by remember { mutableStateOf(setOf<String>()) }
 
     val farmReminders by viewModel.farmReminders.collectAsState()
-    val activeReminders by remember {
-        derivedStateOf { farmReminders.filterNot { it.id in dismissedReminderIds } }
+    // Every livestock reminder is associated with a unit id. Use that unit's type
+    // to prevent cattle reminders from leaking into Poultry Only and vice versa.
+    val visibleFarmReminders = remember(farmReminders, allUnits, farmSettings.farmType) {
+        val unitById = allUnits.associateBy { it.id }
+        val poultryOnly = farmSettings.farmType.equals("Poultry Only", ignoreCase = true)
+        val cattleOnly = farmSettings.farmType.equals("Cattle Only", ignoreCase = true)
+        farmReminders.filter { reminder ->
+            val unit = unitById[reminder.unitId]
+            val isPoultry = unit?.let {
+                it.type.equals("Poultry", ignoreCase = true) || it.type.equals("Flock", ignoreCase = true) ||
+                    it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true)
+            } ?: reminder.id.contains("poultry", ignoreCase = true) || reminder.targetName.contains("flock", ignoreCase = true)
+            val isCattle = unit?.let { !isPoultry } ?: reminder.id.contains("cattle", ignoreCase = true) ||
+                reminder.type.name in setOf("CALVING", "PREGNANCY_CHECK", "DRYING_OFF", "INSEMINATION")
+            when {
+                poultryOnly -> !isCattle || isPoultry
+                cattleOnly -> !isPoultry
+                else -> true
+            }
+        }
+    }
+    val activeReminders by remember(visibleFarmReminders, dismissedReminderIds) {
+        derivedStateOf { visibleFarmReminders.filterNot { it.id in dismissedReminderIds } }
     }
 
     // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
@@ -298,8 +302,7 @@ fun MkulimaAppContent(
     // Add Egg Log Dialog
     if (showAddEggLogDialog) {
         AddEggLogDialog(
-            // Only existing, active poultry units for the signed-in farm are selectable.
-            availableUnits = activePoultryUnits,
+            availableUnits = allUnits,
             onDismiss = { showAddEggLogDialog = false },
             onSaveEggLog = { unitName, totalEggs, damagedEggs, grade, notes ->
                 viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, notes)
@@ -686,7 +689,7 @@ fun MkulimaAppContent(
                     2 -> MilkLogScreen(
                         milkLogs = milkLogs,
                         eggLogs = eggLogs,
-                        units = activeFarmUnits,
+                        units = allUnits,
                         onAddMilkLogClick = { showAddMilkLogDialog = true },
                         onAddEggLogClick = { showAddEggLogDialog = true },
                         onQuickSaveMilkLog = { cowName, litres, session, recordDate ->

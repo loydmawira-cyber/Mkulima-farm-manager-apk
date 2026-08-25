@@ -117,6 +117,7 @@ import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkLog
+import com.example.data.PoultryLog
 import com.example.data.RequestStatus
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
@@ -207,6 +208,7 @@ data class AnimalDetailData(
 
 data class FlockDisposalLogItem(
     val id: String,
+    val recordId: Long,
     val flockName: String,
     val quantity: Int,
     val reason: String, // "Sold", "Death", "Home Consumption", "Other"
@@ -692,6 +694,7 @@ fun FlocksScreen(
     }
 
     val allDbCattleEvents by viewModel.allCattleEvents.collectAsStateWithLifecycle(initialValue = emptyList())
+    val allDbPoultryLogs by viewModel.allPoultryLogs.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val roomAnimals = remember(units, milkLogs, allDbCattleEvents) {
         units.map { unit ->
@@ -1237,11 +1240,19 @@ fun FlocksScreen(
     if (selectedAnimal != null) {
         val isPoultry = selectedAnimal!!.category.equals("POULTRY", ignoreCase = true) || selectedAnimal!!.category.equals("FLOCK", ignoreCase = true)
         if (isPoultry) {
+            val selectedPoultryUnitId = selectedAnimal!!.id.removePrefix("unit_").toLongOrNull() ?: 0L
             FlockDetailsView(
                 flock = selectedAnimal!!,
                 userRole = userRole,
                 eggLogs = eggLogs,
                 financeRecords = financeRecords,
+                poultryLogs = allDbPoultryLogs.filter { it.unitId == selectedPoultryUnitId },
+                onAddPoultryLog = { viewModel.addPoultryLog(it) },
+                onUpdatePoultryLog = { viewModel.updatePoultryLog(it) },
+                onDeletePoultryLog = { viewModel.deletePoultryLog(it) },
+                onUpdateFlockHeadCount = { newHeadCount ->
+                    if (selectedPoultryUnitId > 0) onUpdateUnitHeadCount(selectedPoultryUnitId, newHeadCount)
+                },
                 onBackClick = { selectedAnimal = null },
                 onAddEggLogClick = onAddEggLogClick,
                 onAddFinanceClick = onAddFinanceClick,
@@ -3821,6 +3832,7 @@ fun HealthLogItem(title: String, date: String, description: String) {
 
 data class PoultryFeedLogItem(
     val id: String,
+    val recordId: Long,
     val date: String,
     val feedType: String,
     val quantityKg: Double,
@@ -3830,6 +3842,8 @@ data class PoultryFeedLogItem(
 
 data class PoultryMortalityLogItem(
     val id: String,
+    val recordId: Long,
+    val linkedLogSyncId: String = "",
     val date: String,
     val count: Int,
     val cause: String,
@@ -3838,6 +3852,7 @@ data class PoultryMortalityLogItem(
 
 data class PoultryEggSaleItem(
     val id: String,
+    val recordId: Long,
     val date: String,
     val traysSold: Int,
     val pricePerTray: Double,
@@ -3851,6 +3866,56 @@ private sealed class PoultryLogAction {
     data class EggSale(val item: PoultryEggSaleItem) : PoultryLogAction()
     data class Disposal(val item: FlockDisposalLogItem) : PoultryLogAction()
 }
+
+private fun PoultryFeedLogItem.toPoultryLog(unitId: Long) = PoultryLog(
+    id = recordId,
+    syncId = id,
+    unitId = unitId,
+    logType = "FEED",
+    date = date,
+    feedType = feedType,
+    quantityKg = quantityKg,
+    costAmount = costAmount,
+    notes = notes
+)
+
+private fun PoultryMortalityLogItem.toPoultryLog(unitId: Long) = PoultryLog(
+    id = recordId,
+    syncId = id,
+    unitId = unitId,
+    logType = "MORTALITY",
+    date = date,
+    birdCount = count,
+    cause = cause,
+    notes = notes,
+    linkedLogSyncId = linkedLogSyncId
+)
+
+private fun PoultryEggSaleItem.toPoultryLog(unitId: Long) = PoultryLog(
+    id = recordId,
+    syncId = id,
+    unitId = unitId,
+    logType = "EGG_SALE",
+    date = date,
+    traysSold = traysSold,
+    pricePerTray = pricePerTray,
+    totalRevenue = totalRevenue,
+    buyer = buyer
+)
+
+private fun FlockDisposalLogItem.toPoultryLog(unitId: Long) = PoultryLog(
+    id = recordId,
+    syncId = id,
+    unitId = unitId,
+    logType = "DISPOSAL",
+    date = date,
+    birdCount = quantity,
+    disposalReason = reason,
+    disposalAmount = amount,
+    notes = notes,
+    linkedLogSyncId = if (reason.equals("Death", ignoreCase = true)) linkedMortalityLogId.orEmpty() else ""
+)
+
 
 data class PoultryVaccineItem(
     val id: String,
@@ -3868,6 +3933,11 @@ fun FlockDetailsView(
     userRole: String = "OWNER",
     eggLogs: List<EggLog>,
     financeRecords: List<FinanceRecord>,
+    poultryLogs: List<PoultryLog>,
+    onAddPoultryLog: (PoultryLog) -> Unit = {},
+    onUpdatePoultryLog: (PoultryLog) -> Unit = {},
+    onDeletePoultryLog: (Long) -> Unit = {},
+    onUpdateFlockHeadCount: (Int) -> Unit = {},
     onBackClick: () -> Unit,
     onAddEggLogClick: () -> Unit,
     onAddFinanceClick: () -> Unit,
@@ -3878,6 +3948,7 @@ fun FlockDetailsView(
     modifier: Modifier = Modifier
 ) {
     val canEdit = userRole == "OWNER"
+    val unitId = remember(flock.id) { flock.id.removePrefix("unit_").toLongOrNull() ?: 0L }
     var showFeedDialog by remember { mutableStateOf(false) }
     var showMortalityDialog by remember { mutableStateOf(false) }
     var showEggSaleDialog by remember { mutableStateOf(false) }
@@ -3897,6 +3968,7 @@ fun FlockDetailsView(
         if (flock.headCountInt > 1) flock.headCountInt else digits.toIntOrNull() ?: 450
     }
     var liveHeadCount by remember(flock.id) { mutableIntStateOf(initialHeadCount) }
+    LaunchedEffect(flock.headCountInt) { liveHeadCount = flock.headCountInt.coerceAtLeast(0) }
 
     // Dynamic Flock Age Calculation based on Date Added
     val flockAgeInfo = remember(flockDateAdded) {
@@ -3940,40 +4012,45 @@ fun FlockDetailsView(
         mutableStateListOf<PoultryVaccineItem>()
     }
 
-    val flockDisposalLogs = remember(flock.id) {
-        mutableStateListOf(
-            FlockDisposalLogItem("d1", flock.name, 50, "Sold", 35000.0, "10 Aug 2026", "Sold 50 off-layer birds to local butcher"),
-            FlockDisposalLogItem("d2", flock.name, 5, "Death", 0.0, "05 Aug 2026", "Heat stress mortality"),
-            FlockDisposalLogItem("d3", flock.name, 2, "Home Consumption", 1400.0, "01 Aug 2026", "Home consumption")
-        )
-    }
+    val flockDisposalLogs = poultryLogs
+        .filter { it.logType == "DISPOSAL" }
+        .map {
+            FlockDisposalLogItem(
+                id = it.syncId,
+                recordId = it.id,
+                flockName = flock.name,
+                quantity = it.birdCount,
+                reason = it.disposalReason,
+                amount = it.disposalAmount,
+                date = it.date,
+                notes = it.notes,
+                linkedMortalityLogId = it.linkedLogSyncId.ifBlank { null }
+            )
+        }
 
     var selectedStage by remember(flockAgeInfo.feedStage.stageName) {
         mutableStateOf(flockAgeInfo.feedStage.stageName)
     }
 
-    val feedLogs = remember(flock.id) {
-        mutableStateListOf(
-            PoultryFeedLogItem("f1", "12 Aug 2026", flockAgeInfo.feedStage.feedType, 50.0, 22.50, "Morning ration provided"),
-            PoultryFeedLogItem("f2", "10 Aug 2026", flockAgeInfo.feedStage.feedType, 50.0, 22.50, "Full ration provided")
-        )
-    }
+    val feedLogs = poultryLogs
+        .filter { it.logType == "FEED" }
+        .map {
+            PoultryFeedLogItem(it.syncId, it.id, it.date, it.feedType, it.quantityKg, it.costAmount, it.notes)
+        }
 
-    val mortalityLogs = remember(flock.id) {
-        mutableStateListOf(
-            PoultryMortalityLogItem("m1", "11 Aug 2026", 2, "Heat Stress", "High temperature peak in midday"),
-            PoultryMortalityLogItem("m2", "05 Aug 2026", 1, "Culling", "Weak chick culled")
-        )
-    }
+    val mortalityLogs = poultryLogs
+        .filter { it.logType == "MORTALITY" }
+        .map {
+            PoultryMortalityLogItem(it.syncId, it.id, it.linkedLogSyncId, it.date, it.birdCount, it.cause, it.notes)
+        }
 
-    val eggSaleLogs = remember(flock.id) {
-        mutableStateListOf(
-            PoultryEggSaleItem("s1", "12 Aug 2026", 12, 4.50, 54.00, "City Mart Supermarket"),
-            PoultryEggSaleItem("s2", "08 Aug 2026", 15, 4.50, 67.50, "Green Grocers Depot")
-        )
-    }
+    val eggSaleLogs = poultryLogs
+        .filter { it.logType == "EGG_SALE" }
+        .map {
+            PoultryEggSaleItem(it.syncId, it.id, it.date, it.traysSold, it.pricePerTray, it.totalRevenue, it.buyer)
+        }
 
-    val totalMortalityCount = remember(mortalityLogs.size) { mortalityLogs.sumOf { it.count } }
+    val totalMortalityCount = mortalityLogs.sumOf { it.count }
     val mortalityPercentage = remember(liveHeadCount, totalMortalityCount) {
         val totalBorn = liveHeadCount + totalMortalityCount
         if (totalBorn > 0) String.format("%.1f%%", (totalMortalityCount.toDouble() / totalBorn) * 100) else "0.0%"
@@ -3985,42 +4062,40 @@ fun FlockDetailsView(
             currentHeadCount = liveHeadCount,
             onDismiss = { showDisposeFlockDialog = false },
             onConfirmDisposeFlock = { quantity, reason, amount, notes, date ->
-                showDisposeFlockDialog = false
-                liveHeadCount = (liveHeadCount - quantity).coerceAtLeast(0)
-
-                val timestamp = System.currentTimeMillis()
-                val mortalityLogId = if (reason.equals("Death", ignoreCase = true)) {
-                    "m_$timestamp"
-                } else {
-                    null
-                }
-
-                if (mortalityLogId != null) {
-                    mortalityLogs.add(
-                        0,
-                        PoultryMortalityLogItem(
-                            id = mortalityLogId,
+                if (unitId > 0) {
+                    val disposalSyncId = java.util.UUID.randomUUID().toString()
+                    val mortalitySyncId = if (reason.equals("Death", ignoreCase = true)) java.util.UUID.randomUUID().toString() else ""
+                    if (mortalitySyncId.isNotBlank()) {
+                        onAddPoultryLog(
+                            PoultryLog(
+                                syncId = mortalitySyncId,
+                                unitId = unitId,
+                                logType = "MORTALITY",
+                                date = date,
+                                birdCount = quantity,
+                                cause = notes.ifBlank { "Mortality" },
+                                notes = "Created from flock disposal",
+                                linkedLogSyncId = disposalSyncId
+                            )
+                        )
+                    }
+                    onAddPoultryLog(
+                        PoultryLog(
+                            syncId = disposalSyncId,
+                            unitId = unitId,
+                            logType = "DISPOSAL",
                             date = date,
-                            count = quantity,
-                            cause = notes.ifBlank { "Mortality" },
-                            notes = "Created from flock disposal"
+                            birdCount = quantity,
+                            disposalReason = reason,
+                            disposalAmount = amount,
+                            notes = notes.ifBlank { "$reason disposal" },
+                            linkedLogSyncId = mortalitySyncId
                         )
                     )
                 }
-
-                flockDisposalLogs.add(
-                    0,
-                    FlockDisposalLogItem(
-                        id = "d_$timestamp",
-                        flockName = flock.name,
-                        quantity = quantity,
-                        reason = reason,
-                        amount = amount,
-                        date = date,
-                        notes = notes.ifBlank { "$reason disposal" },
-                        linkedMortalityLogId = mortalityLogId
-                    )
-                )
+                liveHeadCount = (liveHeadCount - quantity).coerceAtLeast(0)
+                onUpdateFlockHeadCount(liveHeadCount)
+                showDisposeFlockDialog = false
                 onDisposeFlock(quantity, reason, amount, notes, date)
             }
         )
@@ -4089,22 +4164,17 @@ fun FlockDetailsView(
             onDismiss = { poultryLogToDelete = null },
             onConfirmDelete = {
                 when (selectedLog) {
-                    is PoultryLogAction.Feed -> {
-                        feedLogs.removeAll { it.id == selectedLog.item.id }
-                    }
+                    is PoultryLogAction.Feed -> onDeletePoultryLog(selectedLog.item.recordId)
                     is PoultryLogAction.Mortality -> {
-                        mortalityLogs.removeAll { it.id == selectedLog.item.id }
+                        onDeletePoultryLog(selectedLog.item.recordId)
                         liveHeadCount += selectedLog.item.count
+                        onUpdateFlockHeadCount(liveHeadCount)
                     }
-                    is PoultryLogAction.EggSale -> {
-                        eggSaleLogs.removeAll { it.id == selectedLog.item.id }
-                    }
+                    is PoultryLogAction.EggSale -> onDeletePoultryLog(selectedLog.item.recordId)
                     is PoultryLogAction.Disposal -> {
-                        flockDisposalLogs.removeAll { it.id == selectedLog.item.id }
-                        selectedLog.item.linkedMortalityLogId?.let { mortalityId ->
-                            mortalityLogs.removeAll { it.id == mortalityId }
-                        }
+                        onDeletePoultryLog(selectedLog.item.recordId)
                         liveHeadCount += selectedLog.item.quantity
+                        onUpdateFlockHeadCount(liveHeadCount)
                     }
                 }
                 poultryLogToDelete = null
@@ -4118,8 +4188,7 @@ fun FlockDetailsView(
                 log = selectedLog.item,
                 onDismiss = { poultryLogToEdit = null },
                 onSave = { updatedLog ->
-                    val index = feedLogs.indexOfFirst { it.id == updatedLog.id }
-                    if (index >= 0) feedLogs[index] = updatedLog
+                    onUpdatePoultryLog(updatedLog.toPoultryLog(unitId))
                     poultryLogToEdit = null
                 }
             )
@@ -4129,13 +4198,10 @@ fun FlockDetailsView(
                 log = selectedLog.item,
                 onDismiss = { poultryLogToEdit = null },
                 onSave = { updatedLog ->
-                    val index = mortalityLogs.indexOfFirst { it.id == updatedLog.id }
-                    if (index >= 0) {
-                        val originalLog = mortalityLogs[index]
-                        val countDifference = updatedLog.count - originalLog.count
-                        liveHeadCount = (liveHeadCount - countDifference).coerceAtLeast(0)
-                        mortalityLogs[index] = updatedLog
-                    }
+                    val countDifference = updatedLog.count - selectedLog.item.count
+                    liveHeadCount = (liveHeadCount - countDifference).coerceAtLeast(0)
+                    onUpdateFlockHeadCount(liveHeadCount)
+                    onUpdatePoultryLog(updatedLog.toPoultryLog(unitId))
                     poultryLogToEdit = null
                 }
             )
@@ -4145,8 +4211,7 @@ fun FlockDetailsView(
                 log = selectedLog.item,
                 onDismiss = { poultryLogToEdit = null },
                 onSave = { updatedLog ->
-                    val index = eggSaleLogs.indexOfFirst { it.id == updatedLog.id }
-                    if (index >= 0) eggSaleLogs[index] = updatedLog
+                    onUpdatePoultryLog(updatedLog.toPoultryLog(unitId))
                     poultryLogToEdit = null
                 }
             )
@@ -4156,50 +4221,10 @@ fun FlockDetailsView(
                 log = selectedLog.item,
                 onDismiss = { poultryLogToEdit = null },
                 onSave = { updatedLog ->
-                    val index = flockDisposalLogs.indexOfFirst { it.id == updatedLog.id }
-                    if (index >= 0) {
-                        val originalLog = flockDisposalLogs[index]
-                        val quantityDifference = updatedLog.quantity - originalLog.quantity
-                        liveHeadCount = (liveHeadCount - quantityDifference).coerceAtLeast(0)
-
-                        val wasDeathDisposal = originalLog.reason.equals("Death", ignoreCase = true)
-                        val isDeathDisposal = updatedLog.reason.equals("Death", ignoreCase = true)
-                        var finalUpdatedLog = updatedLog
-
-                        when {
-                            wasDeathDisposal && !isDeathDisposal -> {
-                                originalLog.linkedMortalityLogId?.let { mortalityId ->
-                                    mortalityLogs.removeAll { it.id == mortalityId }
-                                }
-                                finalUpdatedLog = updatedLog.copy(linkedMortalityLogId = null)
-                            }
-
-                            isDeathDisposal -> {
-                                val mortalityId = originalLog.linkedMortalityLogId
-                                    ?: "m_${System.currentTimeMillis()}"
-                                val mortalityIndex = mortalityLogs.indexOfFirst { it.id == mortalityId }
-                                val linkedMortality = PoultryMortalityLogItem(
-                                    id = mortalityId,
-                                    date = updatedLog.date,
-                                    count = updatedLog.quantity,
-                                    cause = updatedLog.notes.ifBlank { "Mortality" },
-                                    notes = "Created from flock disposal"
-                                )
-                                if (mortalityIndex >= 0) {
-                                    mortalityLogs[mortalityIndex] = linkedMortality
-                                } else {
-                                    mortalityLogs.add(0, linkedMortality)
-                                }
-                                finalUpdatedLog = updatedLog.copy(linkedMortalityLogId = mortalityId)
-                            }
-
-                            else -> {
-                                finalUpdatedLog = updatedLog.copy(linkedMortalityLogId = null)
-                            }
-                        }
-
-                        flockDisposalLogs[index] = finalUpdatedLog
-                    }
+                    val quantityDifference = updatedLog.quantity - selectedLog.item.quantity
+                    liveHeadCount = (liveHeadCount - quantityDifference).coerceAtLeast(0)
+                    onUpdateFlockHeadCount(liveHeadCount)
+                    onUpdatePoultryLog(updatedLog.toPoultryLog(unitId))
                     poultryLogToEdit = null
                 }
             )
@@ -5480,7 +5505,19 @@ fun FlockDetailsView(
                             onClick = {
                                 val qty = qtyText.toDoubleOrNull() ?: 50.0
                                 val cost = costText.toDoubleOrNull() ?: 0.0
-                                feedLogs.add(0, PoultryFeedLogItem("f_${System.currentTimeMillis()}", "Today", feedType, qty, cost, "Logged from Flock View"))
+                                if (unitId > 0) {
+                                    onAddPoultryLog(
+                                        PoultryLog(
+                                            unitId = unitId,
+                                            logType = "FEED",
+                                            date = PoultryAgeAndVaccinationUtils.formatDate(Date()),
+                                            feedType = feedType.trim(),
+                                            quantityKg = qty.coerceAtLeast(0.0),
+                                            costAmount = cost.coerceAtLeast(0.0),
+                                            notes = "Logged from Flock View"
+                                        )
+                                    )
+                                }
                                 showFeedDialog = false
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
@@ -5519,8 +5556,21 @@ fun FlockDetailsView(
                         Button(
                             onClick = {
                                 val count = deathCountText.toIntOrNull() ?: 1
-                                mortalityLogs.add(0, PoultryMortalityLogItem("m_${System.currentTimeMillis()}", "Today", count, causeText, notesText))
-                                liveHeadCount = (liveHeadCount - count).coerceAtLeast(0)
+                                val safeCount = count.coerceAtLeast(1)
+                                if (unitId > 0) {
+                                    onAddPoultryLog(
+                                        PoultryLog(
+                                            unitId = unitId,
+                                            logType = "MORTALITY",
+                                            date = PoultryAgeAndVaccinationUtils.formatDate(Date()),
+                                            birdCount = safeCount,
+                                            cause = causeText.trim(),
+                                            notes = notesText.trim()
+                                        )
+                                    )
+                                }
+                                liveHeadCount = (liveHeadCount - safeCount).coerceAtLeast(0)
+                                onUpdateFlockHeadCount(liveHeadCount)
                                 showMortalityDialog = false
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
@@ -5560,7 +5610,19 @@ fun FlockDetailsView(
                                 val trays = traysText.toIntOrNull() ?: 10
                                 val price = priceText.toDoubleOrNull() ?: 4.50
                                 val total = trays * price
-                                eggSaleLogs.add(0, PoultryEggSaleItem("s_${System.currentTimeMillis()}", "Today", trays, price, total, buyerText))
+                                if (unitId > 0) {
+                                    onAddPoultryLog(
+                                        PoultryLog(
+                                            unitId = unitId,
+                                            logType = "EGG_SALE",
+                                            date = PoultryAgeAndVaccinationUtils.formatDate(Date()),
+                                            traysSold = trays.coerceAtLeast(0),
+                                            pricePerTray = price.coerceAtLeast(0.0),
+                                            totalRevenue = total.coerceAtLeast(0.0),
+                                            buyer = buyerText.trim()
+                                        )
+                                    )
+                                }
                                 onAddFinanceClick()
                                 showEggSaleDialog = false
                             },

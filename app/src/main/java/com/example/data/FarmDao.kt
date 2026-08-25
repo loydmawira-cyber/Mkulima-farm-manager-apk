@@ -31,8 +31,11 @@ interface FarmDao {
     @Query("SELECT * FROM farm_tasks WHERE id = :id AND isDeleted = 0")
     suspend fun getTaskById(id: Long): FarmTask?
 
-    @Query("SELECT * FROM farm_tasks WHERE syncId = :syncId LIMIT 1")
+    @Query("SELECT * FROM farm_tasks WHERE syncId = :syncId AND isDeleted = 0 LIMIT 1")
     suspend fun getTaskBySyncId(syncId: String): FarmTask?
+
+    @Query("UPDATE farm_tasks SET isDeleted = 1, updatedAt = :updatedAt WHERE syncId LIKE :syncIdPrefix || '%'")
+    suspend fun softDeleteTasksBySyncIdPrefix(syncIdPrefix: String, updatedAt: Long = System.currentTimeMillis())
 
     @Query("SELECT * FROM farm_tasks WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyTasks(farmId: String, since: Long): List<FarmTask>
@@ -64,6 +67,10 @@ interface FarmDao {
 
     @Query("SELECT * FROM farm_units WHERE syncId = :syncId LIMIT 1")
     suspend fun getUnitBySyncId(syncId: String): FarmUnit?
+
+    // Includes soft-deleted cattle so a tag is never reused after a disposal.
+    @Query("SELECT tagNumber FROM farm_units WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND (LOWER(type) LIKE '%cattle%' OR LOWER(type) LIKE '%cow%')")
+    suspend fun getAssignedCattleTagsForFarm(farmId: String): List<String>
 
     @Query("SELECT * FROM farm_units WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyUnits(farmId: String, since: Long): List<FarmUnit>
@@ -263,6 +270,9 @@ interface FarmDao {
 
     @Query("SELECT * FROM cattle_events WHERE syncId = :syncId LIMIT 1")
     suspend fun getCattleEventBySyncId(syncId: String): CattleEvent?
+
+    @Query("SELECT * FROM cattle_events WHERE id = :id LIMIT 1")
+    suspend fun getCattleEventById(id: Long): CattleEvent?
 
     @Query("SELECT * FROM cattle_events WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyCattleEvents(farmId: String, since: Long): List<CattleEvent>

@@ -538,6 +538,8 @@ class FirestoreSyncEngine(
                 pregnancyCheckReminderDays = doc.getLong("pregnancyCheckReminderDays")?.toInt() ?: 30,
                 dryingOffReminderDays = doc.getLong("dryingOffReminderDays")?.toInt() ?: 60,
                 themeMode = doc.getString("themeMode") ?: "SYSTEM",
+                automaticFeedDeductionEnabled = doc.getBoolean("automaticFeedDeductionEnabled") ?: false,
+                feedDeductionLastRunDate = doc.getString("feedDeductionLastRunDate") ?: "",
                 updatedAt = remoteUpdatedAt,
                 isDeleted = doc.getBoolean("isDeleted") ?: false
             )

@@ -695,6 +695,7 @@ fun FlocksScreen(
 
     val allDbCattleEvents by viewModel.allCattleEvents.collectAsStateWithLifecycle(initialValue = emptyList())
     val allDbPoultryLogs by viewModel.allPoultryLogs.collectAsStateWithLifecycle(initialValue = emptyList())
+    val reminderCompletions by viewModel.reminderCompletions.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val roomAnimals = remember(units, milkLogs, allDbCattleEvents) {
         units.map { unit ->
@@ -1247,6 +1248,30 @@ fun FlocksScreen(
                 eggLogs = eggLogs,
                 financeRecords = financeRecords,
                 poultryLogs = allDbPoultryLogs.filter { it.unitId == selectedPoultryUnitId },
+                completedVaccineRuleIds = reminderCompletions
+                    .asSequence()
+                    .filter { it.unitId == selectedPoultryUnitId }
+                    .mapNotNull { completion ->
+                        completion.ruleKey
+                            .takeIf { it.startsWith("poultry_vac_${selectedPoultryUnitId}_") }
+                            ?.removePrefix("poultry_vac_${selectedPoultryUnitId}_")
+                    }
+                    .toSet(),
+                onMarkVaccinationComplete = { ruleId ->
+                    if (selectedPoultryUnitId > 0) {
+                        viewModel.markReminderComplete(
+                            ruleKey = "poultry_vac_${selectedPoultryUnitId}_${ruleId}",
+                            unitId = selectedPoultryUnitId
+                        )
+                    }
+                },
+                onClearVaccinationComplete = { ruleId ->
+                    if (selectedPoultryUnitId > 0) {
+                        viewModel.clearReminderCompletion(
+                            ruleKey = "poultry_vac_${selectedPoultryUnitId}_${ruleId}"
+                        )
+                    }
+                },
                 onAddPoultryLog = { viewModel.addPoultryLog(it) },
                 onUpdatePoultryLog = { viewModel.updatePoultryLog(it) },
                 onDeletePoultryLog = { viewModel.deletePoultryLog(it) },
@@ -3934,6 +3959,10 @@ fun FlockDetailsView(
     eggLogs: List<EggLog>,
     financeRecords: List<FinanceRecord>,
     poultryLogs: List<PoultryLog>,
+    // Persisted rule ids loaded from reminder_completions for this flock.
+    completedVaccineRuleIds: Set<String> = emptySet(),
+    onMarkVaccinationComplete: (String) -> Unit = {},
+    onClearVaccinationComplete: (String) -> Unit = {},
     onAddPoultryLog: (PoultryLog) -> Unit = {},
     onUpdatePoultryLog: (PoultryLog) -> Unit = {},
     onDeletePoultryLog: (Long) -> Unit = {},
@@ -3975,26 +4004,16 @@ fun FlockDetailsView(
         PoultryAgeAndVaccinationUtils.calculateFlockAge(flockDateAdded)
     }
 
-    val completedVaccineRuleIds = remember(flock.id) {
-        mutableStateListOf<String>().apply {
-            // Pre-complete historical vaccines based on age for existing mock flocks
-            if (flockAgeInfo.totalDays >= 7) add("vac_day_0")
-            if (flockAgeInfo.totalDays >= 14) add("vac_day_7")
-            if (flockAgeInfo.totalDays >= 21) add("vac_day_14")
-            if (flockAgeInfo.totalDays >= 28) add("vac_day_21")
-            if (flockAgeInfo.totalDays >= 42) add("vac_day_28")
-            if (flockAgeInfo.totalDays >= 70) add("vac_day_42")
-            if (flockAgeInfo.totalDays >= 126) add("vac_day_56_70")
-        }
-    }
+    // Vaccine completion state is supplied by the parent from the persisted
+    // reminder_completions table. It is not kept in local compose memory.
 
     val dismissedVaccineRuleIds = remember(flock.id) {
         mutableStateListOf<String>()
     }
 
     // Dynamic calculated vaccination schedule
-    val calculatedVaccineSchedule = remember(flockDateAdded, completedVaccineRuleIds.toList(), dismissedVaccineRuleIds.toList()) {
-        PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(flockDateAdded, completedVaccineRuleIds.toSet())
+    val calculatedVaccineSchedule = remember(flockDateAdded, completedVaccineRuleIds, dismissedVaccineRuleIds.toList()) {
+        PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(flockDateAdded, completedVaccineRuleIds)
             .filter { !dismissedVaccineRuleIds.contains(it.ruleId) }
     }
 
@@ -5000,11 +5019,11 @@ fun FlockDetailsView(
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
                                             color = bgColor,
-                                            modifier = Modifier.clickable {
-                                                if (completedVaccineRuleIds.contains(vac.ruleId)) {
-                                                    completedVaccineRuleIds.remove(vac.ruleId)
+                                            modifier = Modifier.clickable(enabled = canEdit) {
+                                                if (vac.isCompleted) {
+                                                    onClearVaccinationComplete(vac.ruleId)
                                                 } else {
-                                                    completedVaccineRuleIds.add(vac.ruleId)
+                                                    onMarkVaccinationComplete(vac.ruleId)
                                                 }
                                             }
                                         ) {
@@ -5053,9 +5072,7 @@ fun FlockDetailsView(
                                                         text = { Text("Complete Vaccination", fontWeight = FontWeight.Bold, color = Color(0xFF15803D)) },
                                                         onClick = {
                                                             vacMenuExpanded = false
-                                                            if (!completedVaccineRuleIds.contains(vac.ruleId)) {
-                                                                completedVaccineRuleIds.add(vac.ruleId)
-                                                            }
+                                                            onMarkVaccinationComplete(vac.ruleId)
                                                         },
                                                         leadingIcon = {
                                                             Icon(
@@ -5071,7 +5088,7 @@ fun FlockDetailsView(
                                                         text = { Text("Mark Pending", fontWeight = FontWeight.SemiBold, color = Color(0xFF475569)) },
                                                         onClick = {
                                                             vacMenuExpanded = false
-                                                            completedVaccineRuleIds.remove(vac.ruleId)
+                                                            onClearVaccinationComplete(vac.ruleId)
                                                         },
                                                         leadingIcon = {
                                                             Icon(

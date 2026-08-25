@@ -327,6 +327,26 @@ class FarmViewModel(
         }
     }
 
+    /** Marks a computed reminder (including a poultry vaccination rule) complete.
+     * The completion is stored in Room and therefore survives process death/restart.
+     */
+    fun markReminderComplete(ruleKey: String, unitId: Long) {
+        if (ruleKey.isBlank()) return
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            repository.markReminderComplete(farmId, ruleKey, unitId)
+        }
+    }
+
+    /** Reopens a computed reminder by removing its persisted completion record. */
+    fun clearReminderCompletion(ruleKey: String) {
+        if (ruleKey.isBlank()) return
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            repository.clearReminderCompletion(farmId, ruleKey)
+        }
+    }
+
     fun completeTaskWithProof(
         taskId: Long,
         photoUriString: String?,

@@ -224,6 +224,8 @@ data class FarmSettings(
     val pregnancyCheckReminderDays: Int = 30,
     val dryingOffReminderDays: Int = 60,
     val themeMode: String = "CLASSIC", // matches the app's default palette, so the first frame (before settings load from Room) doesn't flash a different theme
+    val automaticFeedDeductionEnabled: Boolean = false,
+    val feedDeductionLastRunDate: String = "",
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity
@@ -338,6 +340,8 @@ data class InventoryItem(
     val expirationDate: String = "",
     val unitCost: Double = 0.0,
     val isSilage: Boolean = false,
+    val intendedLivestockType: String = "GENERAL", // GENERAL, CATTLE, POULTRY
+    val intendedUnitId: Long = 0L,                  // optional flock/herd target
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity
@@ -362,6 +366,48 @@ data class FieldPlan(
     val harvestOutcome: String = "", // SOLD or SILAGE
     val harvestedTonnes: Double = 0.0,
     val saleAmount: Double = 0.0,
+    override val updatedAt: Long = System.currentTimeMillis(),
+    override val isDeleted: Boolean = false
+) : SyncableEntity
+
+
+/** A recurring daily inventory-consumption rule for a cattle herd or poultry flock. */
+@Entity(tableName = "feed_plans")
+data class FeedPlan(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    override val syncId: String = UUID.randomUUID().toString(),
+    override val farmId: String = "FARM-DEFAULT",
+    val targetUnitId: Long,
+    val targetUnitSyncId: String = "",
+    val targetUnitName: String = "",
+    val livestockType: String, // CATTLE or POULTRY
+    val inventoryItemId: Long,
+    val inventoryItemSyncId: String = "",
+    val inventoryItemName: String = "",
+    val consumptionKind: String = "FEED", // FEED or SILAGE
+    val dailyQuantityKg: Double,
+    val isEnabled: Boolean = true,
+    val lastProcessedDate: String = "",
+    override val updatedAt: Long = System.currentTimeMillis(),
+    override val isDeleted: Boolean = false
+) : SyncableEntity
+
+/** Immutable stock ledger entry. sourceKey guarantees one automatic deduction per plan per day. */
+@Entity(tableName = "inventory_movements")
+data class InventoryMovement(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    override val syncId: String = UUID.randomUUID().toString(),
+    override val farmId: String = "FARM-DEFAULT",
+    val inventoryItemId: Long,
+    val inventoryItemName: String = "",
+    val targetUnitId: Long = 0L,
+    val targetUnitName: String = "",
+    val movementType: String, // RECEIPT, MANUAL_ADJUSTMENT, DAILY_FEED_USE, DAILY_SILAGE_USE, HARVEST_RECEIPT
+    val quantityDeltaKg: Double,
+    val balanceAfterKg: Double,
+    val occurredOn: String,
+    val sourceKey: String = "",
+    val notes: String = "",
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity

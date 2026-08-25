@@ -77,17 +77,17 @@ class FirestoreSyncEngine(
     fun reserveNextCattleTag(farmId: String, localNextCandidate: Long): String? {
         val db = getFirestore() ?: return null
         return runCatching {
+            val remoteHighestTag = db.collection("farms").document(farmId).collection("units")
+                .get().awaitTask().documents
+                .asSequence()
+                .mapNotNull { it.getString("tagNumber") }
+                .map { it.trim().removePrefix("#") }
+                .mapNotNull { it.toLongOrNull() }
+                .maxOrNull() ?: 0L
             val sequenceRef = db.collection("farms").document(farmId)
                 .collection("meta").document("cattle_tag_sequence")
-            val unitsQuery = db.collection("farms").document(farmId).collection("units")
             db.runTransaction { transaction ->
                 val snapshot = transaction.get(sequenceRef)
-                val remoteHighestTag = transaction.get(unitsQuery).documents
-                    .asSequence()
-                    .mapNotNull { it.getString("tagNumber") }
-                    .map { it.trim().removePrefix("#") }
-                    .mapNotNull { it.toLongOrNull() }
-                    .maxOrNull() ?: 0L
                 val reservedNumber = maxOf(
                     snapshot.getLong("nextTagNumber") ?: 1L,
                     localNextCandidate.coerceAtLeast(1L),

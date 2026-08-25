@@ -137,6 +137,8 @@ fun MkulimaAppContent(
     val financeRecords by viewModel.allFinanceRecords.collectAsState()
     val inventoryItems by viewModel.allInventoryItems.collectAsState()
     val fieldPlans by viewModel.allFieldPlans.collectAsState()
+    val feedPlans by viewModel.allFeedPlans.collectAsState()
+    val inventoryMovements by viewModel.allInventoryMovements.collectAsState()
     val employeeRequests by viewModel.allEmployeeRequests.collectAsState()
     val allCattleEvents by viewModel.allCattleEvents.collectAsState(initial = emptyList())
     val farmSettings by viewModel.farmSettings.collectAsState()
@@ -178,29 +180,8 @@ fun MkulimaAppContent(
     var dismissedReminderIds by remember { mutableStateOf(setOf<String>()) }
 
     val farmReminders by viewModel.farmReminders.collectAsState()
-    // Every livestock reminder is associated with a unit id. Use that unit's type
-    // to prevent cattle reminders from leaking into Poultry Only and vice versa.
-    val visibleFarmReminders = remember(farmReminders, allUnits, farmSettings.farmType) {
-        val unitById = allUnits.associateBy { it.id }
-        val poultryOnly = farmSettings.farmType.equals("Poultry Only", ignoreCase = true)
-        val cattleOnly = farmSettings.farmType.equals("Cattle Only", ignoreCase = true)
-        farmReminders.filter { reminder ->
-            val unit = unitById[reminder.unitId]
-            val isPoultry = unit?.let {
-                it.type.equals("Poultry", ignoreCase = true) || it.type.equals("Flock", ignoreCase = true) ||
-                    it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true)
-            } ?: reminder.id.contains("poultry", ignoreCase = true) || reminder.targetName.contains("flock", ignoreCase = true)
-            val isCattle = unit?.let { !isPoultry } ?: reminder.id.contains("cattle", ignoreCase = true) ||
-                reminder.type.name in setOf("CALVING", "PREGNANCY_CHECK", "DRYING_OFF", "INSEMINATION")
-            when {
-                poultryOnly -> !isCattle || isPoultry
-                cattleOnly -> !isPoultry
-                else -> true
-            }
-        }
-    }
-    val activeReminders by remember(visibleFarmReminders, dismissedReminderIds) {
-        derivedStateOf { visibleFarmReminders.filterNot { it.id in dismissedReminderIds } }
+    val activeReminders by remember {
+        derivedStateOf { farmReminders.filterNot { it.id in dismissedReminderIds } }
     }
 
     // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
@@ -655,12 +636,19 @@ fun MkulimaAppContent(
                         userRole = userRole,
                         inventoryItems = inventoryItems,
                         fieldPlans = fieldPlans,
+                        units = allUnits,
+                        feedPlans = feedPlans,
+                        inventoryMovements = inventoryMovements,
+                        automaticFeedDeductionEnabled = farmSettings.automaticFeedDeductionEnabled,
                         financeRecords = financeRecords,
                         onAddInventory = { viewModel.addInventoryItem(it) },
                         onAddField = { viewModel.addFieldPlan(it) },
                         onHarvest = { field, outcome, tonnes, saleAmount, harvestDate ->
                             viewModel.recordFieldHarvest(field, outcome, tonnes, saleAmount, harvestDate)
                         },
+                        onSaveFeedPlan = { viewModel.saveFeedPlan(it) },
+                        onDeleteFeedPlan = { viewModel.deleteFeedPlan(it) },
+                        onAutomaticFeedDeductionChanged = { viewModel.setAutomaticFeedDeductionEnabled(it) },
                         livestock = {
                             FlocksScreen(
                                 viewModel = viewModel,

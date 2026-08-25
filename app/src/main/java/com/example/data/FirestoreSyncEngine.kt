@@ -69,6 +69,45 @@ class FirestoreSyncEngine(
         }
     }
 
+    /**
+     * Reserves one farm-wide cattle tag through Firestore's transaction retry mechanism.
+     * The local candidate lets existing farms continue from their highest historical tag
+     * when the sequence document is first created.
+     */
+    fun reserveNextCattleTag(farmId: String, localNextCandidate: Long): String? {
+        val db = getFirestore() ?: return null
+        return runCatching {
+            val sequenceRef = db.collection("farms").document(farmId)
+                .collection("meta").document("cattle_tag_sequence")
+            val unitsQuery = db.collection("farms").document(farmId).collection("units")
+            db.runTransaction { transaction ->
+                val snapshot = transaction.get(sequenceRef)
+                val remoteHighestTag = transaction.get(unitsQuery).documents
+                    .asSequence()
+                    .mapNotNull { it.getString("tagNumber") }
+                    .map { it.trim().removePrefix("#") }
+                    .mapNotNull { it.toLongOrNull() }
+                    .maxOrNull() ?: 0L
+                val reservedNumber = maxOf(
+                    snapshot.getLong("nextTagNumber") ?: 1L,
+                    localNextCandidate.coerceAtLeast(1L),
+                    remoteHighestTag + 1L
+                )
+                transaction.set(
+                    sequenceRef,
+                    mapOf(
+                        "nextTagNumber" to (reservedNumber + 1L),
+                        "updatedAt" to System.currentTimeMillis()
+                    ),
+                    SetOptions.merge()
+                )
+                reservedNumber.toString().padStart(3, '0')
+            }.awaitTask()
+        }.onFailure { error ->
+            Log.e(TAG, "Unable to reserve cattle tag for farm $farmId", error)
+        }.getOrNull()
+    }
+
     private fun getWatermark(farmId: String, key: String): Long {
         return prefs.getLong("${farmId}_${key}", 0L)
     }

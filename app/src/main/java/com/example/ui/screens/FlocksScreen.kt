@@ -1765,19 +1765,21 @@ fun FlocksScreen(
             }
 
             if (userRole == "OWNER") {
+                val isPoultrySection = selectedFilterCategory.equals("POULTRY", ignoreCase = true)
+                val addLabel = if (isPoultrySection) "ADD FLOCK" else "ADD ANIMAL"
                 FloatingActionButton(
                     onClick = onAddUnitClick,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(20.dp)
-                        .testTag("add_animal_fab"),
+                        .testTag(if (isPoultrySection) "add_flock_fab" else "add_animal_fab"),
                     containerColor = ForestGreenPrimary,
                     contentColor = Color.White
                 ) {
                     Row(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Icon(Icons.Filled.Add, contentDescription = addLabel)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("ADD ANIMAL", fontWeight = FontWeight.Bold)
+                        Text(addLabel, fontWeight = FontWeight.Bold)
                     }
                 }
             }

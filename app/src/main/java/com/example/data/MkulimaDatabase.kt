@@ -29,6 +29,43 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
+
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `poultry_logs` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `syncId` TEXT NOT NULL,
+                `farmId` TEXT NOT NULL,
+                `unitId` INTEGER NOT NULL,
+                `unitSyncId` TEXT NOT NULL,
+                `logType` TEXT NOT NULL,
+                `date` TEXT NOT NULL,
+                `feedType` TEXT NOT NULL,
+                `quantityKg` REAL NOT NULL,
+                `costAmount` REAL NOT NULL,
+                `birdCount` INTEGER NOT NULL,
+                `cause` TEXT NOT NULL,
+                `traysSold` INTEGER NOT NULL,
+                `pricePerTray` REAL NOT NULL,
+                `totalRevenue` REAL NOT NULL,
+                `buyer` TEXT NOT NULL,
+                `disposalReason` TEXT NOT NULL,
+                `disposalAmount` REAL NOT NULL,
+                `vaccineName` TEXT NOT NULL,
+                `targetStage` TEXT NOT NULL,
+                `vaccineStatus` TEXT NOT NULL,
+                `notes` TEXT NOT NULL,
+                `linkedLogSyncId` TEXT NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                `isDeleted` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 @Database(
     entities = [
         FarmTask::class,
@@ -41,9 +78,10 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         FarmSettings::class,
         WorkerAccount::class,
         FarmAccount::class,
-        ReminderCompletion::class
+        ReminderCompletion::class,
+        PoultryLog::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -60,7 +98,7 @@ abstract class MkulimaDatabase : RoomDatabase() {
                     MkulimaDatabase::class.java,
                     "mkulima_farm_db"
                 )
-                .addMigrations(MIGRATION_13_14)
+                .addMigrations(MIGRATION_13_14, MIGRATION_14_15)
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(MkulimaDatabaseCallback(scope))
                 .build()

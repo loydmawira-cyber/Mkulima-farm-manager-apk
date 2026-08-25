@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.sp
 import com.example.data.FieldPlan
 import com.example.data.InventoryItem
 import com.example.data.FinanceRecord
+import com.example.data.FarmUnit
+import com.example.data.FeedPlan
+import com.example.data.InventoryMovement
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,10 +36,17 @@ fun AssetsScreen(
     livestock: @Composable () -> Unit,
     inventoryItems: List<InventoryItem>,
     fieldPlans: List<FieldPlan>,
+    units: List<FarmUnit>,
+    feedPlans: List<FeedPlan>,
+    inventoryMovements: List<InventoryMovement>,
+    automaticFeedDeductionEnabled: Boolean,
     financeRecords: List<FinanceRecord>,
     onAddInventory: (InventoryItem) -> Unit,
     onAddField: (FieldPlan) -> Unit,
     onHarvest: (FieldPlan, String, Double, Double, String) -> Unit,
+    onSaveFeedPlan: (FeedPlan) -> Unit,
+    onDeleteFeedPlan: (Long) -> Unit,
+    onAutomaticFeedDeductionChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var tab by remember { mutableIntStateOf(0) }
@@ -48,13 +58,14 @@ fun AssetsScreen(
     fieldToHarvest?.let { HarvestDialog(it, { fieldToHarvest=null }) { outcome, tonnes, sale, date -> onHarvest(it,outcome,tonnes,sale,date); fieldToHarvest=null } }
     Column(modifier.fillMaxSize()) {
         TabRow(selectedTabIndex=tab) {
-            listOf("Livestock", "Inventory", "Fields").forEachIndexed { i, label -> Tab(selected=tab==i,onClick={tab=i},text={Text(label,fontWeight=FontWeight.Bold)}) }
+            listOf("Livestock", "Inventory", "Fields", "Feed Plans").forEachIndexed { i, label -> Tab(selected=tab==i,onClick={tab=i},text={Text(label,fontWeight=FontWeight.Bold)}) }
         }
         Box(Modifier.weight(1f)) {
             when(tab) {
                 0 -> livestock()
                 1 -> InventoryContent(inventoryItems)
-                else -> FieldsContent(fieldPlans, onHarvest={fieldToHarvest=it})
+                2 -> FieldsContent(fieldPlans, onHarvest={fieldToHarvest=it})
+                else -> FeedPlansScreen(userRole, automaticFeedDeductionEnabled, units, inventoryItems, feedPlans, inventoryMovements, onAutomaticFeedDeductionChanged, onSaveFeedPlan, onDeleteFeedPlan)
             }
             if (userRole.equals("OWNER",true) && tab in 1..2) FloatingActionButton(
                 onClick={ if(tab==1) showInventoryDialog=true else showFieldDialog=true },

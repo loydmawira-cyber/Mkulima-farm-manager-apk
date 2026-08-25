@@ -45,6 +45,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -422,29 +423,35 @@ class FarmViewModel(
         weightAtBirth: String = "",
         currentWeight: String = "",
         sire: String = "",
-        dam: String = ""
+        dam: String = "",
+        onCreated: (FarmUnit) -> Unit = {},
+        onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-            val newUnit = FarmUnit(
-                farmId = farmId,
-                name = name.ifBlank { "Farm Unit" },
-                type = type.ifBlank { "Cattle" },
-                headCount = headCount,
-                healthStatus = healthStatus.ifBlank { "Optimal" },
-                location = location.ifBlank { "Main Sector" },
-                lastUpdated = nowFormatted,
-                tagNumber = tagNumber,
-                breed = breed,
-                dob = dob,
-                dateAdded = if (dateAdded.isNotBlank()) dateAdded else dob,
-                weightAtBirth = weightAtBirth,
-                currentWeight = currentWeight,
-                sire = sire,
-                dam = dam
-            )
-            repository.insertUnit(newUnit)
+            runCatching {
+                val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+                val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                val newUnit = FarmUnit(
+                    farmId = farmId,
+                    name = name.ifBlank { "Farm Unit" },
+                    type = type.ifBlank { "Cattle" },
+                    headCount = headCount,
+                    healthStatus = healthStatus.ifBlank { "Optimal" },
+                    location = location.ifBlank { "Main Sector" },
+                    lastUpdated = nowFormatted,
+                    tagNumber = tagNumber,
+                    breed = breed,
+                    dob = dob,
+                    dateAdded = if (dateAdded.isNotBlank()) dateAdded else dob,
+                    weightAtBirth = weightAtBirth,
+                    currentWeight = currentWeight,
+                    sire = sire,
+                    dam = dam
+                )
+                withContext(Dispatchers.IO) { repository.insertUnitAndReturnPrepared(newUnit) }
+            }.onSuccess(onCreated).onFailure { error ->
+                onError(error.message ?: "Unable to save the animal. Please try again.")
+            }
         }
     }
 
@@ -828,6 +835,8 @@ class FarmViewModel(
                         val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
                         repository.updateUnit(existing.copy(healthStatus = newStatus, lastUpdated = nowFormatted))
                     }
+
+                    synchronizeRepeatHeatCheckTasks(event, existing)
                 }
             }
         }
@@ -835,15 +844,79 @@ class FarmViewModel(
 
     fun updateCattleEvent(eventId: Long, unitId: Long, category: String, title: String, date: String, details: String, notes: String?, metricValue: String?) {
         viewModelScope.launch {
-            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val event = CattleEvent(id = eventId, farmId = farmId, unitId = unitId, category = category, title = title, date = date, details = details, notes = notes, metricValue = metricValue)
+            val existingEvent = repository.getCattleEventById(eventId) ?: return@launch
+            val event = existingEvent.copy(
+                unitId = unitId,
+                category = category,
+                title = title,
+                date = date,
+                details = details,
+                notes = notes,
+                metricValue = metricValue
+            )
             repository.updateCattleEvent(event)
+            val cow = allUnits.value.find { it.id == unitId }
+            if (cow != null) synchronizeRepeatHeatCheckTasks(event, cow)
         }
     }
 
     fun deleteCattleEvent(eventId: Long) {
         viewModelScope.launch {
+            val event = repository.getCattleEventById(eventId)
             repository.deleteCattleEvent(eventId)
+            if (event != null) {
+                repository.softDeleteTasksBySyncIdPrefix("repeat-heat-${event.syncId}-day-", event.farmId)
+            }
+        }
+    }
+
+    private fun isRecordedHeatEvent(category: String, title: String, details: String): Boolean {
+        val combinedText = "$category $title $details"
+        return category.equals("HEAT", ignoreCase = true) ||
+            category.equals("ESTRUS", ignoreCase = true) ||
+            combinedText.contains("on heat", ignoreCase = true) ||
+            combinedText.contains("heat observed", ignoreCase = true) ||
+            combinedText.contains("estrus", ignoreCase = true)
+    }
+
+    /** Rebuilds the repeat-heat checks so they always match the current source event. */
+    private suspend fun synchronizeRepeatHeatCheckTasks(event: CattleEvent, cow: FarmUnit) {
+        val sourcePrefix = "repeat-heat-${event.syncId}-day-"
+        repository.softDeleteTasksBySyncIdPrefix(sourcePrefix, event.farmId)
+        if (isRecordedHeatEvent(event.category, event.title, event.details)) {
+            createRepeatHeatCheckTasks(event, cow)
+        }
+    }
+
+    /** Creates one visible livestock reminder for each repeat-heat check day (18–21). */
+    private suspend fun createRepeatHeatCheckTasks(event: CattleEvent, cow: FarmUnit) {
+        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).apply { isLenient = false }
+        val heatDate = runCatching { dateFormat.parse(event.date.trim()) }.getOrNull() ?: return
+        val eventKey = event.syncId.ifBlank { "${event.farmId}-${event.unitId}-${event.date}" }
+        val targetName = if (cow.tagNumber.isBlank()) cow.name else "${cow.name} • Tag ${cow.tagNumber}"
+
+        for (day in 18..21) {
+            val calendar = Calendar.getInstance().apply {
+                time = heatDate
+                add(Calendar.DAY_OF_YEAR, day)
+            }
+            val dueDate = dateFormat.format(calendar.time)
+            val taskSyncId = "repeat-heat-$eventKey-day-$day"
+            if (repository.getTaskBySyncId(taskSyncId) != null) continue
+
+            repository.insertTask(
+                FarmTask(
+                    syncId = taskSyncId,
+                    farmId = event.farmId,
+                    title = "Repeat heat check — ${cow.name} (Day $day)",
+                    category = TaskCategory.LIVESTOCK,
+                    targetUnit = targetName,
+                    priority = TaskPriority.HIGH,
+                    scheduledTime = dueDate,
+                    instructions = "Check for repeat heat on day $day of the 18–21 day window after heat was recorded on ${event.date}. This reminder is created whether or not the cow was inseminated.",
+                    assignedWorker = "Lead Operator"
+                )
+            )
         }
     }
 

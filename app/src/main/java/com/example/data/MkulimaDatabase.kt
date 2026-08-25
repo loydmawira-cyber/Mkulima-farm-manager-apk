@@ -66,6 +66,26 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS `inventory_items` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `syncId` TEXT NOT NULL, `farmId` TEXT NOT NULL,
+            `itemName` TEXT NOT NULL, `category` TEXT NOT NULL, `skuOrBarcode` TEXT NOT NULL, `description` TEXT NOT NULL,
+            `quantityAvailable` REAL NOT NULL, `unitOfMeasurement` TEXT NOT NULL, `minimumThreshold` REAL NOT NULL,
+            `storageLocation` TEXT NOT NULL, `batchOrLotNumber` TEXT NOT NULL, `purchaseDate` TEXT NOT NULL,
+            `expirationDate` TEXT NOT NULL, `unitCost` REAL NOT NULL, `isSilage` INTEGER NOT NULL,
+            `updatedAt` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL)""")
+        db.execSQL("""CREATE TABLE IF NOT EXISTS `field_plans` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `syncId` TEXT NOT NULL, `farmId` TEXT NOT NULL,
+            `fieldName` TEXT NOT NULL, `location` TEXT NOT NULL, `sizeAcres` REAL NOT NULL, `cropName` TEXT NOT NULL,
+            `variety` TEXT NOT NULL, `plantedDate` TEXT NOT NULL, `daysToHarvest` INTEGER NOT NULL,
+            `estimatedHarvestDate` TEXT NOT NULL, `plantingNotes` TEXT NOT NULL, `status` TEXT NOT NULL,
+            `harvestedDate` TEXT NOT NULL, `harvestOutcome` TEXT NOT NULL, `harvestedTonnes` REAL NOT NULL,
+            `saleAmount` REAL NOT NULL, `updatedAt` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL)""")
+    }
+}
+
 @Database(
     entities = [
         FarmTask::class,
@@ -79,9 +99,11 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         WorkerAccount::class,
         FarmAccount::class,
         ReminderCompletion::class,
-        PoultryLog::class
+        PoultryLog::class,
+        InventoryItem::class,
+        FieldPlan::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -98,7 +120,7 @@ abstract class MkulimaDatabase : RoomDatabase() {
                     MkulimaDatabase::class.java,
                     "mkulima_farm_db"
                 )
-                .addMigrations(MIGRATION_13_14, MIGRATION_14_15)
+                .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(MkulimaDatabaseCallback(scope))
                 .build()

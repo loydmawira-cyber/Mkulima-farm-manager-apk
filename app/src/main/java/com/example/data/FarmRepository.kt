@@ -311,6 +311,30 @@ class FarmRepository(
         syncEngine?.triggerPush(event?.farmId)
     }
 
+    // Reminder Completions (for computed reminders — vaccination, deworming, PD check, etc.
+    // that aren't backed by their own FarmTask row)
+    fun getReminderCompletionsForFarm(farmId: String): Flow<List<ReminderCompletion>> =
+        farmDao.getReminderCompletionsByFarm(farmId)
+
+    suspend fun markReminderComplete(farmId: String, ruleKey: String, unitId: Long) {
+        val prepared = ReminderCompletion(
+            syncId = UUID.randomUUID().toString(),
+            farmId = farmId,
+            ruleKey = ruleKey,
+            unitId = unitId,
+            completedAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        farmDao.insertReminderCompletion(prepared)
+        syncEngine?.triggerPush(farmId)
+    }
+
+    suspend fun clearReminderCompletion(farmId: String, ruleKey: String) {
+        farmDao.clearReminderCompletion(farmId, ruleKey)
+        syncEngine?.triggerPush(farmId)
+    }
+
     // Farm operations
     suspend fun insertFarmAccount(farm: FarmAccount) = farmDao.insertFarmAccount(farm)
     suspend fun updateFarmAccount(farm: FarmAccount) = farmDao.updateFarmAccount(farm)
@@ -367,6 +391,7 @@ class FarmRepository(
         farmDao.deleteFinanceRecordsForFarm(farmId)
         farmDao.deleteEmployeeRequestsForFarm(farmId)
         farmDao.deleteCattleEventsForFarm(farmId)
+        farmDao.deleteReminderCompletionsForFarm(farmId)
     }
 
     suspend fun clearAllData() {
@@ -377,5 +402,6 @@ class FarmRepository(
         farmDao.deleteAllFinanceRecords()
         farmDao.deleteAllEmployeeRequests()
         farmDao.deleteAllCattleEvents()
+        farmDao.deleteAllReminderCompletions()
     }
 }

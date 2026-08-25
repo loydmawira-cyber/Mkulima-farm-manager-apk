@@ -317,3 +317,51 @@ data class ReminderCompletion(
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity
+
+
+/** A stock-controlled farm asset. Monetary values use the active farm currency. */
+@Entity(tableName = "inventory_items")
+data class InventoryItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    override val syncId: String = UUID.randomUUID().toString(),
+    override val farmId: String = "FARM-DEFAULT",
+    val itemName: String,
+    val category: String,
+    val skuOrBarcode: String = "",
+    val description: String = "",
+    val quantityAvailable: Double = 0.0,
+    val unitOfMeasurement: String = "kg",
+    val minimumThreshold: Double = 0.0,
+    val storageLocation: String = "",
+    val batchOrLotNumber: String = "",
+    val purchaseDate: String = "",
+    val expirationDate: String = "",
+    val unitCost: Double = 0.0,
+    val isSilage: Boolean = false,
+    override val updatedAt: Long = System.currentTimeMillis(),
+    override val isDeleted: Boolean = false
+) : SyncableEntity
+
+/** A planted farm field from planning through harvest outcome. */
+@Entity(tableName = "field_plans")
+data class FieldPlan(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    override val syncId: String = UUID.randomUUID().toString(),
+    override val farmId: String = "FARM-DEFAULT",
+    val fieldName: String,
+    val location: String = "",
+    val sizeAcres: Double = 0.0,
+    val cropName: String = "Maize",
+    val variety: String = "",
+    val plantedDate: String,
+    val daysToHarvest: Int = 120,
+    val estimatedHarvestDate: String = "",
+    val plantingNotes: String = "",
+    val status: String = "GROWING", // PLANNED, GROWING, HARVESTED
+    val harvestedDate: String = "",
+    val harvestOutcome: String = "", // SOLD or SILAGE
+    val harvestedTonnes: Double = 0.0,
+    val saleAmount: Double = 0.0,
+    override val updatedAt: Long = System.currentTimeMillis(),
+    override val isDeleted: Boolean = false
+) : SyncableEntity

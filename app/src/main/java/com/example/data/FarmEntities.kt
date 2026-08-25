@@ -265,6 +265,43 @@ data class CattleEvent(
     override val isDeleted: Boolean = false
 ) : SyncableEntity
 
+
+/**
+ * A durable poultry record attached to one FarmUnit (flock). One table stores feed,
+ * mortality, egg-sale, disposal and optional custom-vaccine records. This mirrors
+ * CattleEvent so it participates in Room and Firestore sync.
+ */
+@Entity(tableName = "poultry_logs")
+data class PoultryLog(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    override val syncId: String = UUID.randomUUID().toString(),
+    override val farmId: String = "FARM-DEFAULT",
+    val unitId: Long = 0,
+    val unitSyncId: String = "",
+    val logType: String, // FEED, MORTALITY, EGG_SALE, DISPOSAL, VACCINE
+    val date: String,
+    val feedType: String = "",
+    val quantityKg: Double = 0.0,
+    val costAmount: Double = 0.0,
+    val birdCount: Int = 0,
+    val cause: String = "",
+    val traysSold: Int = 0,
+    val pricePerTray: Double = 0.0,
+    val totalRevenue: Double = 0.0,
+    val buyer: String = "",
+    val disposalReason: String = "",
+    val disposalAmount: Double = 0.0,
+    val vaccineName: String = "",
+    val targetStage: String = "",
+    val vaccineStatus: String = "",
+    val notes: String = "",
+    // The paired record's durable sync id. A Death disposal is paired with a
+    // mortality record so it can be safely updated/deleted together.
+    val linkedLogSyncId: String = "",
+    override val updatedAt: Long = System.currentTimeMillis(),
+    override val isDeleted: Boolean = false
+) : SyncableEntity
+
 // Tracks when a computed (non-task) reminder — vaccination, deworming, PD check, etc. —
 // was marked done, since those reminders are derived on the fly from unit/event state
 // rather than stored as their own row. ruleKey mirrors the same id string FarmReminderEngine

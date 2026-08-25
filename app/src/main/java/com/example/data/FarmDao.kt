@@ -347,4 +347,26 @@ interface FarmDao {
 
     @Query("DELETE FROM cattle_events")
     suspend fun deleteAllCattleEvents()
+
+    // ================= Reminder Completions =================
+    @Query("SELECT * FROM reminder_completions WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0")
+    fun getReminderCompletionsByFarm(farmId: String): Flow<List<ReminderCompletion>>
+
+    @Query("SELECT * FROM reminder_completions WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND ruleKey = :ruleKey AND isDeleted = 0 LIMIT 1")
+    suspend fun getReminderCompletion(farmId: String, ruleKey: String): ReminderCompletion?
+
+    @Query("SELECT * FROM reminder_completions WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getDirtyReminderCompletions(farmId: String, since: Long): List<ReminderCompletion>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReminderCompletion(completion: ReminderCompletion): Long
+
+    @Query("UPDATE reminder_completions SET isDeleted = 1, updatedAt = :updatedAt WHERE ruleKey = :ruleKey AND (farmId = :farmId OR farmId = 'FARM-DEFAULT')")
+    suspend fun clearReminderCompletion(farmId: String, ruleKey: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM reminder_completions WHERE farmId = :farmId")
+    suspend fun deleteReminderCompletionsForFarm(farmId: String)
+
+    @Query("DELETE FROM reminder_completions")
+    suspend fun deleteAllReminderCompletions()
 }

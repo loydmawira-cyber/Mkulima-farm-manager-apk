@@ -35,12 +35,20 @@ sealed class AuthResult {
     data class AccountAlreadyExists(val message: String) : AuthResult()
 }
 
+/** Result returned only when an owner provisions a worker credential. */
+sealed class WorkerAccountCreationResult {
+    data class Success(val worker: WorkerAccount) : WorkerAccountCreationResult()
+    data class Error(val message: String) : WorkerAccountCreationResult()
+    data class AccountAlreadyExists(val message: String) : WorkerAccountCreationResult()
+}
+
 class AuthManager(
     private val context: Context,
     private val repository: FarmRepository
 ) {
     companion object {
         private const val TAG = "AuthManager"
+        private const val WORKER_PROVISIONING_APP_NAME = "mkulima-worker-provisioner"
 
         fun formatPhoneNumber(countryCode: String, rawNumber: String): String {
             val cleanCode = countryCode.trim().let { if (!it.startsWith("+")) "+$it" else it }
@@ -137,6 +145,9 @@ class AuthManager(
         return prefs.getString("cached_theme_mode", null)
     }
     private var firebaseAuth: FirebaseAuth? = null
+    // A secondary FirebaseAuth instance provisions workers without replacing the
+    // currently signed-in owner in the primary FirebaseAuth instance.
+    private var workerProvisioningAuth: FirebaseAuth? = null
     private var firestore: FirebaseFirestore? = null
 
     private fun <T> Task<T>.awaitTask(): T {
@@ -158,6 +169,49 @@ class AuthManager(
             lastAuthInitError = "${t.javaClass.simpleName}: ${t.message}"
             null
         }
+    }
+
+
+    private fun getWorkerProvisioningAuth(): FirebaseAuth? {
+        return try {
+            workerProvisioningAuth?.let { return it }
+            if (FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+            }
+            val defaultApp = FirebaseApp.getInstance()
+            val workerApp = FirebaseApp.getApps(context).firstOrNull {
+                it.name == WORKER_PROVISIONING_APP_NAME
+            } ?: FirebaseApp.initializeApp(
+                context,
+                defaultApp.options,
+                WORKER_PROVISIONING_APP_NAME
+            )
+            FirebaseAuth.getInstance(workerApp).also { workerProvisioningAuth = it }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Worker provisioning authentication initialization failed", t)
+            null
+        }
+    }
+
+    private fun permissionsFromUserProfile(
+        role: String,
+        userData: Map<String, Any>?
+    ): WorkerPermissions {
+        val isOwner = role.equals("OWNER", ignoreCase = true)
+        fun flag(name: String, ownerDefault: Boolean, workerDefault: Boolean): Boolean =
+            (userData?.get(name) as? Boolean) ?: if (isOwner) ownerDefault else workerDefault
+
+        return WorkerPermissions(
+            canViewLivestock = flag("canViewLivestock", true, true),
+            canEditLivestock = flag("canEditLivestock", true, true),
+            canViewLogs = flag("canViewLogs", true, true),
+            canEditLogs = flag("canEditLogs", true, true),
+            canViewFinance = flag("canViewFinance", true, false),
+            canEditFinance = flag("canEditFinance", true, false),
+            canViewTasks = flag("canViewTasks", true, true),
+            canCompleteTasks = flag("canCompleteTasks", true, true),
+            canViewRequests = flag("canViewRequests", true, true)
+        )
     }
 
     private fun getFirestore(): FirebaseFirestore? {
@@ -304,17 +358,7 @@ class AuthManager(
                         farmId = finalFarmId,
                         farmName = finalFarmName,
                         isRevoked = false,
-                        permissions = WorkerPermissions(
-                            canViewLivestock = true,
-                            canEditLivestock = role.equals("OWNER", ignoreCase = true),
-                            canViewLogs = true,
-                            canEditLogs = role.equals("OWNER", ignoreCase = true),
-                            canViewFinance = role.equals("OWNER", ignoreCase = true),
-                            canEditFinance = role.equals("OWNER", ignoreCase = true),
-                            canViewTasks = true,
-                            canCompleteTasks = true,
-                            canViewRequests = true
-                        )
+                        permissions = permissionsFromUserProfile(role, userDocData)
                     )
                     // Overwrite SharedPreferences with fresh data from Firestore
                     saveSession(session)
@@ -899,25 +943,27 @@ class AuthManager(
                 return@withContext AuthResult.Error("Access revoked: This account has been deactivated.")
             }
 
-            // Cache in local Room database
+            // Cache the profile locally. Credentials always remain in Firebase Auth.
+            val profilePermissions = permissionsFromUserProfile(role, userDocData)
             if (role.equals("WORKER", ignoreCase = true)) {
                 val workerAccount = WorkerAccount(
                     workerId = uid,
+                    syncId = uid,
                     farmId = finalFarmId,
                     name = name,
                     emailOrPhone = cleanIdentifier,
                     password = "",
                     role = "WORKER",
                     isRevoked = false,
-                    canViewLivestock = true,
-                    canEditLivestock = true,
-                    canViewLogs = true,
-                    canEditLogs = true,
-                    canViewFinance = (userDocData?.get("canViewFinance") as? Boolean) ?: false,
-                    canEditFinance = (userDocData?.get("canEditFinance") as? Boolean) ?: false,
-                    canViewTasks = true,
-                    canCompleteTasks = true,
-                    canViewRequests = true
+                    canViewLivestock = profilePermissions.canViewLivestock,
+                    canEditLivestock = profilePermissions.canEditLivestock,
+                    canViewLogs = profilePermissions.canViewLogs,
+                    canEditLogs = profilePermissions.canEditLogs,
+                    canViewFinance = profilePermissions.canViewFinance,
+                    canEditFinance = profilePermissions.canEditFinance,
+                    canViewTasks = profilePermissions.canViewTasks,
+                    canCompleteTasks = profilePermissions.canCompleteTasks,
+                    canViewRequests = profilePermissions.canViewRequests
                 )
                 repository.insertWorker(workerAccount)
             } else {
@@ -942,17 +988,7 @@ class AuthManager(
                 farmId = finalFarmId,
                 farmName = finalFarmName,
                 isRevoked = false,
-                permissions = WorkerPermissions(
-                    canViewLivestock = true,
-                    canEditLivestock = role.equals("OWNER", ignoreCase = true),
-                    canViewLogs = true,
-                    canEditLogs = role.equals("OWNER", ignoreCase = true),
-                    canViewFinance = role.equals("OWNER", ignoreCase = true),
-                    canEditFinance = role.equals("OWNER", ignoreCase = true),
-                    canViewTasks = true,
-                    canCompleteTasks = true,
-                    canViewRequests = true
-                )
+                permissions = profilePermissions
             )
             saveSession(session)
             return@withContext AuthResult.Success(session)
@@ -1057,69 +1093,115 @@ class AuthManager(
         permissions: WorkerPermissions,
         farmId: String,
         farmName: String
-    ): WorkerAccount = withContext(Dispatchers.IO) {
+    ): WorkerAccountCreationResult = withContext(Dispatchers.IO) {
         val cleanName = name.trim().ifBlank { "Farm Worker" }
-        val cleanEmail = emailOrPhone.trim()
-        val cleanPass = pass.trim().ifBlank { "pass1234" }
+        val cleanIdentifier = emailOrPhone.trim()
+        val cleanPass = pass.trim()
 
-        val auth = getFirebaseAuth()
-        val authEmail = toAuthEmail(cleanEmail)
-        var workerUid = "WRK-${UUID.randomUUID().toString().take(6).uppercase()}"
-
-        if (auth != null) {
-            try {
-                val authResult = auth.createUserWithEmailAndPassword(authEmail, cleanPass).awaitTask()
-                if (authResult?.user != null) {
-                    workerUid = authResult.user!!.uid
-                }
-            } catch (e: Throwable) {}
+        if (cleanIdentifier.isBlank()) {
+            return@withContext WorkerAccountCreationResult.Error("Please enter the worker's email or phone number.")
+        }
+        if (cleanPass.length < 6) {
+            return@withContext WorkerAccountCreationResult.Error("Worker password must be at least 6 characters.")
+        }
+        if (farmId.isBlank() || farmId == "FARM-DEFAULT") {
+            return@withContext WorkerAccountCreationResult.Error("Please sign in as the farm owner before creating a worker.")
+        }
+        if (repository.getWorkerByLoginIdentifier(cleanIdentifier) != null) {
+            return@withContext WorkerAccountCreationResult.AccountAlreadyExists(
+                "A worker with this email or phone number already exists."
+            )
         }
 
-        val worker = WorkerAccount(
-            workerId = workerUid,
-            farmId = farmId,
-            name = cleanName,
-            emailOrPhone = cleanEmail,
-            password = "",
-            role = "WORKER",
-            isRevoked = false,
-            canViewLivestock = permissions.canViewLivestock,
-            canEditLivestock = permissions.canEditLivestock,
-            canViewLogs = permissions.canViewLogs,
-            canEditLogs = permissions.canEditLogs,
-            canViewFinance = permissions.canViewFinance,
-            canEditFinance = permissions.canEditFinance,
-            canViewTasks = permissions.canViewTasks,
-            canCompleteTasks = permissions.canCompleteTasks,
-            canViewRequests = permissions.canViewRequests
-        )
-        repository.insertWorker(worker)
+        val provisioningAuth = getWorkerProvisioningAuth()
+            ?: return@withContext WorkerAccountCreationResult.Error("Worker authentication is unavailable. Please check Firebase configuration.")
+        val db = getFirestore()
+            ?: return@withContext WorkerAccountCreationResult.Error("Worker profile storage is unavailable. Please check Firebase configuration.")
+        val authEmail = toAuthEmail(cleanIdentifier)
+
+        val createdUser = try {
+            provisioningAuth.createUserWithEmailAndPassword(authEmail, cleanPass).awaitTask().user
+                ?: return@withContext WorkerAccountCreationResult.Error("Could not create the worker login account.")
+        } catch (e: Throwable) {
+            val message = e.message.orEmpty()
+            return@withContext if (
+                e is FirebaseAuthUserCollisionException ||
+                message.contains("already in use", ignoreCase = true) ||
+                message.contains("email-already-in-use", ignoreCase = true)
+            ) {
+                WorkerAccountCreationResult.AccountAlreadyExists(
+                    "An account with this email or phone number already exists."
+                )
+            } else {
+                Log.e(TAG, "Worker credential creation failed", e)
+                WorkerAccountCreationResult.Error("Could not create the worker login: ${e.localizedMessage ?: "unknown error"}")
+            }
+        }
 
         try {
-            val db = getFirestore()
-            if (db != null) {
-                val workerData = hashMapOf<String, Any>(
-                    "userId" to workerUid,
-                    "uid" to workerUid,
-                    "name" to cleanName,
-                    "phone" to cleanEmail,
-                    "phoneNumber" to cleanEmail,
-                    "authEmail" to authEmail,
-                    "email" to (if (cleanEmail.contains("@")) cleanEmail else ""),
-                    "role" to "WORKER",
-                    "farmId" to farmId,
-                    "farmName" to farmName,
-                    "isRevoked" to false,
-                    "canViewFinance" to permissions.canViewFinance,
-                    "canEditFinance" to permissions.canEditFinance,
-                    "createdAt" to System.currentTimeMillis(),
-                    "updatedAt" to System.currentTimeMillis()
-                )
-                db.collection("users").document(workerUid).set(workerData, SetOptions.merge()).awaitTask()
+            try {
+                createdUser.updateProfile(
+                    UserProfileChangeRequest.Builder().setDisplayName(cleanName).build()
+                ).awaitTask()
+            } catch (ignored: Throwable) {
+                // The Firestore profile remains the authoritative display profile.
             }
-        } catch (e: Throwable) {}
 
-        worker
+            val worker = WorkerAccount(
+                workerId = createdUser.uid,
+                syncId = createdUser.uid,
+                farmId = farmId,
+                name = cleanName,
+                emailOrPhone = cleanIdentifier,
+                // Never save credential material in Room or Firestore.
+                password = "",
+                role = "WORKER",
+                isRevoked = false,
+                canViewLivestock = permissions.canViewLivestock,
+                canEditLivestock = permissions.canEditLivestock,
+                canViewLogs = permissions.canViewLogs,
+                canEditLogs = permissions.canEditLogs,
+                canViewFinance = permissions.canViewFinance,
+                canEditFinance = permissions.canEditFinance,
+                canViewTasks = permissions.canViewTasks,
+                canCompleteTasks = permissions.canCompleteTasks,
+                canViewRequests = permissions.canViewRequests
+            )
+
+            val workerData = hashMapOf<String, Any>(
+                "userId" to createdUser.uid,
+                "uid" to createdUser.uid,
+                "name" to cleanName,
+                "email" to if (cleanIdentifier.contains("@")) cleanIdentifier.lowercase() else "",
+                "phone" to if (cleanIdentifier.contains("@")) "" else cleanIdentifier,
+                "phoneNumber" to if (cleanIdentifier.contains("@")) "" else cleanIdentifier,
+                "authEmail" to authEmail,
+                "role" to "WORKER",
+                "farmId" to farmId,
+                "farmName" to farmName,
+                "isRevoked" to false,
+                "canViewLivestock" to permissions.canViewLivestock,
+                "canEditLivestock" to permissions.canEditLivestock,
+                "canViewLogs" to permissions.canViewLogs,
+                "canEditLogs" to permissions.canEditLogs,
+                "canViewFinance" to permissions.canViewFinance,
+                "canEditFinance" to permissions.canEditFinance,
+                "canViewTasks" to permissions.canViewTasks,
+                "canCompleteTasks" to permissions.canCompleteTasks,
+                "canViewRequests" to permissions.canViewRequests,
+                "createdAt" to System.currentTimeMillis(),
+                "updatedAt" to System.currentTimeMillis()
+            )
+            db.collection("users").document(createdUser.uid).set(workerData, SetOptions.merge()).awaitTask()
+            repository.insertWorker(worker)
+            WorkerAccountCreationResult.Success(worker)
+        } catch (e: Throwable) {
+            // Do not leave an unusable Firebase credential behind when its profile
+            // could not be created. The secondary auth context owns this user.
+            try { createdUser.delete().awaitTask() } catch (ignored: Throwable) {}
+            Log.e(TAG, "Worker profile creation failed", e)
+            WorkerAccountCreationResult.Error("The worker profile could not be saved. No account was created.")
+        }
     }
 
     suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean) = withContext(Dispatchers.IO) {
@@ -1133,25 +1215,52 @@ class AuthManager(
     suspend fun deleteWorker(workerId: String) = withContext(Dispatchers.IO) {
         repository.deleteWorker(workerId)
         try {
-            val db = getFirestore()
-            db?.collection("users")?.document(workerId)?.delete()?.awaitTask()
-        } catch (e: Throwable) {}
+            // Retain a revoked profile rather than deleting it. The Firebase Auth
+            // credential then stays blocked instead of falling back to an owner-like
+            // profile when the worker attempts to sign in later.
+            getFirestore()?.collection("users")?.document(workerId)?.set(
+                hashMapOf<String, Any>(
+                    "isRevoked" to true,
+                    "isDeleted" to true,
+                    "updatedAt" to System.currentTimeMillis()
+                ),
+                SetOptions.merge()
+            )?.awaitTask()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to mark worker profile deleted", e)
+        }
     }
 
     suspend fun updateWorker(worker: WorkerAccount) = withContext(Dispatchers.IO) {
-        repository.updateWorker(worker)
+        // Worker passwords are never persisted. Changing another user's Firebase
+        // password requires an Admin SDK/Cloud Function and is intentionally not
+        // attempted from this client app.
+        val sanitized = worker.copy(password = "")
+        repository.updateWorker(sanitized)
         try {
             val db = getFirestore()
             if (db != null) {
                 val workerData = hashMapOf<String, Any>(
-                    "name" to worker.name,
-                    "phone" to worker.emailOrPhone,
-                    "canViewFinance" to worker.canViewFinance,
-                    "canEditFinance" to worker.canEditFinance,
+                    "name" to sanitized.name,
+                    "email" to if (sanitized.emailOrPhone.contains("@")) sanitized.emailOrPhone.lowercase() else "",
+                    "phone" to if (sanitized.emailOrPhone.contains("@")) "" else sanitized.emailOrPhone,
+                    "phoneNumber" to if (sanitized.emailOrPhone.contains("@")) "" else sanitized.emailOrPhone,
+                    "isRevoked" to sanitized.isRevoked,
+                    "canViewLivestock" to sanitized.canViewLivestock,
+                    "canEditLivestock" to sanitized.canEditLivestock,
+                    "canViewLogs" to sanitized.canViewLogs,
+                    "canEditLogs" to sanitized.canEditLogs,
+                    "canViewFinance" to sanitized.canViewFinance,
+                    "canEditFinance" to sanitized.canEditFinance,
+                    "canViewTasks" to sanitized.canViewTasks,
+                    "canCompleteTasks" to sanitized.canCompleteTasks,
+                    "canViewRequests" to sanitized.canViewRequests,
                     "updatedAt" to System.currentTimeMillis()
                 )
-                db.collection("users").document(worker.workerId).set(workerData, SetOptions.merge()).awaitTask()
+                db.collection("users").document(sanitized.workerId).set(workerData, SetOptions.merge()).awaitTask()
             }
-        } catch (e: Throwable) {}
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to update worker profile", e)
+        }
     }
 }

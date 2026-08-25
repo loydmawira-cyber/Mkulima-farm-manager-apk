@@ -110,6 +110,6 @@ private fun FeedPlanDialog(units: List<FarmUnit>, inventoryItems: List<Inventory
             Text(if (silage) "This will record daily silage use in kilograms." else "This will record daily feed use in kilograms.", style = MaterialTheme.typography.bodySmall)
         } },
         confirmButton = { Button(onClick = { val u = target; val i = stock; val kg = dailyKg.toDoubleOrNull() ?: 0.0; if (u != null && i != null && kg > 0) onSave(FeedPlan(targetUnitId = u.id, targetUnitSyncId = u.syncId, targetUnitName = u.name, livestockType = livestockType, inventoryItemId = i.id, inventoryItemSyncId = i.syncId, inventoryItemName = i.itemName, consumptionKind = if (silage) "SILAGE" else "FEED", dailyQuantityKg = kg)) }, enabled = target != null && stock != null && (dailyKg.toDoubleOrNull() ?: 0.0) > 0) { Text("Save plan") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

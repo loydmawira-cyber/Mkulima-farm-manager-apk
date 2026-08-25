@@ -144,6 +144,23 @@ fun MkulimaAppContent(
     val userSession by viewModel.currentSession.collectAsState()
     val userRole = userSession?.role ?: "Worker"
 
+    // The Room query supports legacy FARM-DEFAULT rows. Do not allow those rows
+    // (or deleted/non-poultry units) to reach the egg-yield flock selector.
+    val activeFarmUnits = remember(allUnits, userSession?.farmId) {
+        val farmId = userSession?.farmId.orEmpty()
+        allUnits.filter { unit ->
+            unit.farmId == farmId && !unit.isDeleted
+        }
+    }
+    val activePoultryUnits = remember(activeFarmUnits) {
+        activeFarmUnits.filter { unit ->
+            unit.type.equals("Poultry", ignoreCase = true) ||
+                unit.type.equals("Flock", ignoreCase = true) ||
+                unit.breed.contains("Layer", ignoreCase = true) ||
+                unit.breed.contains("Flock", ignoreCase = true)
+        }
+    }
+
     if (userSession == null) {
         AuthScreen(
             onLogin = { email, pass, onError -> viewModel.login(email, pass, onError) },
@@ -281,7 +298,8 @@ fun MkulimaAppContent(
     // Add Egg Log Dialog
     if (showAddEggLogDialog) {
         AddEggLogDialog(
-            availableUnits = allUnits,
+            // Only existing, active poultry units for the signed-in farm are selectable.
+            availableUnits = activePoultryUnits,
             onDismiss = { showAddEggLogDialog = false },
             onSaveEggLog = { unitName, totalEggs, damagedEggs, grade, notes ->
                 viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, notes)
@@ -668,7 +686,7 @@ fun MkulimaAppContent(
                     2 -> MilkLogScreen(
                         milkLogs = milkLogs,
                         eggLogs = eggLogs,
-                        units = allUnits,
+                        units = activeFarmUnits,
                         onAddMilkLogClick = { showAddMilkLogDialog = true },
                         onAddEggLogClick = { showAddEggLogDialog = true },
                         onQuickSaveMilkLog = { cowName, litres, session, recordDate ->

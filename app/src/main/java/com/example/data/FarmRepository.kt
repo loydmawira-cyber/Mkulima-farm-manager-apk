@@ -16,6 +16,7 @@ class FarmRepository(
     val allEggLogs: Flow<List<EggLog>> = farmDao.getAllEggLogs()
     val allFinanceRecords: Flow<List<FinanceRecord>> = farmDao.getAllFinanceRecords()
     val allEmployeeRequests: Flow<List<EmployeeRequest>> = farmDao.getAllEmployeeRequests()
+    val allPoultryLogs: Flow<List<PoultryLog>> = farmDao.getAllPoultryLogs("FARM-DEFAULT")
 
     val farmSettings: Flow<FarmSettings?> = farmDao.getSettings()
 
@@ -26,6 +27,8 @@ class FarmRepository(
     fun getEggLogsForFarm(farmId: String): Flow<List<EggLog>> = farmDao.getEggLogsByFarm(farmId)
     fun getFinanceRecordsForFarm(farmId: String): Flow<List<FinanceRecord>> = farmDao.getFinanceRecordsByFarm(farmId)
     fun getEmployeeRequestsForFarm(farmId: String): Flow<List<EmployeeRequest>> = farmDao.getEmployeeRequestsByFarm(farmId)
+    fun getPoultryLogsForUnit(unitId: Long): Flow<List<PoultryLog>> = farmDao.getPoultryLogsByUnit(unitId)
+    fun getAllPoultryLogs(farmId: String): Flow<List<PoultryLog>> = farmDao.getAllPoultryLogs(farmId)
     fun getEmployeeRequestsForWorker(farmId: String, workerId: String, emailOrPhone: String, name: String): Flow<List<EmployeeRequest>> =
         farmDao.getEmployeeRequestsForWorker(farmId, workerId, emailOrPhone, name)
     fun getSettingsForFarm(farmId: String): Flow<FarmSettings?> = farmDao.getSettingsByFarm(farmId)
@@ -311,6 +314,107 @@ class FarmRepository(
         syncEngine?.triggerPush(event?.farmId)
     }
 
+
+    // Poultry Logs
+    suspend fun insertPoultryLog(log: PoultryLog): Long {
+        val resolvedUnitSyncId = if (log.unitSyncId.isNotBlank()) {
+            log.unitSyncId
+        } else if (log.unitId > 0) {
+            farmDao.getUnitById(log.unitId)?.syncId ?: ""
+        } else ""
+
+        val prepared = log.copy(
+            syncId = if (log.syncId.isBlank()) UUID.randomUUID().toString() else log.syncId,
+            unitSyncId = resolvedUnitSyncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertPoultryLog(prepared)
+        syncEngine?.triggerPush(prepared.farmId)
+        return id
+    }
+
+    suspend fun updatePoultryLog(log: PoultryLog) {
+        val existing = farmDao.getPoultryLogById(log.id) ?: return
+        val resolvedUnitSyncId = if (log.unitSyncId.isNotBlank()) {
+            log.unitSyncId
+        } else if (log.unitId > 0) {
+            farmDao.getUnitById(log.unitId)?.syncId ?: existing.unitSyncId
+        } else existing.unitSyncId
+
+        var prepared = log.copy(
+            syncId = existing.syncId,
+            farmId = if (log.farmId.isBlank() || log.farmId == "FARM-DEFAULT") existing.farmId else log.farmId,
+            unitSyncId = resolvedUnitSyncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+
+        // Keep the old Death-disposal pairing coherent. The UI sends an empty link
+        // only when a disposal is changed away from Death.
+        if (prepared.logType == "DISPOSAL") {
+            val isDeathDisposal = prepared.disposalReason.equals("Death", ignoreCase = true)
+            val oldLinkedId = existing.linkedLogSyncId
+            if (isDeathDisposal) {
+                val linkedId = oldLinkedId.ifBlank { UUID.randomUUID().toString() }
+                val linked = farmDao.getPoultryLogBySyncId(linkedId)
+                val mortality = PoultryLog(
+                    id = linked?.id ?: 0,
+                    syncId = linkedId,
+                    farmId = prepared.farmId,
+                    unitId = prepared.unitId,
+                    unitSyncId = prepared.unitSyncId,
+                    logType = "MORTALITY",
+                    date = prepared.date,
+                    birdCount = prepared.birdCount,
+                    cause = prepared.notes.ifBlank { "Mortality" },
+                    notes = "Created from flock disposal",
+                    linkedLogSyncId = prepared.syncId,
+                    updatedAt = prepared.updatedAt,
+                    isDeleted = false
+                )
+                if (linked == null) farmDao.insertPoultryLog(mortality) else farmDao.updatePoultryLog(mortality)
+                prepared = prepared.copy(linkedLogSyncId = linkedId)
+            } else if (oldLinkedId.isNotBlank()) {
+                farmDao.getPoultryLogBySyncId(oldLinkedId)?.let {
+                    farmDao.softDeletePoultryLog(it.id, prepared.updatedAt)
+                }
+                prepared = prepared.copy(linkedLogSyncId = "")
+            }
+        } else if (prepared.logType == "MORTALITY" && existing.linkedLogSyncId.isNotBlank()) {
+            // Editing a mortality created by a Death disposal keeps the paired
+            // disposal quantity/date aligned while preserving its sale fields.
+            farmDao.getPoultryLogBySyncId(existing.linkedLogSyncId)?.let { disposal ->
+                farmDao.updatePoultryLog(
+                    disposal.copy(
+                        date = prepared.date,
+                        birdCount = prepared.birdCount,
+                        notes = prepared.cause.ifBlank { prepared.notes },
+                        updatedAt = prepared.updatedAt
+                    )
+                )
+            }
+            prepared = prepared.copy(linkedLogSyncId = existing.linkedLogSyncId)
+        }
+
+        farmDao.updatePoultryLog(prepared)
+        syncEngine?.triggerPush(prepared.farmId)
+    }
+
+    suspend fun deletePoultryLog(id: Long) {
+        val log = farmDao.getPoultryLogById(id) ?: return
+        val now = System.currentTimeMillis()
+        farmDao.softDeletePoultryLog(id, now)
+        // Delete a paired Death-disposal / mortality record as a single logical
+        // operation, preventing one orphaned log from reappearing after sync.
+        if (log.linkedLogSyncId.isNotBlank()) {
+            farmDao.getPoultryLogBySyncId(log.linkedLogSyncId)?.let { linked ->
+                farmDao.softDeletePoultryLog(linked.id, now)
+            }
+        }
+        syncEngine?.triggerPush(log.farmId)
+    }
+
     // Reminder Completions (for computed reminders — vaccination, deworming, PD check, etc.
     // that aren't backed by their own FarmTask row)
     fun getReminderCompletionsForFarm(farmId: String): Flow<List<ReminderCompletion>> =
@@ -391,6 +495,7 @@ class FarmRepository(
         farmDao.deleteFinanceRecordsForFarm(farmId)
         farmDao.deleteEmployeeRequestsForFarm(farmId)
         farmDao.deleteCattleEventsForFarm(farmId)
+        farmDao.deletePoultryLogsForFarm(farmId)
         farmDao.deleteReminderCompletionsForFarm(farmId)
     }
 
@@ -402,6 +507,7 @@ class FarmRepository(
         farmDao.deleteAllFinanceRecords()
         farmDao.deleteAllEmployeeRequests()
         farmDao.deleteAllCattleEvents()
+        farmDao.deleteAllPoultryLogs()
         farmDao.deleteAllReminderCompletions()
     }
 }

@@ -17,6 +17,7 @@ import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkLog
+import com.example.data.PoultryLog
 import com.example.data.ReminderCompletion
 import com.example.data.RequestStatus
 import com.example.data.TaskCategory
@@ -78,6 +79,15 @@ class FarmViewModel(
     val allEggLogs: StateFlow<List<EggLog>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getEggLogsForFarm(farmId)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val allPoultryLogs: StateFlow<List<PoultryLog>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getAllPoultryLogs(farmId)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -748,6 +758,30 @@ class FarmViewModel(
     fun deleteCattleEvent(eventId: Long) {
         viewModelScope.launch {
             repository.deleteCattleEvent(eventId)
+        }
+    }
+
+
+    // Poultry Logs
+    fun getPoultryLogsFlow(unitId: Long): Flow<List<PoultryLog>> = repository.getPoultryLogsForUnit(unitId)
+
+    fun addPoultryLog(log: PoultryLog) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            repository.insertPoultryLog(log.copy(farmId = farmId))
+        }
+    }
+
+    fun updatePoultryLog(log: PoultryLog) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            repository.updatePoultryLog(log.copy(farmId = farmId))
+        }
+    }
+
+    fun deletePoultryLog(logId: Long) {
+        viewModelScope.launch {
+            repository.deletePoultryLog(logId)
         }
     }
 

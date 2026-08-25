@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -249,21 +250,35 @@ fun MkulimaAppContent(
             onDismiss = { showAddUnitDialog = false },
             farmSettings = farmSettings,
             onUnitCreated = { name, type, headCount, healthStatus, location, tagNumber, breed, dob, weightAtBirth, currentWeight, sire, dam ->
+                val isCattle = type.contains("cattle", ignoreCase = true) || type.contains("cow", ignoreCase = true)
                 viewModel.addNewUnit(
                     name = name,
                     type = type,
                     headCount = headCount,
                     healthStatus = healthStatus,
                     location = location,
-                    tagNumber = tagNumber,
+                    // Cattle tags are assigned permanently by the repository; manual input is ignored.
+                    tagNumber = if (isCattle) "" else tagNumber,
                     breed = breed,
                     dob = dob,
                     weightAtBirth = weightAtBirth,
                     currentWeight = currentWeight,
                     sire = sire,
-                    dam = dam
+                    dam = dam,
+                    onCreated = { savedUnit ->
+                        if (isCattle) {
+                            Toast.makeText(
+                                context,
+                                "Cattle tag ${savedUnit.tagNumber} assigned automatically.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        showAddUnitDialog = false
+                    },
+                    onError = { message ->
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
                 )
-                showAddUnitDialog = false
             }
         )
     }

@@ -14,6 +14,8 @@ import com.example.data.EmployeeRequest
 import com.example.data.FarmRepository
 import com.example.data.FarmSettings
 import com.example.data.FarmTask
+import com.example.data.InventoryItem
+import com.example.data.FieldPlan
 import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
@@ -94,6 +96,14 @@ class FarmViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    val allInventoryItems: StateFlow<List<InventoryItem>> = currentSession.flatMapLatest { session ->
+        repository.getInventoryItemsForFarm(session?.farmId ?: "FARM-DEFAULT")
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allFieldPlans: StateFlow<List<FieldPlan>> = currentSession.flatMapLatest { session ->
+        repository.getFieldPlansForFarm(session?.farmId ?: "FARM-DEFAULT")
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allFinanceRecords: StateFlow<List<FinanceRecord>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
@@ -530,6 +540,49 @@ class FarmViewModel(
     fun deleteEggLog(logId: Long) {
         viewModelScope.launch {
             repository.deleteEggLog(logId)
+        }
+    }
+
+
+    // ================= Assets: Inventory & Fields =================
+    fun addInventoryItem(item: InventoryItem) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val isSilage = item.isSilage || item.category.equals("Silage", ignoreCase = true)
+            val prepared = item.copy(farmId = farmId, isSilage = isSilage, unitCost = if (isSilage) 0.0 else item.unitCost)
+            repository.insertInventoryItem(prepared)
+            val purchaseTotal = prepared.quantityAvailable * prepared.unitCost
+            if (!isSilage && purchaseTotal > 0.0) {
+                addFinanceRecord(FinanceType.EXPENSE, "Inventory Purchase", purchaseTotal,
+                    "${prepared.itemName}: ${prepared.quantityAvailable} ${prepared.unitOfMeasurement}", prepared.purchaseDate)
+            }
+        }
+    }
+
+    fun updateInventoryItem(item: InventoryItem) {
+        viewModelScope.launch { repository.updateInventoryItem(item) }
+    }
+
+    fun addFieldPlan(field: FieldPlan) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            repository.insertFieldPlan(field.copy(farmId = farmId))
+        }
+    }
+
+    fun recordFieldHarvest(field: FieldPlan, outcome: String, tonnes: Double, saleAmount: Double, harvestDate: String) {
+        viewModelScope.launch {
+            if (tonnes <= 0.0 || field.status == "HARVESTED") return@launch
+            val finalOutcome = outcome.uppercase()
+            val updated = field.copy(status = "HARVESTED", harvestedDate = harvestDate, harvestOutcome = finalOutcome,
+                harvestedTonnes = tonnes, saleAmount = if (finalOutcome == "SOLD") saleAmount else 0.0)
+            repository.updateFieldPlan(updated)
+            if (finalOutcome == "SILAGE") {
+                repository.receiveSilage(updated.farmId, tonnes, updated.fieldName, harvestDate)
+            } else if (finalOutcome == "SOLD" && saleAmount > 0.0) {
+                addFinanceRecord(FinanceType.INCOME, "Crop Sale", saleAmount,
+                    "${updated.cropName} harvest from ${updated.fieldName} (${tonnes} tonnes)", harvestDate)
+            }
         }
     }
 

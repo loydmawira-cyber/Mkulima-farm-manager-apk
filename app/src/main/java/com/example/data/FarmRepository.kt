@@ -24,6 +24,8 @@ class FarmRepository(
     fun getTasksForFarm(farmId: String): Flow<List<FarmTask>> = farmDao.getTasksByFarm(farmId)
     fun getUnitsForFarm(farmId: String): Flow<List<FarmUnit>> = farmDao.getUnitsByFarm(farmId)
     fun getMilkLogsForFarm(farmId: String): Flow<List<MilkLog>> = farmDao.getMilkLogsByFarm(farmId)
+    fun getInventoryItemsForFarm(farmId: String): Flow<List<InventoryItem>> = farmDao.getInventoryItemsByFarm(farmId)
+    fun getFieldPlansForFarm(farmId: String): Flow<List<FieldPlan>> = farmDao.getFieldPlansByFarm(farmId)
     fun getEggLogsForFarm(farmId: String): Flow<List<EggLog>> = farmDao.getEggLogsByFarm(farmId)
     fun getFinanceRecordsForFarm(farmId: String): Flow<List<FinanceRecord>> = farmDao.getFinanceRecordsByFarm(farmId)
     fun getEmployeeRequestsForFarm(farmId: String): Flow<List<EmployeeRequest>> = farmDao.getEmployeeRequestsByFarm(farmId)
@@ -207,6 +209,58 @@ class FarmRepository(
         )
         farmDao.insertSettings(prepared)
         syncEngine?.triggerPush(settings.farmId)
+    }
+
+
+    // ================= Assets: Inventory & Fields =================
+    suspend fun insertInventoryItem(item: InventoryItem): Long {
+        val prepared = item.copy(syncId = item.syncId.ifBlank { UUID.randomUUID().toString() }, updatedAt = System.currentTimeMillis(), isDeleted = false)
+        val id = farmDao.insertInventoryItem(prepared)
+        syncEngine?.triggerPush(prepared.farmId)
+        return id
+    }
+
+    suspend fun updateInventoryItem(item: InventoryItem) {
+        val prepared = item.copy(updatedAt = System.currentTimeMillis())
+        farmDao.updateInventoryItem(prepared)
+        syncEngine?.triggerPush(prepared.farmId)
+    }
+
+    suspend fun receiveSilage(farmId: String, tonnes: Double, sourceField: String, receivedDate: String) {
+        val existing = farmDao.getSilageItem(farmId)
+        if (existing == null) {
+            insertInventoryItem(InventoryItem(
+                farmId = farmId,
+                itemName = "Maize Silage",
+                category = "Silage",
+                description = "Received from field: $sourceField",
+                quantityAvailable = tonnes,
+                unitOfMeasurement = "tonnes",
+                storageLocation = "Silage pit",
+                purchaseDate = receivedDate,
+                unitCost = 0.0,
+                isSilage = true
+            ))
+        } else {
+            updateInventoryItem(existing.copy(
+                quantityAvailable = existing.quantityAvailable + tonnes,
+                description = "Latest receipt: $sourceField on $receivedDate",
+                isSilage = true
+            ))
+        }
+    }
+
+    suspend fun insertFieldPlan(field: FieldPlan): Long {
+        val prepared = field.copy(syncId = field.syncId.ifBlank { UUID.randomUUID().toString() }, updatedAt = System.currentTimeMillis(), isDeleted = false)
+        val id = farmDao.insertFieldPlan(prepared)
+        syncEngine?.triggerPush(prepared.farmId)
+        return id
+    }
+
+    suspend fun updateFieldPlan(field: FieldPlan) {
+        val prepared = field.copy(updatedAt = System.currentTimeMillis())
+        farmDao.updateFieldPlan(prepared)
+        syncEngine?.triggerPush(prepared.farmId)
     }
 
     // Worker operations

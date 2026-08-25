@@ -42,6 +42,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -58,10 +60,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.work.WorkManager
 import com.example.data.FarmSettings
 import com.example.data.UserSession
 import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.util.scheduleTaskReminders
 
 @Composable
 fun SettingsDialog(
@@ -79,6 +83,11 @@ fun SettingsDialog(
     var pdDays by remember { mutableStateOf(settings.pregnancyCheckReminderDays.toString()) }
     var dryOffDays by remember { mutableStateOf(settings.dryingOffReminderDays.toString()) }
     var themeMode by remember { mutableStateOf(settings.themeMode) }
+
+    val notificationPrefs = remember { context.getSharedPreferences("mkulima_auth_prefs", Context.MODE_PRIVATE) }
+    var notificationsEnabled by remember {
+        mutableStateOf(notificationPrefs.getBoolean("task_reminders_enabled", true))
+    }
 
     val isOwner = userSession?.role?.equals("OWNER", ignoreCase = true) ?: true
 
@@ -373,6 +382,30 @@ fun SettingsDialog(
                 }
                 Spacer(modifier = Modifier.height(18.dp))
 
+                Text("Notifications", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Daily task reminders", fontSize = 14.sp, color = Color(0xFF1E293B))
+                    Switch(
+                        checked = notificationsEnabled,
+                        onCheckedChange = { enabled ->
+                            notificationsEnabled = enabled
+                            notificationPrefs.edit().putBoolean("task_reminders_enabled", enabled).apply()
+                            if (enabled) {
+                                scheduleTaskReminders(context)
+                            } else {
+                                WorkManager.getInstance(context).cancelUniqueWork("task_reminder_check")
+                            }
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = ForestGreenPrimary)
+                    )
+                }
+                Spacer(modifier = Modifier.height(18.dp))
+
                 if (isOwner) {
                     Button(
                         onClick = {
@@ -416,4 +449,3 @@ fun SettingsDialog(
         }
     }
 }
-

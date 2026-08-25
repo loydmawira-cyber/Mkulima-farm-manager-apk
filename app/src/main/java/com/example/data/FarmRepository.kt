@@ -39,6 +39,11 @@ class FarmRepository(
     fun getWorkersForFarm(farmId: String): Flow<List<WorkerAccount>> = farmDao.getWorkersByFarm(farmId)
 
     suspend fun getTaskById(id: Long): FarmTask? = farmDao.getTaskById(id)
+    suspend fun getTaskBySyncId(syncId: String): FarmTask? = farmDao.getTaskBySyncId(syncId)
+    suspend fun softDeleteTasksBySyncIdPrefix(syncIdPrefix: String, farmId: String) {
+        farmDao.softDeleteTasksBySyncIdPrefix(syncIdPrefix)
+        syncEngine?.triggerPush(farmId)
+    }
 
     suspend fun insertTask(task: FarmTask): Long {
         val prepared = task.copy(
@@ -69,18 +74,50 @@ class FarmRepository(
     }
 
     suspend fun insertUnit(unit: FarmUnit): Long {
+        return insertUnitAndReturnPrepared(unit).id
+    }
+
+    suspend fun insertUnitAndReturnPrepared(unit: FarmUnit): FarmUnit {
+        val isNewCattle = unit.id == 0L && (
+            unit.type.contains("cattle", ignoreCase = true) ||
+                unit.type.contains("cow", ignoreCase = true)
+            )
+        val permanentTag = if (isNewCattle) {
+            val localTagCandidate = nextPermanentCattleTag(farmDao.getAssignedCattleTagsForFarm(unit.farmId))
+            syncEngine?.reserveNextCattleTag(unit.farmId, localTagCandidate.toLong())
+                ?: throw IllegalStateException("Connect to the internet to reserve a unique cattle tag before saving this animal.")
+        } else {
+            unit.tagNumber
+        }
         val prepared = unit.copy(
             syncId = if (unit.syncId.isBlank()) UUID.randomUUID().toString() else unit.syncId,
+            tagNumber = permanentTag,
             updatedAt = System.currentTimeMillis(),
             isDeleted = false
         )
         val id = farmDao.insertUnit(prepared)
         syncEngine?.triggerPush(unit.farmId)
-        return id
+        return prepared.copy(id = id)
+    }
+
+    /** Returns the next zero-padded cattle tag. Existing and disposed animals are both considered. */
+    private fun nextPermanentCattleTag(existingTags: List<String>): String {
+        val highestAllocatedTag = existingTags
+            .asSequence()
+            .map { it.trim().removePrefix("#") }
+            .mapNotNull { it.toIntOrNull() }
+            .maxOrNull() ?: 0
+        return (highestAllocatedTag + 1).toString().padStart(3, '0')
     }
 
     suspend fun updateUnit(unit: FarmUnit) {
+        val existing = farmDao.getUnitById(unit.id)
+        val preserveExistingCattleTag = existing != null && (
+            existing.type.contains("cattle", ignoreCase = true) ||
+                existing.type.contains("cow", ignoreCase = true)
+            )
         val prepared = unit.copy(
+            tagNumber = if (preserveExistingCattleTag) existing.tagNumber else unit.tagNumber,
             updatedAt = System.currentTimeMillis()
         )
         farmDao.updateUnit(prepared)
@@ -328,6 +365,7 @@ class FarmRepository(
     // Cattle Events
     fun getCattleEventsForUnit(unitId: Long): Flow<List<CattleEvent>> = farmDao.getCattleEventsByUnit(unitId)
     fun getAllCattleEvents(farmId: String): Flow<List<CattleEvent>> = farmDao.getAllCattleEvents(farmId)
+    suspend fun getCattleEventById(id: Long): CattleEvent? = farmDao.getCattleEventById(id)
 
     suspend fun insertCattleEvent(event: CattleEvent): Long {
         val resolvedUnitSyncId = if (event.unitSyncId.isNotBlank()) {

@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +14,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -20,6 +23,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,10 +47,27 @@ fun AddEggLogDialog(
     onDismiss: () -> Unit,
     onSaveEggLog: (unitName: String, totalEggs: Int, damagedEggs: Int, grade: String, notes: String?) -> Unit
 ) {
-    val poultryUnits = availableUnits.filter { it.type.contains("Poultry", ignoreCase = true) || it.name.contains("Flock", ignoreCase = true) }
-    var selectedUnitName by remember { mutableStateOf(poultryUnits.firstOrNull()?.name ?: "Flock B - Kienyeji Layers") }
-    var totalText by remember { mutableStateOf("300") }
-    var damagedText by remember { mutableStateOf("2") }
+    // This defensive filter prevents sample, deleted, cattle, or field units from
+    // becoming a valid egg-yield target even if a caller passes an unfiltered list.
+    val poultryUnits = remember(availableUnits) {
+        availableUnits.filter { unit ->
+            !unit.isDeleted && (
+                unit.type.equals("Poultry", ignoreCase = true) ||
+                unit.type.equals("Flock", ignoreCase = true) ||
+                unit.breed.contains("Layer", ignoreCase = true) ||
+                unit.breed.contains("Flock", ignoreCase = true)
+            )
+        }.distinctBy { it.id }.sortedBy { it.name.lowercase() }
+    }
+    var selectedUnitName by remember { mutableStateOf("") }
+    var flockMenuExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(poultryUnits) {
+        if (poultryUnits.none { it.name == selectedUnitName }) {
+            selectedUnitName = poultryUnits.firstOrNull()?.name.orEmpty()
+        }
+    }
+    var totalText by remember { mutableStateOf("") }
+    var damagedText by remember { mutableStateOf("0") }
     var selectedGrade by remember { mutableStateOf("Grade A") }
     var notesText by remember { mutableStateOf("") }
     var collectionDate by remember {
@@ -92,13 +113,40 @@ fun AddEggLogDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                OutlinedTextField(
-                    value = selectedUnitName,
-                    onValueChange = { selectedUnitName = it },
-                    label = { Text("Poultry Flock Unit") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
+                if (poultryUnits.isEmpty()) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E5))) {
+                        Text(
+                            "No active poultry flock exists. Add a flock before recording egg yield.",
+                            modifier = Modifier.padding(12.dp),
+                            color = Color(0xFF92400E),
+                            fontSize = 12.sp
+                        )
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { flockMenuExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(if (selectedUnitName.isBlank()) "Select active poultry flock" else selectedUnitName)
+                        }
+                        DropdownMenu(
+                            expanded = flockMenuExpanded,
+                            onDismissRequest = { flockMenuExpanded = false }
+                        ) {
+                            poultryUnits.forEach { unit ->
+                                DropdownMenuItem(
+                                    text = { Text(unit.name) },
+                                    onClick = {
+                                        selectedUnitName = unit.name
+                                        flockMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -167,13 +215,19 @@ fun AddEggLogDialog(
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
                         onClick = {
+                            val selected = poultryUnits.firstOrNull { it.name == selectedUnitName }
+                                ?: return@Button
                             val total = totalText.toIntOrNull() ?: 0
                             val damaged = damagedText.toIntOrNull() ?: 0
+                            if (total <= 0 || damaged < 0 || damaged > total) return@Button
                             val fullNote = if (notesText.isNotBlank()) "[$collectionDate] $notesText" else "[$collectionDate]"
-                            onSaveEggLog(selectedUnitName, total, damaged, selectedGrade, fullNote)
+                            onSaveEggLog(selected.name, total, damaged, selectedGrade, fullNote)
                         },
                         shape = RoundedCornerShape(100.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
+                        enabled = poultryUnits.any { it.name == selectedUnitName } &&
+                            (totalText.toIntOrNull() ?: 0) > 0 &&
+                            (damagedText.toIntOrNull() ?: 0) in 0..(totalText.toIntOrNull() ?: 0)
                     ) {
                         Text("Save Egg Record", fontWeight = FontWeight.Bold)
                     }

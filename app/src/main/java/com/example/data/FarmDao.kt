@@ -282,6 +282,38 @@ interface FarmDao {
     @Query("UPDATE cattle_events SET unitId = :unitId WHERE unitSyncId = :unitSyncId")
     suspend fun updateCattleEventsUnitIdByUnitSyncId(unitSyncId: String, unitId: Long)
 
+
+    // ================= Poultry Logs =================
+    @Query("SELECT * FROM poultry_logs WHERE unitId = :unitId AND isDeleted = 0 ORDER BY date DESC, id DESC")
+    fun getPoultryLogsByUnit(unitId: Long): Flow<List<PoultryLog>>
+
+    @Query("SELECT * FROM poultry_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY date DESC, id DESC")
+    fun getAllPoultryLogs(farmId: String): Flow<List<PoultryLog>>
+
+    @Query("SELECT * FROM poultry_logs WHERE id = :id LIMIT 1")
+    suspend fun getPoultryLogById(id: Long): PoultryLog?
+
+    @Query("SELECT * FROM poultry_logs WHERE syncId = :syncId LIMIT 1")
+    suspend fun getPoultryLogBySyncId(syncId: String): PoultryLog?
+
+    @Query("SELECT * FROM poultry_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getDirtyPoultryLogs(farmId: String, since: Long): List<PoultryLog>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPoultryLog(log: PoultryLog): Long
+
+    @Update
+    suspend fun updatePoultryLog(log: PoultryLog)
+
+    @Query("UPDATE poultry_logs SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun softDeletePoultryLog(id: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM poultry_logs WHERE id = :id")
+    suspend fun deletePoultryLogById(id: Long)
+
+    @Query("UPDATE poultry_logs SET unitId = :unitId WHERE unitSyncId = :unitSyncId")
+    suspend fun updatePoultryLogsUnitIdByUnitSyncId(unitSyncId: String, unitId: Long)
+
     // ================= Farm Accounts =================
     @Query("SELECT * FROM farm_accounts WHERE farmId = :farmId LIMIT 1")
     suspend fun getFarmAccount(farmId: String): FarmAccount?
@@ -326,6 +358,9 @@ interface FarmDao {
     @Query("DELETE FROM cattle_events WHERE farmId = :farmId")
     suspend fun deleteCattleEventsForFarm(farmId: String)
 
+    @Query("DELETE FROM poultry_logs WHERE farmId = :farmId")
+    suspend fun deletePoultryLogsForFarm(farmId: String)
+
     // Clear all operational data across database (Local Room only)
     @Query("DELETE FROM farm_units")
     suspend fun deleteAllUnits()
@@ -347,6 +382,9 @@ interface FarmDao {
 
     @Query("DELETE FROM cattle_events")
     suspend fun deleteAllCattleEvents()
+
+    @Query("DELETE FROM poultry_logs")
+    suspend fun deleteAllPoultryLogs()
 
     // ================= Reminder Completions =================
     @Query("SELECT * FROM reminder_completions WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0")

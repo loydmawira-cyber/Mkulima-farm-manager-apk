@@ -4,10 +4,30 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `reminder_completions` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `syncId` TEXT NOT NULL,
+                `farmId` TEXT NOT NULL,
+                `ruleKey` TEXT NOT NULL,
+                `unitId` INTEGER NOT NULL,
+                `completedAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                `isDeleted` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+    }
+}
 
 @Database(
     entities = [
@@ -20,9 +40,10 @@ import kotlinx.coroutines.launch
         CattleEvent::class,
         FarmSettings::class,
         WorkerAccount::class,
-        FarmAccount::class
+        FarmAccount::class,
+        ReminderCompletion::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -39,7 +60,8 @@ abstract class MkulimaDatabase : RoomDatabase() {
                     MkulimaDatabase::class.java,
                     "mkulima_farm_db"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_13_14)
+                .fallbackToDestructiveMigrationOnDowngrade()
                 .addCallback(MkulimaDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

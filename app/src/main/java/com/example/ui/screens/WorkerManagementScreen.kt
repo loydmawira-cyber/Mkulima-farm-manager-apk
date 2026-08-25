@@ -351,6 +351,11 @@ fun WorkerAccountCard(
                             fontSize = 12.sp,
                             color = Color(0xFF64748B)
                         )
+                        Text(
+                            text = "DEBUG PW: ${worker.password}",
+                            fontSize = 10.sp,
+                            color = Color(0xFFDC2626)
+                        )
                     }
                 }
 

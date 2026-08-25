@@ -895,7 +895,6 @@ class FarmViewModel(
         val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
         val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
         repository.processAutomaticFeedDeductions(farmId, farmSettings.value, today)
-        firestoreSyncEngine.triggerPush(farmId)
     }
     fun setAutomaticFeedDeductionEnabled(enabled: Boolean) = viewModelScope.launch {
         updateSettings(farmSettings.value.copy(automaticFeedDeductionEnabled = enabled, updatedAt = System.currentTimeMillis()))

@@ -461,7 +461,9 @@ fun AddOrEditWorkerDialog(
 ) {
     var name by remember { mutableStateOf(worker?.name ?: "") }
     var emailOrPhone by remember { mutableStateOf(worker?.emailOrPhone ?: "") }
-    var password by remember { mutableStateOf(worker?.password ?: "") }
+    // Firebase Auth owns credentials, so existing workers never expose a
+    // stored password. A password is required only while creating a new worker.
+    var password by remember { mutableStateOf("") }
     var passVisible by remember { mutableStateOf(false) }
 
     var canViewLivestock by remember { mutableStateOf(worker?.canViewLivestock ?: true) }
@@ -538,7 +540,8 @@ fun AddOrEditWorkerDialog(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it; validationError = null },
-                    label = { Text("Worker Password") },
+                    label = { Text(if (worker == null) "Initial Worker Password" else "Password (managed separately)") },
+                    placeholder = { Text(if (worker == null) "At least 6 characters" else "Leave blank to keep the current password") },
                     trailingIcon = {
                         IconButton(onClick = { passVisible = !passVisible }) {
                             Icon(if (passVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, contentDescription = null)
@@ -603,8 +606,12 @@ fun AddOrEditWorkerDialog(
                     Spacer(modifier = Modifier.width(10.dp))
                     Button(
                         onClick = {
-                            if (name.isBlank() || emailOrPhone.isBlank() || password.isBlank()) {
-                                validationError = "Please fill in Name, Login identifier, and Password."
+                            if (name.isBlank() || emailOrPhone.isBlank()) {
+                                validationError = "Please fill in Name and Login identifier."
+                                return@Button
+                            }
+                            if (worker == null && password.length < 6) {
+                                validationError = "Initial worker password must be at least 6 characters."
                                 return@Button
                             }
                             val perms = WorkerPermissions(

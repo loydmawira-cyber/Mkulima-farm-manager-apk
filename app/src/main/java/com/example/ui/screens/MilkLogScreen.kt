@@ -3030,25 +3030,49 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Dynamic 7-Day Egg Laying Bar Visualizer
-                            Text("${if (analyticsEggTimeframe == "DAILY") "TODAY" else analyticsEggTimeframe} EGG PRODUCTION TRENDS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                            // The chart uses exactly the flock and calendar period selected above.
+                            val eggTrendTitle = when (analyticsEggTimeframe) {
+                                "DAILY" -> "TODAY'S EGG PRODUCTION"
+                                "MONTH" -> if (analyticsEggMonth == "ALL") "ALL-MONTH EGG PRODUCTION" else "${analyticsEggMonth.uppercase()} EGG PRODUCTION"
+                                else -> if (analyticsEggYear == "ALL") "ALL-YEAR EGG PRODUCTION" else "${analyticsEggYear} EGG PRODUCTION"
+                            }
+                            Text(eggTrendTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            val eggTrendDays = remember(timeframeLogs, analyticsEggTimeframe) {
-                                val shortDayFormat = SimpleDateFormat("EEE", Locale.getDefault())
-                                (6 downTo 0).map { dayOffset ->
-                                    val c = java.util.Calendar.getInstance()
-                                    c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
-                                    val fullDate = dateFormat.format(c.time)
-                                    val dayName = shortDayFormat.format(c.time)
-                                    val dayEggs = timeframeLogs.filter { it.loggedAt.contains(fullDate, ignoreCase = true) || it.loggedAt.contains(dayName, ignoreCase = true) }.sumOf { it.totalEggs }
-                                    Pair(dayName, dayEggs.toFloat())
+                            fun eggLogCalendar(log: EggLog): java.util.Calendar? =
+                                parseMilkLogCalendar(log.loggedAt) ?: parseMilkLogCalendar(log.notes?.substringAfter("[")?.substringBefore("]") ?: "")
+
+                            val eggTrendPoints = remember(timeframeLogs, selectedFlockLogs, analyticsEggTimeframe, analyticsEggMonth, analyticsEggYear) {
+                                when (analyticsEggTimeframe) {
+                                    "DAILY" -> listOf("Today" to timeframeLogs.sumOf { it.totalEggs }.toFloat())
+                                    "MONTH" -> if (analyticsEggMonth == "ALL") {
+                                        monthsList.mapIndexed { index, month ->
+                                            month.take(3) to selectedFlockLogs.filter { eggLogCalendar(it)?.get(java.util.Calendar.MONTH) == index }.sumOf { it.totalEggs }.toFloat()
+                                        }
+                                    } else {
+                                        val monthIndex = monthsList.indexOf(analyticsEggMonth)
+                                        val maximumDay = java.util.Calendar.getInstance().apply {
+                                            set(java.util.Calendar.MONTH, monthIndex)
+                                        }.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                                        (1..maximumDay).map { day ->
+                                            day.toString() to timeframeLogs.filter { eggLogCalendar(it)?.get(java.util.Calendar.DAY_OF_MONTH) == day }.sumOf { it.totalEggs }.toFloat()
+                                        }
+                                    }
+                                    else -> if (analyticsEggYear == "ALL") {
+                                        eggAnalyticsYears.reversed().map { year ->
+                                            year to selectedFlockLogs.filter { eggLogCalendar(it)?.get(java.util.Calendar.YEAR)?.toString() == year }.sumOf { it.totalEggs }.toFloat()
+                                        }
+                                    } else {
+                                        monthsList.mapIndexed { index, month ->
+                                            month.take(3) to timeframeLogs.filter { eggLogCalendar(it)?.get(java.util.Calendar.MONTH) == index }.sumOf { it.totalEggs }.toFloat()
+                                        }
+                                    }
                                 }
                             }
 
-                            val daysList = eggTrendDays.map { it.first }
-                            val dayValues = eggTrendDays.map { it.second }
-                            val maxVal = (dayValues.maxOrNull() ?: 100f).coerceAtLeast(50f)
+                            val daysList = eggTrendPoints.map { it.first }
+                            val dayValues = eggTrendPoints.map { it.second }
+                            val maxVal = (dayValues.maxOrNull() ?: 1f).coerceAtLeast(1f)
 
                             Row(
                                 modifier = Modifier
@@ -3058,7 +3082,7 @@ fun MilkLogScreen(
                                 verticalAlignment = Alignment.Bottom
                             ) {
                                 dayValues.forEachIndexed { idx, valAmt ->
-                                    val pct = (valAmt / maxVal).coerceIn(0.08f, 1f)
+                                    val pct = if (valAmt <= 0f) 0.03f else (valAmt / maxVal).coerceIn(0.03f, 1f)
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier.weight(1f)
@@ -3070,7 +3094,7 @@ fun MilkLogScreen(
                                                 .width(18.dp)
                                                 .fillMaxHeight(pct * 0.75f)
                                                 .background(
-                                                    color = if (idx == 6) Color(0xFFD97706) else Color(0xFFFBBF24),
+                                                    color = if (idx == dayValues.lastIndex) Color(0xFFD97706) else Color(0xFFFBBF24),
                                                     shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
                                                 )
                                         )
@@ -3085,7 +3109,7 @@ fun MilkLogScreen(
             }
 
             // 2. Quick Egg Entry Form Card
-            if (eggActiveViewTab == "EGG_QUICK_LOG" || eggActiveViewTab == "EGG_OVERVIEW" || eggActiveViewTab == "EGG_ALL") {
+            if (eggActiveViewTab == "EGG_QUICK_LOG" || eggActiveViewTab == "EGG_ALL") {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),

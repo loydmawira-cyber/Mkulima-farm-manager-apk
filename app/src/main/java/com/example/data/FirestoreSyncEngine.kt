@@ -143,6 +143,7 @@ class FirestoreSyncEngine(
         attachCollectionListener("finance_records") { applyRemoteFinanceRecord(farmId, it) }
         attachCollectionListener("employee_requests") { applyRemoteEmployeeRequest(farmId, it) }
         attachCollectionListener("cattle_events") { applyRemoteCattleEvent(farmId, it) }
+        attachCollectionListener("poultry_logs") { applyRemotePoultryLog(farmId, it) }
         attachCollectionListener("worker_accounts") { applyRemoteWorkerAccount(farmId, it) }
 
         // Trigger initial push of any offline/dirty changes
@@ -379,7 +380,48 @@ class FirestoreSyncEngine(
             }
             if (maxEventUpdatedAt > lastEventPush) setWatermark(farmId, "push_cattle_events", maxEventUpdatedAt)
 
-            // 9. Worker Accounts
+
+            // 9. Poultry Logs
+            val lastPoultryPush = getWatermark(farmId, "push_poultry_logs")
+            val dirtyPoultryLogs = farmDao.getDirtyPoultryLogs(farmId, lastPoultryPush)
+            var maxPoultryUpdatedAt = lastPoultryPush
+            for (log in dirtyPoultryLogs) {
+                val resolvedUnitSyncId = if (log.unitSyncId.isNotBlank()) {
+                    log.unitSyncId
+                } else if (log.unitId > 0) {
+                    farmDao.getUnitById(log.unitId)?.syncId ?: ""
+                } else ""
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to log.syncId,
+                    "farmId" to farmId,
+                    "unitSyncId" to resolvedUnitSyncId,
+                    "logType" to log.logType,
+                    "date" to log.date,
+                    "feedType" to log.feedType,
+                    "quantityKg" to log.quantityKg,
+                    "costAmount" to log.costAmount,
+                    "birdCount" to log.birdCount,
+                    "cause" to log.cause,
+                    "traysSold" to log.traysSold,
+                    "pricePerTray" to log.pricePerTray,
+                    "totalRevenue" to log.totalRevenue,
+                    "buyer" to log.buyer,
+                    "disposalReason" to log.disposalReason,
+                    "disposalAmount" to log.disposalAmount,
+                    "vaccineName" to log.vaccineName,
+                    "targetStage" to log.targetStage,
+                    "vaccineStatus" to log.vaccineStatus,
+                    "notes" to log.notes,
+                    "linkedLogSyncId" to log.linkedLogSyncId,
+                    "updatedAt" to log.updatedAt,
+                    "isDeleted" to log.isDeleted
+                )
+                farmRef.collection("poultry_logs").document(log.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (log.updatedAt > maxPoultryUpdatedAt) maxPoultryUpdatedAt = log.updatedAt
+            }
+            if (maxPoultryUpdatedAt > lastPoultryPush) setWatermark(farmId, "push_poultry_logs", maxPoultryUpdatedAt)
+
+            // 10. Worker Accounts
             val lastWorkerPush = getWatermark(farmId, "push_worker_accounts")
             val dirtyWorkers = farmDao.getDirtyWorkers(farmId, lastWorkerPush)
             var maxWorkerUpdatedAt = lastWorkerPush
@@ -509,6 +551,7 @@ class FirestoreSyncEngine(
             // Re-resolve any pending cattle events that reference this unitSyncId
             if (effectiveUnitId > 0) {
                 farmDao.updateCattleEventsUnitIdByUnitSyncId(syncId, effectiveUnitId)
+                farmDao.updatePoultryLogsUnitIdByUnitSyncId(syncId, effectiveUnitId)
             }
         }
     }
@@ -650,6 +693,49 @@ class FirestoreSyncEngine(
                 isDeleted = isDeleted
             )
             farmDao.insertCattleEvent(event)
+        }
+    }
+
+
+    private suspend fun applyRemotePoultryLog(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getPoultryLogBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val unitSyncId = doc.getString("unitSyncId") ?: ""
+            val localUnitId = if (unitSyncId.isNotBlank()) {
+                farmDao.getUnitBySyncId(unitSyncId)?.id ?: 0L
+            } else 0L
+            val log = PoultryLog(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                unitId = localUnitId,
+                unitSyncId = unitSyncId,
+                logType = doc.getString("logType") ?: "FEED",
+                date = doc.getString("date") ?: "",
+                feedType = doc.getString("feedType") ?: "",
+                quantityKg = doc.getDouble("quantityKg") ?: 0.0,
+                costAmount = doc.getDouble("costAmount") ?: 0.0,
+                birdCount = doc.getLong("birdCount")?.toInt() ?: 0,
+                cause = doc.getString("cause") ?: "",
+                traysSold = doc.getLong("traysSold")?.toInt() ?: 0,
+                pricePerTray = doc.getDouble("pricePerTray") ?: 0.0,
+                totalRevenue = doc.getDouble("totalRevenue") ?: 0.0,
+                buyer = doc.getString("buyer") ?: "",
+                disposalReason = doc.getString("disposalReason") ?: "",
+                disposalAmount = doc.getDouble("disposalAmount") ?: 0.0,
+                vaccineName = doc.getString("vaccineName") ?: "",
+                targetStage = doc.getString("targetStage") ?: "",
+                vaccineStatus = doc.getString("vaccineStatus") ?: "",
+                notes = doc.getString("notes") ?: "",
+                linkedLogSyncId = doc.getString("linkedLogSyncId") ?: "",
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            farmDao.insertPoultryLog(log)
         }
     }
 

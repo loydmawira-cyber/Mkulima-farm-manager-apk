@@ -336,6 +336,48 @@ interface FarmDao {
     @Query("UPDATE worker_accounts SET password = :newPassword, updatedAt = :updatedAt WHERE emailOrPhone = :emailOrPhone OR workerId = :emailOrPhone")
     suspend fun updateWorkerPassword(emailOrPhone: String, newPassword: String, updatedAt: Long = System.currentTimeMillis())
 
+
+    // ================= Assets: Inventory =================
+    @Query("SELECT * FROM inventory_items WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY itemName COLLATE NOCASE")
+    fun getInventoryItemsByFarm(farmId: String): Flow<List<InventoryItem>>
+
+    @Query("SELECT * FROM inventory_items WHERE syncId = :syncId LIMIT 1")
+    suspend fun getInventoryItemBySyncId(syncId: String): InventoryItem?
+
+    @Query("SELECT * FROM inventory_items WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getDirtyInventoryItems(farmId: String, since: Long): List<InventoryItem>
+
+    @Query("SELECT * FROM inventory_items WHERE farmId = :farmId AND category = 'Silage' AND isDeleted = 0 ORDER BY id LIMIT 1")
+    suspend fun getSilageItem(farmId: String): InventoryItem?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInventoryItem(item: InventoryItem): Long
+
+    @Update
+    suspend fun updateInventoryItem(item: InventoryItem)
+
+    @Query("UPDATE inventory_items SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun softDeleteInventoryItem(id: Long, updatedAt: Long = System.currentTimeMillis())
+
+    // ================= Assets: Fields =================
+    @Query("SELECT * FROM field_plans WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY plantedDate DESC")
+    fun getFieldPlansByFarm(farmId: String): Flow<List<FieldPlan>>
+
+    @Query("SELECT * FROM field_plans WHERE syncId = :syncId LIMIT 1")
+    suspend fun getFieldPlanBySyncId(syncId: String): FieldPlan?
+
+    @Query("SELECT * FROM field_plans WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getDirtyFieldPlans(farmId: String, since: Long): List<FieldPlan>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFieldPlan(field: FieldPlan): Long
+
+    @Update
+    suspend fun updateFieldPlan(field: FieldPlan)
+
+    @Query("UPDATE field_plans SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun softDeleteFieldPlan(id: Long, updatedAt: Long = System.currentTimeMillis())
+
     // Clear operational data for a farm (Local Room only)
     @Query("DELETE FROM farm_units WHERE farmId = :farmId")
     suspend fun deleteUnitsForFarm(farmId: String)

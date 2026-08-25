@@ -42,6 +42,7 @@ data class FarmReminder(
     val recommendation: String,
     val actionLabel: String = "Log Action",
     val unitId: Long? = null,
+    val sourceTaskId: Long? = null,
     val isCompleted: Boolean = false
 )
 
@@ -77,10 +78,22 @@ object FarmReminderEngine {
         }
     }
 
+    private fun isSuppressedByCompletion(
+        ruleKey: String,
+        cooldownDays: Int,
+        completedRuleKeys: Map<String, Long>,
+        now: Date
+    ): Boolean {
+        val completedAt = completedRuleKeys[ruleKey] ?: return false
+        val cooldownMs = cooldownDays.toLong() * 24 * 60 * 60 * 1000
+        return (now.time - completedAt) < cooldownMs
+    }
+
     fun computeAllReminders(
         units: List<FarmUnit>,
         cattleEventsMap: Map<Long, List<CattleEventItem>> = emptyMap(),
-        tasks: List<FarmTask> = emptyList()
+        tasks: List<FarmTask> = emptyList(),
+        completedRuleKeys: Map<String, Long> = emptyMap()
     ): List<FarmReminder> {
         val reminders = mutableListOf<FarmReminder>()
         val today = Date()
@@ -100,7 +113,8 @@ object FarmReminderEngine {
                 val schedule = PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(dateAddedStr, emptySet())
 
                 schedule.forEach { item ->
-                    if (!item.isCompleted) {
+                    val ruleKey = "poultry_vac_${unit.id}_${item.ruleId}"
+                    if (!item.isCompleted && !isSuppressedByCompletion(ruleKey, 30, completedRuleKeys, today)) {
                         val urgency = when (item.status) {
                             VaccineDueStatus.OVERDUE -> ReminderUrgency.OVERDUE
                             VaccineDueStatus.DUE_TODAY -> ReminderUrgency.TODAY
@@ -111,7 +125,7 @@ object FarmReminderEngine {
 
                         reminders.add(
                             FarmReminder(
-                                id = "poultry_vac_${unit.id}_${item.ruleId}",
+                                id = ruleKey,
                                 type = ReminderType.VACCINATION,
                                 title = item.vaccineName,
                                 targetName = unit.name,
@@ -130,25 +144,28 @@ object FarmReminderEngine {
 
                 // Routine Poultry Deworming Alert (every 8 weeks / 56 days)
                 if (ageInfo.totalDays >= 42) {
-                    val dewormDueDays = (56 - (ageInfo.totalDays % 56)).coerceIn(-10, 56)
-                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, dewormDueDays) }
-                    val dewormDateStr = dateFormat.format(cal.time)
-                    reminders.add(
-                        FarmReminder(
-                            id = "poultry_deworm_${unit.id}",
-                            type = ReminderType.DEWORMING,
-                            title = "Routine Flock Deworming",
-                            targetName = unit.name,
-                            targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else "${unit.headCount} birds",
-                            dueDateStr = dewormDateStr,
-                            daysRemaining = dewormDueDays,
-                            urgency = calculateUrgency(dewormDueDays),
-                            details = "Periodic internal parasite & worm control for ${unit.name} (${ageInfo.formattedAge}).",
-                            recommendation = "Administer Piperazine or Levamisole in drinking water for 1-2 days.",
-                            actionLabel = "Log Deworming",
-                            unitId = unit.id
+                    val dewormRuleKey = "poultry_deworm_${unit.id}"
+                    if (!isSuppressedByCompletion(dewormRuleKey, 56, completedRuleKeys, today)) {
+                        val dewormDueDays = (56 - (ageInfo.totalDays % 56)).coerceIn(-10, 56)
+                        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, dewormDueDays) }
+                        val dewormDateStr = dateFormat.format(cal.time)
+                        reminders.add(
+                            FarmReminder(
+                                id = dewormRuleKey,
+                                type = ReminderType.DEWORMING,
+                                title = "Routine Flock Deworming",
+                                targetName = unit.name,
+                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else "${unit.headCount} birds",
+                                dueDateStr = dewormDateStr,
+                                daysRemaining = dewormDueDays,
+                                urgency = calculateUrgency(dewormDueDays),
+                                details = "Periodic internal parasite & worm control for ${unit.name} (${ageInfo.formattedAge}).",
+                                recommendation = "Administer Piperazine or Levamisole in drinking water for 1-2 days.",
+                                actionLabel = "Log Deworming",
+                                unitId = unit.id
+                            )
                         )
-                    )
+                    }
                 }
 
             } else {
@@ -259,81 +276,93 @@ object FarmReminderEngine {
                 val isDewormingDue = unit.healthStatus.contains("Deworm", ignoreCase = true)
 
                 if (isVaccinationDue) {
-                    reminders.add(
-                        FarmReminder(
-                            id = "cattle_vac_${unit.id}",
-                            type = ReminderType.VACCINATION,
-                            title = "Foot & Mouth (FMD) / Anthrax Vaccination",
-                            targetName = unit.name,
-                            targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
-                            dueDateStr = unit.lastUpdated.ifBlank { dateFormat.format(today) },
-                            daysRemaining = 0,
-                            urgency = ReminderUrgency.TODAY,
-                            details = "Mandatory preventive herd vaccination scheduled for ${unit.name}.",
-                            recommendation = "Administer quadrivalent FMD or Blanthrax booster subcutaneously under vet supervision.",
-                            actionLabel = "Log Vaccination",
-                            unitId = unit.id
+                    val vacRuleKey = "cattle_vac_${unit.id}"
+                    if (!isSuppressedByCompletion(vacRuleKey, 14, completedRuleKeys, today)) {
+                        reminders.add(
+                            FarmReminder(
+                                id = vacRuleKey,
+                                type = ReminderType.VACCINATION,
+                                title = "Foot & Mouth (FMD) / Anthrax Vaccination",
+                                targetName = unit.name,
+                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
+                                dueDateStr = unit.lastUpdated.ifBlank { dateFormat.format(today) },
+                                daysRemaining = 0,
+                                urgency = ReminderUrgency.TODAY,
+                                details = "Mandatory preventive herd vaccination scheduled for ${unit.name}.",
+                                recommendation = "Administer quadrivalent FMD or Blanthrax booster subcutaneously under vet supervision.",
+                                actionLabel = "Log Vaccination",
+                                unitId = unit.id
+                            )
                         )
-                    )
+                    }
                 } else {
-                    // Periodic Herd Vaccination Schedule
-                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 14) }
-                    val upcomingVacDateStr = dateFormat.format(cal.time)
-                    reminders.add(
-                        FarmReminder(
-                            id = "cattle_vac_routine_${unit.id}",
-                            type = ReminderType.VACCINATION,
-                            title = "Bi-Annual FMD & Blackquarter Booster",
-                            targetName = unit.name,
-                            targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
-                            dueDateStr = upcomingVacDateStr,
-                            daysRemaining = 14,
-                            urgency = ReminderUrgency.UPCOMING,
-                            details = "Routine herd immunity booster against Foot and Mouth Disease (FMD) & Clostridial infections.",
-                            recommendation = "Prepare cold chain storage for vaccines (2°C - 8°C).",
-                            actionLabel = "Schedule Vaccination",
-                            unitId = unit.id
+                    // Periodic Herd Vaccination Schedule (bi-annual)
+                    val routineVacRuleKey = "cattle_vac_routine_${unit.id}"
+                    if (!isSuppressedByCompletion(routineVacRuleKey, 180, completedRuleKeys, today)) {
+                        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 14) }
+                        val upcomingVacDateStr = dateFormat.format(cal.time)
+                        reminders.add(
+                            FarmReminder(
+                                id = routineVacRuleKey,
+                                type = ReminderType.VACCINATION,
+                                title = "Bi-Annual FMD & Blackquarter Booster",
+                                targetName = unit.name,
+                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
+                                dueDateStr = upcomingVacDateStr,
+                                daysRemaining = 14,
+                                urgency = ReminderUrgency.UPCOMING,
+                                details = "Routine herd immunity booster against Foot and Mouth Disease (FMD) & Clostridial infections.",
+                                recommendation = "Prepare cold chain storage for vaccines (2°C - 8°C).",
+                                actionLabel = "Schedule Vaccination",
+                                unitId = unit.id
+                            )
                         )
-                    )
+                    }
                 }
 
                 // E. Cattle Deworming Reminders
                 if (isDewormingDue) {
-                    reminders.add(
-                        FarmReminder(
-                            id = "cattle_deworm_${unit.id}",
-                            type = ReminderType.DEWORMING,
-                            title = "Quarterly Deworming (Liver Fluke & Roundworms)",
-                            targetName = unit.name,
-                            targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
-                            dueDateStr = unit.lastUpdated.ifBlank { dateFormat.format(today) },
-                            daysRemaining = 0,
-                            urgency = ReminderUrgency.TODAY,
-                            details = "Deworming cycle overdue or due today for ${unit.name}.",
-                            recommendation = "Administer Albendazole 10% oral drench (10ml per 100kg bodyweight) or Closantel.",
-                            actionLabel = "Log Deworming",
-                            unitId = unit.id
+                    val dewormRuleKey = "cattle_deworm_${unit.id}"
+                    if (!isSuppressedByCompletion(dewormRuleKey, 14, completedRuleKeys, today)) {
+                        reminders.add(
+                            FarmReminder(
+                                id = dewormRuleKey,
+                                type = ReminderType.DEWORMING,
+                                title = "Quarterly Deworming (Liver Fluke & Roundworms)",
+                                targetName = unit.name,
+                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
+                                dueDateStr = unit.lastUpdated.ifBlank { dateFormat.format(today) },
+                                daysRemaining = 0,
+                                urgency = ReminderUrgency.TODAY,
+                                details = "Deworming cycle overdue or due today for ${unit.name}.",
+                                recommendation = "Administer Albendazole 10% oral drench (10ml per 100kg bodyweight) or Closantel.",
+                                actionLabel = "Log Deworming",
+                                unitId = unit.id
+                            )
                         )
-                    )
+                    }
                 } else {
-                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 21) }
-                    val upcomingDewormDateStr = dateFormat.format(cal.time)
-                    reminders.add(
-                        FarmReminder(
-                            id = "cattle_deworm_routine_${unit.id}",
-                            type = ReminderType.DEWORMING,
-                            title = "Routine Seasonal Deworming",
-                            targetName = unit.name,
-                            targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
-                            dueDateStr = upcomingDewormDateStr,
-                            daysRemaining = 21,
-                            urgency = ReminderUrgency.UPCOMING,
-                            details = "Scheduled seasonal anti-parasitic drench for pasture grazing stock.",
-                            recommendation = "Alternate between Albendazole and Ivermectin/Levamisole to prevent drug resistance.",
-                            actionLabel = "Log Deworming",
-                            unitId = unit.id
+                    val routineDewormRuleKey = "cattle_deworm_routine_${unit.id}"
+                    if (!isSuppressedByCompletion(routineDewormRuleKey, 21, completedRuleKeys, today)) {
+                        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 21) }
+                        val upcomingDewormDateStr = dateFormat.format(cal.time)
+                        reminders.add(
+                            FarmReminder(
+                                id = routineDewormRuleKey,
+                                type = ReminderType.DEWORMING,
+                                title = "Routine Seasonal Deworming",
+                                targetName = unit.name,
+                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
+                                dueDateStr = upcomingDewormDateStr,
+                                daysRemaining = 21,
+                                urgency = ReminderUrgency.UPCOMING,
+                                details = "Scheduled seasonal anti-parasitic drench for pasture grazing stock.",
+                                recommendation = "Alternate between Albendazole and Ivermectin/Levamisole to prevent drug resistance.",
+                                actionLabel = "Log Deworming",
+                                unitId = unit.id
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -360,7 +389,8 @@ object FarmReminderEngine {
                     urgency = if (isHigh) ReminderUrgency.TODAY else ReminderUrgency.DUE_SOON,
                     details = "Assigned Worker: ${task.assignedWorker ?: "Unassigned"} • Priority: ${task.priority.name}",
                     recommendation = task.instructions ?: "Complete task checklist and submit operational confirmation.",
-                    actionLabel = "Mark Task Done"
+                    actionLabel = "Mark Task Done",
+                    sourceTaskId = task.id
                 )
             )
         }

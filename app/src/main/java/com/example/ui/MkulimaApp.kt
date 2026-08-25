@@ -1,6 +1,5 @@
 package com.example.ui
 
-import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -99,8 +98,6 @@ import com.example.ui.theme.TagLivestockBg
 import com.example.ui.theme.TagLivestockText
 import com.example.ui.theme.MkulimaTheme
 import com.example.ui.theme.mkulimaColors
-import com.example.util.RequestNotificationPermission
-import com.example.util.scheduleTaskReminders
 
 @Composable
 fun MkulimaApp(
@@ -144,18 +141,6 @@ fun MkulimaAppContent(
     val userSession by viewModel.currentSession.collectAsState()
     val userRole = userSession?.role ?: "Worker"
 
-    LaunchedEffect(userSession) {
-        if (userSession != null) {
-            val prefs = context.getSharedPreferences("mkulima_auth_prefs", Context.MODE_PRIVATE)
-            if (prefs.getBoolean("task_reminders_enabled", true)) {
-                scheduleTaskReminders(context)
-            }
-        }
-    }
-    if (userSession != null) {
-        RequestNotificationPermission()
-    }
-
     if (userSession == null) {
         AuthScreen(
             onLogin = { email, pass, onError -> viewModel.login(email, pass, onError) },
@@ -190,6 +175,9 @@ fun MkulimaAppContent(
     var dismissedReminderIds by remember { mutableStateOf(setOf<String>()) }
 
     val farmReminders by viewModel.farmReminders.collectAsState()
+    val activeReminders by remember {
+        derivedStateOf { farmReminders.filterNot { it.id in dismissedReminderIds } }
+    }
 
     // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
     val hasOpenOverlay = showWorkerManagementScreen || showSettingsDialog || showRemindersDialog || showAddTaskDialog ||
@@ -353,7 +341,7 @@ fun MkulimaAppContent(
 
     if (showRemindersDialog) {
         FarmRemindersDialog(
-            reminders = farmReminders,
+            reminders = activeReminders,
             onDismiss = { showRemindersDialog = false },
             onNavigateToAnimal = {
                 showRemindersDialog = false
@@ -368,7 +356,10 @@ fun MkulimaAppContent(
                     title = reminder.title,
                     targetUnit = reminder.targetName,
                     dueDateStr = reminder.dueDateStr,
-                    details = reminder.details
+                    details = reminder.details,
+                    sourceTaskId = reminder.sourceTaskId,
+                    reminderRuleKey = if (reminder.sourceTaskId == null) reminder.id else null,
+                    reminderUnitId = reminder.unitId
                 )
             },
             onDismissReminder = { reminderId ->
@@ -438,13 +429,13 @@ fun MkulimaAppContent(
                                 ) {
                                     BadgedBox(
                                         badge = {
-                                            if (farmReminders.isNotEmpty()) {
+                                            if (activeReminders.isNotEmpty()) {
                                                 Badge(
                                                     containerColor = Color(0xFFDC2626),
                                                     contentColor = Color.White
                                                 ) {
                                                     Text(
-                                                        text = if (farmReminders.size > 9) "9+" else "${farmReminders.size}",
+                                                        text = if (activeReminders.size > 9) "9+" else "${activeReminders.size}",
                                                         fontSize = 10.sp,
                                                         fontWeight = FontWeight.Bold
                                                     )
@@ -623,7 +614,10 @@ fun MkulimaAppContent(
                                 title = reminder.title,
                                 targetUnit = reminder.targetName,
                                 dueDateStr = reminder.dueDateStr,
-                                details = reminder.details
+                                details = reminder.details,
+                                sourceTaskId = reminder.sourceTaskId,
+                                reminderRuleKey = if (reminder.sourceTaskId == null) reminder.id else null,
+                                reminderUnitId = reminder.unitId
                             )
                         },
                         onDismissReminderClick = { reminderId ->

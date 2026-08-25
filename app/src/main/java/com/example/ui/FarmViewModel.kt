@@ -17,6 +17,7 @@ import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkLog
+import com.example.data.ReminderCompletion
 import com.example.data.RequestStatus
 import com.example.data.TaskCategory
 import com.example.data.TaskPriority

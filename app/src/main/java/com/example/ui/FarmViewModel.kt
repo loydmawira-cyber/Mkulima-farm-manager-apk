@@ -264,9 +264,38 @@ class FarmViewModel(
         title: String,
         targetUnit: String,
         dueDateStr: String,
-        details: String?
+        details: String?,
+        sourceTaskId: Long? = null,
+        reminderRuleKey: String? = null,
+        reminderUnitId: Long? = null
     ) {
         viewModelScope.launch {
+            if (sourceTaskId != null) {
+                // Reminder was generated from a real task — update that task directly
+                // instead of creating an orphaned duplicate.
+                val existingTask = repository.getTaskById(sourceTaskId)
+                if (existingTask != null) {
+                    val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                    repository.updateTask(
+                        existingTask.copy(
+                            isCompleted = true,
+                            completedAt = nowFormatted,
+                            proofNotes = existingTask.proofNotes ?: "Completed from Reminders."
+                        )
+                    )
+                    return@launch
+                }
+                // Fall through if the task was deleted out from under the reminder.
+            }
+
+            if (reminderRuleKey != null) {
+                // Computed reminder (vaccination/deworming/etc.) — record completion so
+                // it stays suppressed for its cooldown window instead of recreating a task.
+                val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+                repository.markReminderComplete(farmId, reminderRuleKey, reminderUnitId ?: 0L)
+                return@launch
+            }
+
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
             val newTask = FarmTask(
@@ -616,11 +645,21 @@ class FarmViewModel(
         initialValue = emptyList()
     )
 
+    val reminderCompletions: StateFlow<List<ReminderCompletion>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getReminderCompletionsForFarm(farmId)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
     val farmReminders: StateFlow<List<com.example.util.FarmReminder>> = combine(
         allUnits,
         rawTasks,
-        allCattleEvents
-    ) { units, tasks, cattleEvents ->
+        allCattleEvents,
+        reminderCompletions
+    ) { units, tasks, cattleEvents, completions ->
         withContext(Dispatchers.Default) {
             val eventsMap = cattleEvents.groupBy { it.unitId }.mapValues { entry ->
                 entry.value.map {
@@ -635,7 +674,13 @@ class FarmViewModel(
                     )
                 }
             }
-            com.example.util.FarmReminderEngine.computeAllReminders(units = units, cattleEventsMap = eventsMap, tasks = tasks)
+            val completedRuleKeys = completions.associate { it.ruleKey to it.completedAt }
+            com.example.util.FarmReminderEngine.computeAllReminders(
+                units = units,
+                cattleEventsMap = eventsMap,
+                tasks = tasks,
+                completedRuleKeys = completedRuleKeys
+            )
         }
     }.stateIn(
         scope = viewModelScope,

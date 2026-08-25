@@ -212,7 +212,8 @@ data class FlockDisposalLogItem(
     val reason: String, // "Sold", "Death", "Home Consumption", "Other"
     val amount: Double,
     val date: String,
-    val notes: String
+    val notes: String,
+    val linkedMortalityLogId: String? = null
 )
 
 val mockAnimals: List<AnimalDetailData> = emptyList()
@@ -3844,6 +3845,13 @@ data class PoultryEggSaleItem(
     val buyer: String = ""
 )
 
+private sealed class PoultryLogAction {
+    data class Feed(val item: PoultryFeedLogItem) : PoultryLogAction()
+    data class Mortality(val item: PoultryMortalityLogItem) : PoultryLogAction()
+    data class EggSale(val item: PoultryEggSaleItem) : PoultryLogAction()
+    data class Disposal(val item: FlockDisposalLogItem) : PoultryLogAction()
+}
+
 data class PoultryVaccineItem(
     val id: String,
     val vaccineName: String,
@@ -3853,6 +3861,7 @@ data class PoultryVaccineItem(
     val notes: String = ""
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FlockDetailsView(
     flock: AnimalDetailData,
@@ -3875,6 +3884,9 @@ fun FlockDetailsView(
     var showVaccineDialog by remember { mutableStateOf(false) }
     var showDisposeFlockDialog by remember { mutableStateOf(false) }
     var showEditDateAddedDialog by remember { mutableStateOf(false) }
+    var poultryLogForOptions by remember { mutableStateOf<PoultryLogAction?>(null) }
+    var poultryLogToEdit by remember { mutableStateOf<PoultryLogAction?>(null) }
+    var poultryLogToDelete by remember { mutableStateOf<PoultryLogAction?>(null) }
 
     var flockDateAdded by remember(flock.id, flock.dateOfBirth) {
         mutableStateOf(if (flock.dateOfBirth.isNotBlank()) flock.dateOfBirth else "01 Jul 2026")
@@ -3975,29 +3987,40 @@ fun FlockDetailsView(
             onConfirmDisposeFlock = { quantity, reason, amount, notes, date ->
                 showDisposeFlockDialog = false
                 liveHeadCount = (liveHeadCount - quantity).coerceAtLeast(0)
+
+                val timestamp = System.currentTimeMillis()
+                val mortalityLogId = if (reason.equals("Death", ignoreCase = true)) {
+                    "m_$timestamp"
+                } else {
+                    null
+                }
+
+                if (mortalityLogId != null) {
+                    mortalityLogs.add(
+                        0,
+                        PoultryMortalityLogItem(
+                            id = mortalityLogId,
+                            date = date,
+                            count = quantity,
+                            cause = notes.ifBlank { "Mortality" },
+                            notes = "Created from flock disposal"
+                        )
+                    )
+                }
+
                 flockDisposalLogs.add(
                     0,
                     FlockDisposalLogItem(
-                        id = "d_${System.currentTimeMillis()}",
+                        id = "d_$timestamp",
                         flockName = flock.name,
                         quantity = quantity,
                         reason = reason,
                         amount = amount,
                         date = date,
-                        notes = notes.ifBlank { "$reason disposal" }
+                        notes = notes.ifBlank { "$reason disposal" },
+                        linkedMortalityLogId = mortalityLogId
                     )
                 )
-                if (reason.equals("Death", ignoreCase = true)) {
-                    mortalityLogs.add(
-                        0,
-                        PoultryMortalityLogItem(
-                            id = "m_${System.currentTimeMillis()}",
-                            date = date,
-                            count = quantity,
-                            cause = notes.ifBlank { "Mortality" }
-                        )
-                    )
-                }
                 onDisposeFlock(quantity, reason, amount, notes, date)
             }
         )
@@ -4042,6 +4065,146 @@ fun FlockDetailsView(
                 }
             }
         }
+    }
+
+    if (poultryLogForOptions != null) {
+        val selectedLog = poultryLogForOptions!!
+        PoultryLogOptionsDialog(
+            log = selectedLog,
+            onEdit = {
+                poultryLogToEdit = selectedLog
+                poultryLogForOptions = null
+            },
+            onDelete = {
+                poultryLogToDelete = selectedLog
+                poultryLogForOptions = null
+            },
+            onDismiss = { poultryLogForOptions = null }
+        )
+    }
+
+    if (poultryLogToDelete != null) {
+        val selectedLog = poultryLogToDelete!!
+        PoultryLogDeleteConfirmDialog(
+            onDismiss = { poultryLogToDelete = null },
+            onConfirmDelete = {
+                when (selectedLog) {
+                    is PoultryLogAction.Feed -> {
+                        feedLogs.removeAll { it.id == selectedLog.item.id }
+                    }
+                    is PoultryLogAction.Mortality -> {
+                        mortalityLogs.removeAll { it.id == selectedLog.item.id }
+                        liveHeadCount += selectedLog.item.count
+                    }
+                    is PoultryLogAction.EggSale -> {
+                        eggSaleLogs.removeAll { it.id == selectedLog.item.id }
+                    }
+                    is PoultryLogAction.Disposal -> {
+                        flockDisposalLogs.removeAll { it.id == selectedLog.item.id }
+                        selectedLog.item.linkedMortalityLogId?.let { mortalityId ->
+                            mortalityLogs.removeAll { it.id == mortalityId }
+                        }
+                        liveHeadCount += selectedLog.item.quantity
+                    }
+                }
+                poultryLogToDelete = null
+            }
+        )
+    }
+
+    when (val selectedLog = poultryLogToEdit) {
+        is PoultryLogAction.Feed -> {
+            EditFeedLogDialog(
+                log = selectedLog.item,
+                onDismiss = { poultryLogToEdit = null },
+                onSave = { updatedLog ->
+                    val index = feedLogs.indexOfFirst { it.id == updatedLog.id }
+                    if (index >= 0) feedLogs[index] = updatedLog
+                    poultryLogToEdit = null
+                }
+            )
+        }
+        is PoultryLogAction.Mortality -> {
+            EditMortalityLogDialog(
+                log = selectedLog.item,
+                onDismiss = { poultryLogToEdit = null },
+                onSave = { updatedLog ->
+                    val index = mortalityLogs.indexOfFirst { it.id == updatedLog.id }
+                    if (index >= 0) {
+                        val originalLog = mortalityLogs[index]
+                        val countDifference = updatedLog.count - originalLog.count
+                        liveHeadCount = (liveHeadCount - countDifference).coerceAtLeast(0)
+                        mortalityLogs[index] = updatedLog
+                    }
+                    poultryLogToEdit = null
+                }
+            )
+        }
+        is PoultryLogAction.EggSale -> {
+            EditEggSaleLogDialog(
+                log = selectedLog.item,
+                onDismiss = { poultryLogToEdit = null },
+                onSave = { updatedLog ->
+                    val index = eggSaleLogs.indexOfFirst { it.id == updatedLog.id }
+                    if (index >= 0) eggSaleLogs[index] = updatedLog
+                    poultryLogToEdit = null
+                }
+            )
+        }
+        is PoultryLogAction.Disposal -> {
+            EditDisposalLogDialog(
+                log = selectedLog.item,
+                onDismiss = { poultryLogToEdit = null },
+                onSave = { updatedLog ->
+                    val index = flockDisposalLogs.indexOfFirst { it.id == updatedLog.id }
+                    if (index >= 0) {
+                        val originalLog = flockDisposalLogs[index]
+                        val quantityDifference = updatedLog.quantity - originalLog.quantity
+                        liveHeadCount = (liveHeadCount - quantityDifference).coerceAtLeast(0)
+
+                        val wasDeathDisposal = originalLog.reason.equals("Death", ignoreCase = true)
+                        val isDeathDisposal = updatedLog.reason.equals("Death", ignoreCase = true)
+                        var finalUpdatedLog = updatedLog
+
+                        when {
+                            wasDeathDisposal && !isDeathDisposal -> {
+                                originalLog.linkedMortalityLogId?.let { mortalityId ->
+                                    mortalityLogs.removeAll { it.id == mortalityId }
+                                }
+                                finalUpdatedLog = updatedLog.copy(linkedMortalityLogId = null)
+                            }
+
+                            isDeathDisposal -> {
+                                val mortalityId = originalLog.linkedMortalityLogId
+                                    ?: "m_${System.currentTimeMillis()}"
+                                val mortalityIndex = mortalityLogs.indexOfFirst { it.id == mortalityId }
+                                val linkedMortality = PoultryMortalityLogItem(
+                                    id = mortalityId,
+                                    date = updatedLog.date,
+                                    count = updatedLog.quantity,
+                                    cause = updatedLog.notes.ifBlank { "Mortality" },
+                                    notes = "Created from flock disposal"
+                                )
+                                if (mortalityIndex >= 0) {
+                                    mortalityLogs[mortalityIndex] = linkedMortality
+                                } else {
+                                    mortalityLogs.add(0, linkedMortality)
+                                }
+                                finalUpdatedLog = updatedLog.copy(linkedMortalityLogId = mortalityId)
+                            }
+
+                            else -> {
+                                finalUpdatedLog = updatedLog.copy(linkedMortalityLogId = null)
+                            }
+                        }
+
+                        flockDisposalLogs[index] = finalUpdatedLog
+                    }
+                    poultryLogToEdit = null
+                }
+            )
+        }
+        null -> Unit
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color(0xFFF8FAFC))) {
@@ -4684,7 +4847,16 @@ fun FlockDetailsView(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0xFFF8FAFC),
                                 border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 6.dp)
+                                    .combinedClickable(
+                                        enabled = canEdit,
+                                        onClick = {},
+                                        onLongClick = {
+                                            poultryLogForOptions = PoultryLogAction.Feed(feed)
+                                        }
+                                    )
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
@@ -5071,7 +5243,16 @@ fun FlockDetailsView(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0xFFFEF2F2),
                                 border = BorderStroke(1.dp, Color(0xFFFECACA)),
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 6.dp)
+                                    .combinedClickable(
+                                        enabled = canEdit,
+                                        onClick = {},
+                                        onLongClick = {
+                                            poultryLogForOptions = PoultryLogAction.Mortality(log)
+                                        }
+                                    )
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
@@ -5092,7 +5273,87 @@ fun FlockDetailsView(
                 }
             }
 
-            // 5. Flock Sales & Disposals History Card
+            // 5. Egg Sales History Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFBBF7D0))
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🥚 Egg Sales Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            if (canEdit) {
+                                Button(
+                                    onClick = { showEggSaleDialog = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text("+ LOG SALE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (eggSaleLogs.isEmpty()) {
+                            Text("No egg-sale records yet for this flock.", fontSize = 13.sp, color = Color(0xFF64748B))
+                        } else {
+                            eggSaleLogs.forEach { sale ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF0FDF4),
+                                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 6.dp)
+                                        .combinedClickable(
+                                            enabled = canEdit,
+                                            onClick = {},
+                                            onLongClick = {
+                                                poultryLogForOptions = PoultryLogAction.EggSale(sale)
+                                            }
+                                        )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "${sale.traysSold} trays • ${sale.buyer.ifBlank { "No buyer recorded" }}",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF166534)
+                                            )
+                                            Text(
+                                                text = "Date: ${sale.date} • KSh ${"%.2f".format(sale.pricePerTray)} per tray",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF15803D)
+                                            )
+                                        }
+                                        Text(
+                                            text = "KSh ${"%.2f".format(sale.totalRevenue)}",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF15803D)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Flock Sales & Disposals History Card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -5127,7 +5388,16 @@ fun FlockDetailsView(
                                     shape = RoundedCornerShape(10.dp),
                                     color = Color(0xFFFFF7ED),
                                     border = BorderStroke(1.dp, Color(0xFFFFE4E6)),
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 6.dp)
+                                        .combinedClickable(
+                                            enabled = canEdit,
+                                            onClick = {},
+                                            onLongClick = {
+                                                poultryLogForOptions = PoultryLogAction.Disposal(dLog)
+                                            }
+                                        )
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(12.dp),
@@ -5340,6 +5610,323 @@ fun FlockDetailsView(
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                         ) { Text("ADD VACCINE") }
                     }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun PoultryLogOptionsDialog(
+    log: PoultryLogAction,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val logLabel = when (log) {
+        is PoultryLogAction.Feed -> "feed log"
+        is PoultryLogAction.Mortality -> "mortality log"
+        is PoultryLogAction.EggSale -> "egg-sale log"
+        is PoultryLogAction.Disposal -> "disposal log"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Log Options",
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF0F172A)
+            )
+        },
+        text = {
+            Text(
+                text = "Choose an action for this $logLabel.",
+                fontSize = 13.sp,
+                color = Color(0xFF475569)
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onEdit,
+                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+            ) {
+                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Edit Log", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+                Button(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun PoultryLogDeleteConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirmDelete: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null,
+                    tint = Color(0xFFDC2626)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Delete Log?",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0F172A)
+                )
+            }
+        },
+        text = {
+            Text(
+                text = "Are you sure you want to delete this log?",
+                fontSize = 13.sp,
+                color = Color(0xFF475569)
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirmDelete,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+            ) {
+                Text("Delete", fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel", color = Color(0xFF475569))
+            }
+        }
+    )
+}
+
+@Composable
+private fun EditFeedLogDialog(
+    log: PoultryFeedLogItem,
+    onDismiss: () -> Unit,
+    onSave: (PoultryFeedLogItem) -> Unit
+) {
+    var dateText by remember(log.id) { mutableStateOf(log.date) }
+    var feedType by remember(log.id) { mutableStateOf(log.feedType) }
+    var quantityText by remember(log.id) { mutableStateOf(log.quantityKg.toString()) }
+    var costText by remember(log.id) { mutableStateOf(log.costAmount.toString()) }
+    var notesText by remember(log.id) { mutableStateOf(log.notes) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("✏️ Edit Feed Log", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+                AppDatePickerField(value = dateText, onValueChange = { dateText = it }, label = "Date")
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = feedType, onValueChange = { feedType = it }, label = { Text("Feed Type") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = quantityText, onValueChange = { quantityText = it }, label = { Text("Quantity (Kg)") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = costText, onValueChange = { costText = it }, label = { Text("Total Cost (KSh)") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = notesText, onValueChange = { notesText = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onSave(
+                                log.copy(
+                                    date = dateText,
+                                    feedType = feedType.trim(),
+                                    quantityKg = quantityText.toDoubleOrNull() ?: log.quantityKg,
+                                    costAmount = costText.toDoubleOrNull() ?: log.costAmount,
+                                    notes = notesText.trim()
+                                )
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                    ) { Text("SAVE CHANGES") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditMortalityLogDialog(
+    log: PoultryMortalityLogItem,
+    onDismiss: () -> Unit,
+    onSave: (PoultryMortalityLogItem) -> Unit
+) {
+    var dateText by remember(log.id) { mutableStateOf(log.date) }
+    var countText by remember(log.id) { mutableStateOf(log.count.toString()) }
+    var causeText by remember(log.id) { mutableStateOf(log.cause) }
+    var notesText by remember(log.id) { mutableStateOf(log.notes) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("✏️ Edit Mortality Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                Spacer(modifier = Modifier.height(12.dp))
+                AppDatePickerField(value = dateText, onValueChange = { dateText = it }, label = "Date")
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = countText, onValueChange = { countText = it }, label = { Text("Number of Bird Deaths") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = causeText, onValueChange = { causeText = it }, label = { Text("Cause / Reason") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = notesText, onValueChange = { notesText = it }, label = { Text("Notes / Observations") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onSave(
+                                log.copy(
+                                    date = dateText,
+                                    count = (countText.toIntOrNull() ?: log.count).coerceAtLeast(1),
+                                    cause = causeText.trim(),
+                                    notes = notesText.trim()
+                                )
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) { Text("SAVE CHANGES") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditEggSaleLogDialog(
+    log: PoultryEggSaleItem,
+    onDismiss: () -> Unit,
+    onSave: (PoultryEggSaleItem) -> Unit
+) {
+    var dateText by remember(log.id) { mutableStateOf(log.date) }
+    var traysText by remember(log.id) { mutableStateOf(log.traysSold.toString()) }
+    var priceText by remember(log.id) { mutableStateOf(log.pricePerTray.toString()) }
+    var buyerText by remember(log.id) { mutableStateOf(log.buyer) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("✏️ Edit Egg Sale", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                Spacer(modifier = Modifier.height(12.dp))
+                AppDatePickerField(value = dateText, onValueChange = { dateText = it }, label = "Sale Date")
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = traysText, onValueChange = { traysText = it }, label = { Text("Number of Trays Sold") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = priceText, onValueChange = { priceText = it }, label = { Text("Price per Tray (KSh)") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = buyerText, onValueChange = { buyerText = it }, label = { Text("Buyer Name") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val trays = (traysText.toIntOrNull() ?: log.traysSold).coerceAtLeast(0)
+                            val price = (priceText.toDoubleOrNull() ?: log.pricePerTray).coerceAtLeast(0.0)
+                            onSave(
+                                log.copy(
+                                    date = dateText,
+                                    traysSold = trays,
+                                    pricePerTray = price,
+                                    totalRevenue = trays * price,
+                                    buyer = buyerText.trim()
+                                )
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                    ) { Text("SAVE CHANGES") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditDisposalLogDialog(
+    log: FlockDisposalLogItem,
+    onDismiss: () -> Unit,
+    onSave: (FlockDisposalLogItem) -> Unit
+) {
+    var dateText by remember(log.id) { mutableStateOf(log.date) }
+    var quantityText by remember(log.id) { mutableStateOf(log.quantity.toString()) }
+    var reasonText by remember(log.id) { mutableStateOf(log.reason) }
+    var amountText by remember(log.id) { mutableStateOf(log.amount.toString()) }
+    var notesText by remember(log.id) { mutableStateOf(log.notes) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("✏️ Edit Disposal Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
+                Spacer(modifier = Modifier.height(12.dp))
+                AppDatePickerField(value = dateText, onValueChange = { dateText = it }, label = "Disposal Date")
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = quantityText, onValueChange = { quantityText = it }, label = { Text("Number of Birds") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = reasonText, onValueChange = { reasonText = it }, label = { Text("Reason") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount (KSh)") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(value = notesText, onValueChange = { notesText = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onSave(
+                                log.copy(
+                                    date = dateText,
+                                    quantity = (quantityText.toIntOrNull() ?: log.quantity).coerceAtLeast(1),
+                                    reason = reasonText.trim(),
+                                    amount = (amountText.toDoubleOrNull() ?: log.amount).coerceAtLeast(0.0),
+                                    notes = notesText.trim()
+                                )
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+                    ) { Text("SAVE CHANGES") }
                 }
             }
         }

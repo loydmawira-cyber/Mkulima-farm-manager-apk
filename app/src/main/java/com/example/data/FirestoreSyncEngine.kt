@@ -145,6 +145,9 @@ class FirestoreSyncEngine(
         attachCollectionListener("cattle_events") { applyRemoteCattleEvent(farmId, it) }
         attachCollectionListener("poultry_logs") { applyRemotePoultryLog(farmId, it) }
         attachCollectionListener("worker_accounts") { applyRemoteWorkerAccount(farmId, it) }
+        attachCollectionListener("reminder_completions") { applyRemoteReminderCompletion(farmId, it) }
+        attachCollectionListener("inventory_items") { applyRemoteInventoryItem(farmId, it) }
+        attachCollectionListener("field_plans") { applyRemoteFieldPlan(farmId, it) }
 
         // Trigger initial push of any offline/dirty changes
         triggerPush(farmId)
@@ -452,6 +455,40 @@ class FirestoreSyncEngine(
             }
             if (maxWorkerUpdatedAt > lastWorkerPush) setWatermark(farmId, "push_worker_accounts", maxWorkerUpdatedAt)
 
+
+            // 11. Reminder completions (persisted computed-reminder state)
+            val lastReminderPush = getWatermark(farmId, "push_reminder_completions")
+            val dirtyReminders = farmDao.getDirtyReminderCompletions(farmId, lastReminderPush)
+            var maxReminderUpdatedAt = lastReminderPush
+            for (item in dirtyReminders) {
+                val data = hashMapOf<String, Any>("syncId" to item.syncId, "farmId" to farmId, "ruleKey" to item.ruleKey, "unitId" to item.unitId, "completedAt" to item.completedAt, "updatedAt" to item.updatedAt, "isDeleted" to item.isDeleted)
+                farmRef.collection("reminder_completions").document(item.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (item.updatedAt > maxReminderUpdatedAt) maxReminderUpdatedAt = item.updatedAt
+            }
+            if (maxReminderUpdatedAt > lastReminderPush) setWatermark(farmId, "push_reminder_completions", maxReminderUpdatedAt)
+
+            // 12. Inventory items
+            val lastInventoryPush = getWatermark(farmId, "push_inventory_items")
+            val dirtyInventory = farmDao.getDirtyInventoryItems(farmId, lastInventoryPush)
+            var maxInventoryUpdatedAt = lastInventoryPush
+            for (item in dirtyInventory) {
+                val data = hashMapOf<String, Any>("syncId" to item.syncId, "farmId" to farmId, "itemName" to item.itemName, "category" to item.category, "skuOrBarcode" to item.skuOrBarcode, "description" to item.description, "quantityAvailable" to item.quantityAvailable, "unitOfMeasurement" to item.unitOfMeasurement, "minimumThreshold" to item.minimumThreshold, "storageLocation" to item.storageLocation, "batchOrLotNumber" to item.batchOrLotNumber, "purchaseDate" to item.purchaseDate, "expirationDate" to item.expirationDate, "unitCost" to item.unitCost, "isSilage" to item.isSilage, "updatedAt" to item.updatedAt, "isDeleted" to item.isDeleted)
+                farmRef.collection("inventory_items").document(item.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (item.updatedAt > maxInventoryUpdatedAt) maxInventoryUpdatedAt = item.updatedAt
+            }
+            if (maxInventoryUpdatedAt > lastInventoryPush) setWatermark(farmId, "push_inventory_items", maxInventoryUpdatedAt)
+
+            // 13. Field plans and harvest outcomes
+            val lastFieldPush = getWatermark(farmId, "push_field_plans")
+            val dirtyFields = farmDao.getDirtyFieldPlans(farmId, lastFieldPush)
+            var maxFieldUpdatedAt = lastFieldPush
+            for (field in dirtyFields) {
+                val data = hashMapOf<String, Any>("syncId" to field.syncId, "farmId" to farmId, "fieldName" to field.fieldName, "location" to field.location, "sizeAcres" to field.sizeAcres, "cropName" to field.cropName, "variety" to field.variety, "plantedDate" to field.plantedDate, "daysToHarvest" to field.daysToHarvest, "estimatedHarvestDate" to field.estimatedHarvestDate, "plantingNotes" to field.plantingNotes, "status" to field.status, "harvestedDate" to field.harvestedDate, "harvestOutcome" to field.harvestOutcome, "harvestedTonnes" to field.harvestedTonnes, "saleAmount" to field.saleAmount, "updatedAt" to field.updatedAt, "isDeleted" to field.isDeleted)
+                farmRef.collection("field_plans").document(field.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (field.updatedAt > maxFieldUpdatedAt) maxFieldUpdatedAt = field.updatedAt
+            }
+            if (maxFieldUpdatedAt > lastFieldPush) setWatermark(farmId, "push_field_plans", maxFieldUpdatedAt)
+
             Log.d(TAG, "Successfully pushed dirty rows for farm: $farmId")
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to push dirty rows for farm $farmId", e)
@@ -736,6 +773,32 @@ class FirestoreSyncEngine(
                 isDeleted = isDeleted
             )
             farmDao.insertPoultryLog(log)
+        }
+    }
+
+
+    private suspend fun applyRemoteReminderCompletion(farmId: String, doc: DocumentSnapshot) {
+        val ruleKey = doc.getString("ruleKey") ?: return
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val existing = farmDao.getReminderCompletion(farmId, ruleKey)
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            farmDao.insertReminderCompletion(ReminderCompletion(id = existing?.id ?: 0, syncId = doc.id, farmId = farmId, ruleKey = ruleKey, unitId = doc.getLong("unitId") ?: 0L, completedAt = doc.getLong("completedAt") ?: System.currentTimeMillis(), updatedAt = remoteUpdatedAt, isDeleted = doc.getBoolean("isDeleted") ?: false))
+        }
+    }
+
+    private suspend fun applyRemoteInventoryItem(farmId: String, doc: DocumentSnapshot) {
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val existing = farmDao.getInventoryItemBySyncId(doc.id)
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            farmDao.insertInventoryItem(InventoryItem(id = existing?.id ?: 0, syncId = doc.id, farmId = farmId, itemName = doc.getString("itemName") ?: "Inventory item", category = doc.getString("category") ?: "Other", skuOrBarcode = doc.getString("skuOrBarcode") ?: "", description = doc.getString("description") ?: "", quantityAvailable = doc.getDouble("quantityAvailable") ?: 0.0, unitOfMeasurement = doc.getString("unitOfMeasurement") ?: "kg", minimumThreshold = doc.getDouble("minimumThreshold") ?: 0.0, storageLocation = doc.getString("storageLocation") ?: "", batchOrLotNumber = doc.getString("batchOrLotNumber") ?: "", purchaseDate = doc.getString("purchaseDate") ?: "", expirationDate = doc.getString("expirationDate") ?: "", unitCost = doc.getDouble("unitCost") ?: 0.0, isSilage = doc.getBoolean("isSilage") ?: false, updatedAt = remoteUpdatedAt, isDeleted = doc.getBoolean("isDeleted") ?: false))
+        }
+    }
+
+    private suspend fun applyRemoteFieldPlan(farmId: String, doc: DocumentSnapshot) {
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val existing = farmDao.getFieldPlanBySyncId(doc.id)
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            farmDao.insertFieldPlan(FieldPlan(id = existing?.id ?: 0, syncId = doc.id, farmId = farmId, fieldName = doc.getString("fieldName") ?: "Field", location = doc.getString("location") ?: "", sizeAcres = doc.getDouble("sizeAcres") ?: 0.0, cropName = doc.getString("cropName") ?: "Maize", variety = doc.getString("variety") ?: "", plantedDate = doc.getString("plantedDate") ?: "", daysToHarvest = (doc.getLong("daysToHarvest") ?: 120L).toInt(), estimatedHarvestDate = doc.getString("estimatedHarvestDate") ?: "", plantingNotes = doc.getString("plantingNotes") ?: "", status = doc.getString("status") ?: "GROWING", harvestedDate = doc.getString("harvestedDate") ?: "", harvestOutcome = doc.getString("harvestOutcome") ?: "", harvestedTonnes = doc.getDouble("harvestedTonnes") ?: 0.0, saleAmount = doc.getDouble("saleAmount") ?: 0.0, updatedAt = remoteUpdatedAt, isDeleted = doc.getBoolean("isDeleted") ?: false))
         }
     }
 

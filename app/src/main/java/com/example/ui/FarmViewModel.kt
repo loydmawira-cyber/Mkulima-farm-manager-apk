@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.auth.AuthManager
 import com.example.auth.AuthResult
+import com.example.auth.WorkerAccountCreationResult
 import kotlinx.coroutines.flow.Flow
 import com.example.data.CattleEvent
 import com.example.data.EggLog
@@ -605,42 +606,44 @@ class FarmViewModel(
 
     fun deleteWorker(workerId: String) {
         viewModelScope.launch {
-            repository.deleteWorker(workerId)
+            authManager.deleteWorker(workerId)
         }
     }
 
     fun toggleWorkerRevoked(workerId: String, isRevoked: Boolean) {
         viewModelScope.launch {
-            repository.setWorkerRevoked(workerId, isRevoked)
+            authManager.setWorkerRevoked(workerId, isRevoked)
         }
     }
 
     fun updateWorker(worker: WorkerAccount) {
         viewModelScope.launch {
-            repository.updateWorker(worker)
+            authManager.updateWorker(worker)
         }
     }
 
-    fun createWorker(name: String, emailOrPhone: String, password: String, permissions: WorkerPermissions) {
+    fun createWorker(
+        name: String,
+        emailOrPhone: String,
+        password: String,
+        permissions: WorkerPermissions,
+        onResult: (WorkerAccountCreationResult) -> Unit = {}
+    ) {
         viewModelScope.launch {
-            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val worker = WorkerAccount(
-                workerId = java.util.UUID.randomUUID().toString(),
-                farmId = farmId,
+            val session = currentSession.value
+            if (session == null || !session.isOwner) {
+                onResult(WorkerAccountCreationResult.Error("Only the farm owner can create a worker account."))
+                return@launch
+            }
+            val result = authManager.createWorkerAccount(
                 name = name,
                 emailOrPhone = emailOrPhone,
-                password = password,
-                canViewLivestock = permissions.canViewLivestock,
-                canEditLivestock = permissions.canEditLivestock,
-                canViewLogs = permissions.canViewLogs,
-                canEditLogs = permissions.canEditLogs,
-                canViewFinance = permissions.canViewFinance,
-                canEditFinance = permissions.canEditFinance,
-                canViewTasks = permissions.canViewTasks,
-                canCompleteTasks = permissions.canCompleteTasks,
-                canViewRequests = permissions.canViewRequests
+                pass = password,
+                permissions = permissions,
+                farmId = session.farmId,
+                farmName = session.farmName
             )
-            repository.insertWorker(worker)
+            onResult(result)
         }
     }
 

@@ -91,6 +91,7 @@ import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.WorkerManagementScreen
 import com.example.ui.screens.FinanceScreen
+import com.example.ui.screens.AssetsScreen
 import com.example.ui.screens.FlocksScreen
 import com.example.ui.screens.MilkLogScreen
 import com.example.ui.theme.ForestGreenPrimary
@@ -134,6 +135,8 @@ fun MkulimaAppContent(
     val milkLogs by viewModel.allMilkLogs.collectAsState()
     val eggLogs by viewModel.allEggLogs.collectAsState()
     val financeRecords by viewModel.allFinanceRecords.collectAsState()
+    val inventoryItems by viewModel.allInventoryItems.collectAsState()
+    val fieldPlans by viewModel.allFieldPlans.collectAsState()
     val employeeRequests by viewModel.allEmployeeRequests.collectAsState()
     val allCattleEvents by viewModel.allCattleEvents.collectAsState(initial = emptyList())
     val farmSettings by viewModel.farmSettings.collectAsState()
@@ -492,25 +495,25 @@ fun MkulimaAppContent(
                         modifier = Modifier.testTag("nav_home_tab")
                     )
 
-                    // Tab 1: Livestock
+                    // Tab 1: Assets
                     NavigationBarItem(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
                         icon = {
                             Icon(
                                 if (selectedTab == 1) Icons.Filled.Grass else Icons.Outlined.Grass,
-                                contentDescription = "Livestock"
+                                contentDescription = "Assets"
                             )
                         },
                         label = {
                             Text(
-                                "Livestock",
+                                "Assets",
                                 fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium,
                                 fontSize = 11.sp
                             )
                         },
                         colors = navItemColors,
-                        modifier = Modifier.testTag("nav_livestock_tab")
+                        modifier = Modifier.testTag("nav_assets_tab")
                     )
 
                     // Tab 2: Log
@@ -627,36 +630,39 @@ fun MkulimaAppContent(
                         farmSettings = farmSettings
                     )
 
-                    1 -> FlocksScreen(
-                        viewModel = viewModel,
+                    1 -> AssetsScreen(
                         userRole = userRole,
-                        units = allUnits,
-                        milkLogs = milkLogs,
-                        eggLogs = eggLogs,
+                        inventoryItems = inventoryItems,
+                        fieldPlans = fieldPlans,
                         financeRecords = financeRecords,
-                        employeeRequests = employeeRequests,
-                        onAddUnitClick = { showAddUnitDialog = true },
-                        onAddTaskForUnit = { showAddTaskDialog = true },
-                        onAddMilkLogClick = { showAddMilkLogDialog = true },
-                        onAddEggLogClick = { showAddEggLogDialog = true },
-                        onAddFinanceClick = { showAddFinanceDialog = true },
-                        onAddEmployeeRequestClick = { showAddEmployeeRequestDialog = true },
-                        onUpdateRequestStatus = { req, status ->
-                            viewModel.updateEmployeeRequestStatus(req, status)
+                        onAddInventory = { viewModel.addInventoryItem(it) },
+                        onAddField = { viewModel.addFieldPlan(it) },
+                        onHarvest = { field, outcome, tonnes, saleAmount, harvestDate ->
+                            viewModel.recordFieldHarvest(field, outcome, tonnes, saleAmount, harvestDate)
                         },
-                        onAddFinanceRecord = { type, category, amount, description ->
-                            viewModel.addFinanceRecord(type, category, amount, description)
-                        },
-                        onUpdateUnitHeadCount = { unitId, newCount ->
-                            viewModel.updateUnitHeadCount(unitId, newCount)
-                        },
-                        onUpdateUnit = { unit ->
-                            viewModel.updateUnit(unit)
-                        },
-                        onDeleteUnit = { unitId ->
-                            viewModel.deleteUnit(unitId)
-                        },
-                        farmSettings = farmSettings
+                        livestock = {
+                            FlocksScreen(
+                                viewModel = viewModel,
+                                userRole = userRole,
+                                units = allUnits,
+                                milkLogs = milkLogs,
+                                eggLogs = eggLogs,
+                                financeRecords = financeRecords,
+                                employeeRequests = employeeRequests,
+                                onAddUnitClick = { showAddUnitDialog = true },
+                                onAddTaskForUnit = { showAddTaskDialog = true },
+                                onAddMilkLogClick = { showAddMilkLogDialog = true },
+                                onAddEggLogClick = { showAddEggLogDialog = true },
+                                onAddFinanceClick = { showAddFinanceDialog = true },
+                                onAddEmployeeRequestClick = { showAddEmployeeRequestDialog = true },
+                                onUpdateRequestStatus = { req, status -> viewModel.updateEmployeeRequestStatus(req, status) },
+                                onAddFinanceRecord = { type, category, amount, description -> viewModel.addFinanceRecord(type, category, amount, description) },
+                                onUpdateUnitHeadCount = { unitId, newCount -> viewModel.updateUnitHeadCount(unitId, newCount) },
+                                onUpdateUnit = { unit -> viewModel.updateUnit(unit) },
+                                onDeleteUnit = { unitId -> viewModel.deleteUnit(unitId) },
+                                farmSettings = farmSettings
+                            )
+                        }
                     )
 
                     2 -> MilkLogScreen(

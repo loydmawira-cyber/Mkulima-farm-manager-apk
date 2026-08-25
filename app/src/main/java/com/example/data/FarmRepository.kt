@@ -134,14 +134,32 @@ class FarmRepository(
     }
 
     suspend fun insertMilkLog(log: MilkLog): Long {
+        return insertMilkLogAndReturn(log).id
+    }
+
+    suspend fun insertMilkLogAndReturn(log: MilkLog): MilkLog {
+        val dateKey = MilkLogEntryRules.canonicalDateKey(log.date)
+            ?: throw IllegalArgumentException("Choose a valid milk-log date.")
+        if (MilkLogEntryRules.isFutureDate(log.date)) {
+            throw IllegalArgumentException("Milk cannot be recorded for a future date.")
+        }
+        val deterministicSyncId = MilkLogEntryRules.entrySyncId(log.farmId, log.cowName, log.date, log.session)
+            ?: throw IllegalArgumentException("Choose a valid milk-log date.")
+        val activeDuplicate = farmDao.getActiveMilkLogsForFarmOnce(log.farmId)
+            .firstOrNull { MilkLogEntryRules.isSameSlot(it, log.cowName, log.date, log.session) }
+        if (activeDuplicate != null) {
+            throw IllegalStateException("This cow's ${MilkLogEntryRules.normalizedSession(log.session).lowercase()} milk has already been recorded for the selected date. Delete it from log history before recording again.")
+        }
+        val previousVersion = farmDao.getMilkLogBySyncId(deterministicSyncId)
         val prepared = log.copy(
-            syncId = if (log.syncId.isBlank()) UUID.randomUUID().toString() else log.syncId,
+            id = previousVersion?.id ?: log.id,
+            syncId = deterministicSyncId,
             updatedAt = System.currentTimeMillis(),
             isDeleted = false
         )
         val id = farmDao.insertMilkLog(prepared)
         syncEngine?.triggerPush(log.farmId)
-        return id
+        return prepared.copy(id = id)
     }
 
     suspend fun updateMilkLog(log: MilkLog) {

@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -141,16 +142,19 @@ fun MkulimaAppContent(
     val farmSettings by viewModel.farmSettings.collectAsState()
     val farmWorkers by viewModel.farmWorkers.collectAsState()
     val userSession by viewModel.currentSession.collectAsState()
-val userRole = userSession?.role ?: "Worker"
+    val userRole = userSession?.role ?: "Worker"
 
-LaunchedEffect(userSession) {
-    if (userSession != null) {
-        scheduleTaskReminders(context)
+    LaunchedEffect(userSession) {
+        if (userSession != null) {
+            val prefs = context.getSharedPreferences("mkulima_auth_prefs", Context.MODE_PRIVATE)
+            if (prefs.getBoolean("task_reminders_enabled", true)) {
+                scheduleTaskReminders(context)
+            }
+        }
     }
-}
-if (userSession != null) {
-    RequestNotificationPermission()
-}
+    if (userSession != null) {
+        RequestNotificationPermission()
+    }
 
     if (userSession == null) {
         AuthScreen(

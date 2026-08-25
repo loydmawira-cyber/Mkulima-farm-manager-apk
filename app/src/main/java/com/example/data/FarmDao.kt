@@ -359,6 +359,31 @@ interface FarmDao {
     @Query("UPDATE inventory_items SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun softDeleteInventoryItem(id: Long, updatedAt: Long = System.currentTimeMillis())
 
+
+    // ================= Feed automation & inventory movement ledger =================
+    @Query("SELECT * FROM feed_plans WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY targetUnitName, consumptionKind")
+    fun getFeedPlansByFarm(farmId: String): Flow<List<FeedPlan>>
+    @Query("SELECT * FROM feed_plans WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isEnabled = 1 AND isDeleted = 0")
+    suspend fun getEnabledFeedPlans(farmId: String): List<FeedPlan>
+    @Query("SELECT * FROM feed_plans WHERE syncId = :syncId LIMIT 1")
+    suspend fun getFeedPlanBySyncId(syncId: String): FeedPlan?
+    @Query("SELECT * FROM feed_plans WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getDirtyFeedPlans(farmId: String, since: Long): List<FeedPlan>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertFeedPlan(plan: FeedPlan): Long
+    @Update suspend fun updateFeedPlan(plan: FeedPlan)
+    @Query("UPDATE feed_plans SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id") suspend fun softDeleteFeedPlan(id: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("SELECT * FROM inventory_movements WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY occurredOn DESC, id DESC")
+    fun getInventoryMovementsByFarm(farmId: String): Flow<List<InventoryMovement>>
+    @Query("SELECT * FROM inventory_movements WHERE sourceKey = :sourceKey AND isDeleted = 0 LIMIT 1")
+    suspend fun getInventoryMovementBySourceKey(sourceKey: String): InventoryMovement?
+    @Query("SELECT * FROM inventory_items WHERE syncId = :syncId LIMIT 1")
+    suspend fun getInventoryItemBySyncId(syncId: String): InventoryItem?
+    @Query("SELECT * FROM inventory_items WHERE id = :id AND isDeleted = 0 LIMIT 1")
+    suspend fun getInventoryItemById(id: Long): InventoryItem?
+    @Query("SELECT * FROM inventory_movements WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since") suspend fun getDirtyInventoryMovements(farmId: String, since: Long): List<InventoryMovement>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertInventoryMovement(movement: InventoryMovement): Long
+
     // ================= Assets: Fields =================
     @Query("SELECT * FROM field_plans WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY plantedDate DESC")
     fun getFieldPlansByFarm(farmId: String): Flow<List<FieldPlan>>

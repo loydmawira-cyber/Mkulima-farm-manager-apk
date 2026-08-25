@@ -64,6 +64,7 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -243,6 +244,7 @@ fun WorkerDashboardScreen(
                 onAddEggLog = onAddEggLog
             )
             1 -> WorkerLogHistoryContent(
+                units = units,
                 milkLogs = milkLogs,
                 eggLogs = eggLogs
             )
@@ -277,9 +279,26 @@ private fun WorkerQuickEntryContent(
     var milkFatInput by remember { mutableStateOf("3.8") }
     var milkNotes by remember { mutableStateOf("") }
 
-    // Egg Entry State
-    val poultryUnits = units.filter { it.type.equals("Poultry", ignoreCase = true) }
-    var eggFlockName by remember { mutableStateOf(if (poultryUnits.isNotEmpty()) poultryUnits.first().name else "Flock B - Kienyeji Layers") }
+    // Egg Entry State. Only active, saved poultry units can be selected.
+    val activePoultryFlocks = remember(units) {
+        units
+            .asSequence()
+            .filter { it.type.equals("Poultry", ignoreCase = true) && !it.isDeleted }
+            .distinctBy { it.id }
+            .sortedBy { it.name.lowercase() }
+            .toList()
+    }
+    val activePoultryFlockNames = remember(activePoultryFlocks) { activePoultryFlocks.map { it.name } }
+    var eggFlockName by remember { mutableStateOf("") }
+    var eggFlockMenuExpanded by remember { mutableStateOf(false) }
+
+    // A deleted/renamed flock can never remain selected after Room emits the new unit list.
+    LaunchedEffect(activePoultryFlockNames) {
+        if (eggFlockName !in activePoultryFlockNames) {
+            eggFlockName = activePoultryFlockNames.firstOrNull().orEmpty()
+        }
+    }
+
     var eggTotalInput by remember { mutableStateOf("") }
     var eggDamagedInput by remember { mutableStateOf("0") }
     var eggGrade by remember { mutableStateOf("Grade A") }
@@ -555,20 +574,68 @@ private fun WorkerQuickEntryContent(
                         Text("Egg Harvest Quick Entry", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                     }
 
-                    // Flock Selector
-                    OutlinedTextField(
-                        value = eggFlockName,
-                        onValueChange = { eggFlockName = it },
-                        label = { Text("Flock / Layer Pen Name") },
-                        placeholder = { Text("e.g. Flock B - Kienyeji Layers") },
-                        leadingIcon = { Icon(Icons.Filled.Pets, contentDescription = null, tint = ForestGreenPrimary) },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("worker_egg_flock_input"),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = getAuthFieldColors()
-                    )
+                    // Flock selector is read-only and sourced exclusively from active Room units.
+                    if (activePoultryFlocks.isEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                        ) {
+                            Text(
+                                text = "No active poultry flock exists. Add a flock before recording egg yield.",
+                                modifier = Modifier.padding(12.dp),
+                                color = Color(0xFF92400E),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    } else {
+                        ExposedDropdownMenuBox(
+                            expanded = eggFlockMenuExpanded,
+                            onExpandedChange = { eggFlockMenuExpanded = !eggFlockMenuExpanded }
+                        ) {
+                            OutlinedTextField(
+                                value = eggFlockName,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Active Flock / Layer Pen") },
+                                placeholder = { Text("Select an active flock") },
+                                leadingIcon = { Icon(Icons.Filled.Pets, contentDescription = null, tint = ForestGreenPrimary) },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = eggFlockMenuExpanded) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                                    .testTag("worker_egg_flock_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = getAuthFieldColors()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = eggFlockMenuExpanded,
+                                onDismissRequest = { eggFlockMenuExpanded = false }
+                            ) {
+                                activePoultryFlocks.forEach { flock ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(flock.name, fontWeight = FontWeight.SemiBold)
+                                                Text(
+                                                    "${flock.headCount} birds • ${flock.location}",
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF64748B)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            eggFlockName = flock.name
+                                            eggFlockMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     // Total Eggs Input
                     Text("Total Eggs Collected", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
@@ -668,19 +735,21 @@ private fun WorkerQuickEntryContent(
                     // Submit Button
                     Button(
                         onClick = {
+                            val selectedFlock = activePoultryFlocks.firstOrNull { it.name == eggFlockName }
+                                ?: return@Button
                             val total = eggTotalInput.toIntOrNull() ?: 0
                             if (total <= 0) return@Button
                             val damaged = eggDamagedInput.toIntOrNull() ?: 0
 
                             onAddEggLog(
-                                eggFlockName.ifBlank { "Layers Pen" },
+                                selectedFlock.name,
                                 total,
                                 damaged,
                                 eggGrade,
                                 eggNotes.ifBlank { "Logged by Operator on $todayDate" }
                             )
 
-                            successNotification = "Successfully recorded $total eggs (${total / 30} trays) from $eggFlockName!"
+                            successNotification = "Successfully recorded $total eggs (${total / 30} trays) from ${selectedFlock.name}!"
                             eggTotalInput = ""
                             eggDamagedInput = "0"
                             eggNotes = ""
@@ -691,7 +760,8 @@ private fun WorkerQuickEntryContent(
                             .testTag("worker_submit_egg_btn"),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                        enabled = (eggTotalInput.toIntOrNull() ?: 0) > 0
+                        enabled = activePoultryFlocks.any { it.name == eggFlockName } &&
+                                (eggTotalInput.toIntOrNull() ?: 0) > 0
                     ) {
                         Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -708,6 +778,7 @@ private fun WorkerQuickEntryContent(
 // =========================================================================
 @Composable
 private fun WorkerLogHistoryContent(
+    units: List<FarmUnit>,
     milkLogs: List<MilkLog>,
     eggLogs: List<EggLog>
 ) {
@@ -869,7 +940,13 @@ private fun WorkerLogHistoryContent(
                 }
             }
         } else {
-            val filteredEggs = eggLogs.filter {
+            // Historic logs from removed flocks do not appear in the active worker
+            // view. This prevents a deleted/demo name from appearing as a valid flock.
+            val activePoultryFlockNames = units
+                .filter { it.type.equals("Poultry", ignoreCase = true) && !it.isDeleted }
+                .map { it.name }
+                .toSet()
+            val filteredEggs = eggLogs.filter { it.unitName in activePoultryFlockNames }.filter {
                 searchQuery.isBlank() ||
                         it.unitName.contains(searchQuery, ignoreCase = true) ||
                         it.grade.contains(searchQuery, ignoreCase = true) ||

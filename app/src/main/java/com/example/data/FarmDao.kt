@@ -103,6 +103,9 @@ interface FarmDao {
     @Query("SELECT * FROM milk_logs WHERE isDeleted = 0 ORDER BY id DESC")
     fun getAllMilkLogs(): Flow<List<MilkLog>>
 
+    @Query("SELECT * FROM milk_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0")
+    suspend fun getActiveMilkLogsForFarmOnce(farmId: String): List<MilkLog>
+
     @Query("SELECT * FROM milk_logs WHERE syncId = :syncId LIMIT 1")
     suspend fun getMilkLogBySyncId(syncId: String): MilkLog?
 

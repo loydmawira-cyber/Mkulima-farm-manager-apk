@@ -105,6 +105,14 @@ class FarmViewModel(
         repository.getFieldPlansForFarm(session?.farmId ?: "FARM-DEFAULT")
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allFeedPlans: StateFlow<List<FeedPlan>> = currentSession.flatMapLatest { session ->
+        repository.getFeedPlansForFarm(session?.farmId ?: "FARM-DEFAULT")
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allInventoryMovements: StateFlow<List<InventoryMovement>> = currentSession.flatMapLatest { session ->
+        repository.getInventoryMovementsForFarm(session?.farmId ?: "FARM-DEFAULT")
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allFinanceRecords: StateFlow<List<FinanceRecord>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getFinanceRecordsForFarm(farmId)
@@ -875,4 +883,20 @@ class FarmViewModel(
             onComplete()
         }
     }
+
+    fun saveFeedPlan(plan: FeedPlan) = viewModelScope.launch {
+        val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+        repository.saveFeedPlan(plan.copy(farmId = farmId))
+    }
+    fun deleteFeedPlan(id: Long) = viewModelScope.launch { repository.deleteFeedPlan(id) }
+    fun runAutomaticFeedDeductions() = viewModelScope.launch {
+        val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        repository.processAutomaticFeedDeductions(farmId, farmSettings.value, today)
+        firestoreSyncEngine.triggerPush(farmId)
+    }
+    fun setAutomaticFeedDeductionEnabled(enabled: Boolean) = viewModelScope.launch {
+        updateSettings(farmSettings.value.copy(automaticFeedDeductionEnabled = enabled, updatedAt = System.currentTimeMillis()))
+    }
+
 }

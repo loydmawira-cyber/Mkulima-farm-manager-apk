@@ -377,8 +377,6 @@ interface FarmDao {
     fun getInventoryMovementsByFarm(farmId: String): Flow<List<InventoryMovement>>
     @Query("SELECT * FROM inventory_movements WHERE sourceKey = :sourceKey AND isDeleted = 0 LIMIT 1")
     suspend fun getInventoryMovementBySourceKey(sourceKey: String): InventoryMovement?
-    @Query("SELECT * FROM inventory_items WHERE syncId = :syncId LIMIT 1")
-    suspend fun getInventoryItemBySyncId(syncId: String): InventoryItem?
     @Query("SELECT * FROM inventory_items WHERE id = :id AND isDeleted = 0 LIMIT 1")
     suspend fun getInventoryItemById(id: Long): InventoryItem?
     @Query("SELECT * FROM inventory_movements WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since") suspend fun getDirtyInventoryMovements(farmId: String, since: Long): List<InventoryMovement>

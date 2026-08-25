@@ -326,7 +326,23 @@ fun DashboardScreen(
     // Today Tasks and Reminders (Scheduled for Current Day)
     var showRemindersDialog by remember { mutableStateOf(false) }
     var selectedReminderFilter by remember { mutableStateOf<ReminderType?>(null) }
-    val farmReminders = farmRemindersParam
+    val farmReminders = remember(farmRemindersParam, units, farmSettings.farmType) {
+        val unitById = units.associateBy { it.id }
+        farmRemindersParam.filter { reminder ->
+            val unit = unitById[reminder.unitId]
+            val isPoultry = unit?.let {
+                it.type.equals("Poultry", true) || it.type.equals("Flock", true) ||
+                    it.breed.contains("Layer", true) || it.breed.contains("Flock", true)
+            } ?: reminder.id.contains("poultry", true) || reminder.targetName.contains("flock", true)
+            val isCattle = unit?.let { !isPoultry } ?: reminder.id.contains("cattle", true) ||
+                reminder.type.name in setOf("CALVING", "PREGNANCY_CHECK", "DRYING_OFF", "INSEMINATION")
+            when {
+                isPoultryMode -> !isCattle || isPoultry
+                isCattleMode -> !isPoultry
+                else -> true
+            }
+        }
+    }
 
     val todayDateVariants = remember {
         val now = Date()
@@ -582,15 +598,17 @@ fun DashboardScreen(
                                         selectedLabelColor = Color.White
                                     )
                                 )
-                                FilterChip(
-                                    selected = selectedReminderFilter == ReminderType.CALVING,
-                                    onClick = { selectedReminderFilter = ReminderType.CALVING },
-                                    label = { Text("🍼 Calvings", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ForestGreenPrimary,
-                                        selectedLabelColor = Color.White
+                                if (!isPoultryMode) {
+                                    FilterChip(
+                                        selected = selectedReminderFilter == ReminderType.CALVING,
+                                        onClick = { selectedReminderFilter = ReminderType.CALVING },
+                                        label = { Text("🍼 Calvings", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = ForestGreenPrimary,
+                                            selectedLabelColor = Color.White
+                                        )
                                     )
-                                )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(10.dp))

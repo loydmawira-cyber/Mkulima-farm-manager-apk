@@ -784,13 +784,21 @@ fun MilkLogScreen(
 
     // --- EGG LOG STATE ---
     val poultryFlocks = remember(units) {
-        val defaultFlocks = listOf("Alpha Layers", "Beta Broilers", "Kienyeji Flock 1")
-        val userFlocks = units.filter { it.type.contains("Poultry", ignoreCase = true) || it.name.contains("Flock", ignoreCase = true) }.map { it.name }
-        (userFlocks + defaultFlocks).distinct()
+        units.filter { unit ->
+            !unit.isDeleted && (
+                unit.type.equals("Poultry", ignoreCase = true) ||
+                unit.type.equals("Flock", ignoreCase = true) ||
+                unit.breed.contains("Layer", ignoreCase = true) ||
+                unit.breed.contains("Flock", ignoreCase = true)
+            )
+        }.map { it.name }.distinct().sorted()
     }
-    var selectedEggFlock by remember { mutableStateOf(poultryFlocks.firstOrNull() ?: "Alpha Layers") }
-    var eggTotalText by remember { mutableStateOf("380") }
-    var eggDamagedText by remember { mutableStateOf("2") }
+    var selectedEggFlock by remember { mutableStateOf(poultryFlocks.firstOrNull().orEmpty()) }
+    LaunchedEffect(poultryFlocks) {
+        if (selectedEggFlock !in poultryFlocks) selectedEggFlock = poultryFlocks.firstOrNull().orEmpty()
+    }
+    var eggTotalText by remember { mutableStateOf("") }
+    var eggDamagedText by remember { mutableStateOf("0") }
     var selectedEggGrade by remember { mutableStateOf("Grade A") }
     var selectedEggLogDate by remember { mutableStateOf(todayDateStr) }
     var eggNotesText by remember { mutableStateOf("") }
@@ -799,7 +807,12 @@ fun MilkLogScreen(
     var eggGradeFilter by remember { mutableStateOf("ALL") }
     var eggFlockFilter by remember { mutableStateOf("ALL") }
     var analyticsEggFlock by remember { mutableStateOf("ALL") }
-    var analyticsEggTimeframe by remember { mutableStateOf("DAILY") } // "DAILY", "WEEKLY", "MONTHLY", "ALL_TIME"
+    var analyticsEggTimeframe by remember { mutableStateOf("DAILY") } // DAILY, MONTH, YEAR
+    var analyticsEggMonth by remember { mutableStateOf(defaultMonthName) }
+    var analyticsEggYear by remember { mutableStateOf(defaultYearName) }
+    var analyticsEggMonthMenuExpanded by remember { mutableStateOf(false) }
+    var analyticsEggYearMenuExpanded by remember { mutableStateOf(false) }
+    val eggAnalyticsYears = remember(currentYearNum) { (currentYearNum downTo (currentYearNum - 3)).map { it.toString() } }
 
     val filteredEggLogs = eggLogs.filter { log ->
         val matchesSearch = eggSearchQuery.isEmpty() ||
@@ -2895,43 +2908,55 @@ fun MilkLogScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                listOf(
-                                    "DAILY" to "Daily",
-                                    "WEEKLY" to "Weekly",
-                                    "MONTHLY" to "Monthly",
-                                    "ALL_TIME" to "Lactation"
-                                ).forEach { (tfKey, tfLabel) ->
-                                    val isSel = analyticsEggTimeframe == tfKey
+                                listOf("DAILY" to "Daily", "MONTH" to "Month", "YEAR" to "Year").forEach { (tfKey, tfLabel) ->
                                     FilterChip(
-                                        selected = isSel,
+                                        selected = analyticsEggTimeframe == tfKey,
                                         onClick = { analyticsEggTimeframe = tfKey },
                                         label = { Text(tfLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = ForestGreenPrimary,
-                                            selectedLabelColor = Color.White,
-                                            containerColor = Color(0xFFF1F5F9),
-                                            labelColor = Color(0xFF475569)
-                                        ),
+                                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ForestGreenPrimary, selectedLabelColor = Color.White, containerColor = Color(0xFFF1F5F9), labelColor = Color(0xFF475569)),
                                         modifier = Modifier.weight(1f)
                                     )
+                                }
+                            }
+                            if (analyticsEggTimeframe == "MONTH") {
+                                Box(modifier = Modifier.padding(top = 8.dp)) {
+                                    OutlinedButton(onClick = { analyticsEggMonthMenuExpanded = true }) { Text("Month: ${analyticsEggMonth}") }
+                                    DropdownMenu(expanded = analyticsEggMonthMenuExpanded, onDismissRequest = { analyticsEggMonthMenuExpanded = false }) {
+                                        (listOf("ALL") + monthsList).forEach { month ->
+                                            DropdownMenuItem(text = { Text(if (month == "ALL") "All months" else month) }, onClick = { analyticsEggMonth = month; analyticsEggMonthMenuExpanded = false })
+                                        }
+                                    }
+                                }
+                            }
+                            if (analyticsEggTimeframe == "YEAR") {
+                                Box(modifier = Modifier.padding(top = 8.dp)) {
+                                    OutlinedButton(onClick = { analyticsEggYearMenuExpanded = true }) { Text("Year: ${analyticsEggYear}") }
+                                    DropdownMenu(expanded = analyticsEggYearMenuExpanded, onDismissRequest = { analyticsEggYearMenuExpanded = false }) {
+                                        (listOf("ALL") + eggAnalyticsYears).forEach { year ->
+                                            DropdownMenuItem(text = { Text(if (year == "ALL") "All years" else year) }, onClick = { analyticsEggYear = year; analyticsEggYearMenuExpanded = false })
+                                        }
+                                    }
                                 }
                             }
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Calculate analytics for selected flock and timeframe
+                            // Analytics records are now filtered by a real calendar period; no demo values are used.
                             val selectedFlockLogs = if (analyticsEggFlock == "ALL") eggLogs else eggLogs.filter { it.unitName.equals(analyticsEggFlock, ignoreCase = true) }
-                            val totalFlockEggs = if (selectedFlockLogs.isNotEmpty()) selectedFlockLogs.sumOf { it.totalEggs } else 1250
+                            val timeframeLogs = selectedFlockLogs.filter { log ->
+                                val parsed = parseMilkLogCalendar(log.loggedAt) ?: parseMilkLogCalendar(log.notes?.substringAfter("[")?.substringBefore("]") ?: "")
+                                when (analyticsEggTimeframe) {
+                                    "DAILY" -> parsed?.let { it.get(java.util.Calendar.YEAR) == currentYearNum && it.get(java.util.Calendar.DAY_OF_YEAR) == currentCal.get(java.util.Calendar.DAY_OF_YEAR) } ?: false
+                                    "MONTH" -> parsed?.let { analyticsEggMonth == "ALL" || it.get(java.util.Calendar.MONTH) == monthsList.indexOf(analyticsEggMonth) } ?: false
+                                    "YEAR" -> parsed?.let { analyticsEggYear == "ALL" || it.get(java.util.Calendar.YEAR).toString() == analyticsEggYear } ?: false
+                                    else -> false
+                                }
+                            }
+                            val totalFlockEggs = timeframeLogs.sumOf { it.totalEggs }
                             val totalFlockTrays = totalFlockEggs / 30
                             val totalFlockRem = totalFlockEggs % 30
-                            val totalFlockDamaged = selectedFlockLogs.sumOf { it.damagedEggs }
-
-                            val dailyAvgValue = when (analyticsEggTimeframe) {
-                                "DAILY" -> if (totalFlockEggs > 0) totalFlockEggs else 380
-                                "WEEKLY" -> if (totalFlockEggs > 0) (totalFlockEggs / 7).coerceAtLeast(1) else 375
-                                "MONTHLY" -> if (totalFlockEggs > 0) (totalFlockEggs / 30).coerceAtLeast(1) else 390
-                                else -> if (selectedFlockLogs.isNotEmpty()) (totalFlockEggs / selectedFlockLogs.size).coerceAtLeast(1) else 385
-                            }
+                            val totalFlockDamaged = timeframeLogs.sumOf { it.damagedEggs }
+                            val dailyAvgValue = if (timeframeLogs.isEmpty()) 0 else (totalFlockEggs.toDouble() / timeframeLogs.mapNotNull { parseMilkLogCalendar(it.loggedAt) }.map { it.get(java.util.Calendar.DAY_OF_YEAR) }.distinct().size.coerceAtLeast(1)).toInt()
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -3006,17 +3031,17 @@ fun MilkLogScreen(
                             Spacer(modifier = Modifier.height(14.dp))
 
                             // Dynamic 7-Day Egg Laying Bar Visualizer
-                            Text("7-DAY EGG PRODUCTION TRENDS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                            Text("${if (analyticsEggTimeframe == "DAILY") "TODAY" else analyticsEggTimeframe} EGG PRODUCTION TRENDS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            val eggTrendDays = remember(selectedFlockLogs) {
+                            val eggTrendDays = remember(timeframeLogs, analyticsEggTimeframe) {
                                 val shortDayFormat = SimpleDateFormat("EEE", Locale.getDefault())
                                 (6 downTo 0).map { dayOffset ->
                                     val c = java.util.Calendar.getInstance()
                                     c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
                                     val fullDate = dateFormat.format(c.time)
                                     val dayName = shortDayFormat.format(c.time)
-                                    val dayEggs = selectedFlockLogs.filter { it.loggedAt.contains(fullDate, ignoreCase = true) || it.loggedAt.contains(dayName, ignoreCase = true) }.sumOf { it.totalEggs }
+                                    val dayEggs = timeframeLogs.filter { it.loggedAt.contains(fullDate, ignoreCase = true) || it.loggedAt.contains(dayName, ignoreCase = true) }.sumOf { it.totalEggs }
                                     Pair(dayName, dayEggs.toFloat())
                                 }
                             }

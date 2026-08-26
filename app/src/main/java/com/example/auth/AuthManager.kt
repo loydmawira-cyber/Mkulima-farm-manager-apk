@@ -227,18 +227,19 @@ class AuthManager(
         }
     }
 
-    init {
-        firebaseAuth = getFirebaseAuth()
-        firestore = getFirestore()
+    private val _currentSession = MutableStateFlow<UserSession?>(loadSavedSession())
+    val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
 
-        // Background check to restore session and start sync
+    init {
+        // Render the locally restored session and Room data first. Firebase initialization,
+        // remote session refresh, and synchronization continue on the IO dispatcher.
         CoroutineScope(Dispatchers.IO).launch {
+            firebaseAuth = getFirebaseAuth()
+            firestore = getFirestore()
+            _currentSession.value?.let { cached -> repository.syncEngine?.startSync(cached.farmId) }
             checkAndRestoreFirebaseAuthSession()
         }
     }
-
-    private val _currentSession = MutableStateFlow<UserSession?>(loadSavedSession())
-    val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
 
     private suspend fun checkAndRestoreFirebaseAuthSession() = withContext(Dispatchers.IO) {
         if (prefs.getBoolean("is_logged_out", false)) {

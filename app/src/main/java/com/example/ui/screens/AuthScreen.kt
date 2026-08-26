@@ -201,7 +201,7 @@ fun AuthScreen(
             },
             text = {
                 Text(
-                    text = "An account with the phone number ($duplicateAccountAlertPhone) is already registered on Mkulima Farm. Please sign in to continue or use a different phone number.",
+                    text = "An account with the phone number ($duplicateAccountAlertPhone) is already registered on Smart Farm App. Please sign in to continue or use a different phone number.",
                     fontSize = 14.sp,
                     color = Color(0xFF334155),
                     lineHeight = 20.sp
@@ -258,7 +258,7 @@ fun AuthScreen(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Filled.Agriculture,
-                        contentDescription = "Mkulima Farm",
+                        contentDescription = "Smart Farm App",
                         tint = ForestGreenPrimary,
                         modifier = Modifier.size(44.dp)
                     )
@@ -268,7 +268,7 @@ fun AuthScreen(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Mkulima Farm Manager",
+                text = "Smart Farm App",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,

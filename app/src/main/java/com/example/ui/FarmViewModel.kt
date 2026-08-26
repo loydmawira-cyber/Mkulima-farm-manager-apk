@@ -594,11 +594,23 @@ class FarmViewModel(
         viewModelScope.launch { repository.updateInventoryItem(item) }
     }
 
+    fun deleteInventoryItem(item: InventoryItem) {
+        viewModelScope.launch { repository.deleteInventoryItem(item.id) }
+    }
+
     fun addFieldPlan(field: FieldPlan) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             repository.insertFieldPlan(field.copy(farmId = farmId))
         }
+    }
+
+    fun updateFieldPlan(field: FieldPlan) {
+        viewModelScope.launch { repository.updateFieldPlan(field) }
+    }
+
+    fun deleteFieldPlan(field: FieldPlan) {
+        viewModelScope.launch { repository.deleteFieldPlan(field.id) }
     }
 
     fun recordFieldHarvest(field: FieldPlan, outcome: String, tonnes: Double, saleAmount: Double, harvestDate: String) {

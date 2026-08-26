@@ -250,6 +250,9 @@ data class FarmSettings(
     val automaticFeedDeductionEnabled: Boolean = false,
     val feedDeductionLastRunDate: String = "",
     val monthlyReportsEnabled: Boolean = true,
+    val subscriptionTier: String = "FREE",
+    val subscriptionStatus: String = "ACTIVE",
+    val subscriptionExpiresAt: Long = 0L,
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity

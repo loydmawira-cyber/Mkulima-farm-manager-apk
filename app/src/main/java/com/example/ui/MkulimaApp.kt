@@ -80,7 +80,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import com.example.ui.components.FarmRemindersDialog
-import com.example.ui.components.SettingsDialog
+import com.example.ui.components.SlidingSettingsPanel
 import com.example.util.FarmReminderEngine
 import com.example.ui.screens.WorkerDashboardScreen
 import androidx.compose.material.icons.filled.Speed
@@ -175,7 +175,7 @@ fun MkulimaAppContent(
     var showAddFinanceDialog by remember { mutableStateOf(false) }
     var editingFinanceRecord by remember { mutableStateOf<FinanceRecord?>(null) }
     var showAddEmployeeRequestDialog by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember { mutableStateOf(false) }
+    var showSettingsPanel by remember { mutableStateOf(false) }
     var showWorkerManagementScreen by remember { mutableStateOf(false) }
     var showRemindersDialog by remember { mutableStateOf(false) }
     var dismissedReminderIds by remember { mutableStateOf(setOf<String>()) }
@@ -186,7 +186,7 @@ fun MkulimaAppContent(
     }
 
     // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
-    val hasOpenOverlay = showWorkerManagementScreen || showSettingsDialog || showRemindersDialog || showAddTaskDialog ||
+    val hasOpenOverlay = showWorkerManagementScreen || showSettingsPanel || showRemindersDialog || showAddTaskDialog ||
             showAddUnitDialog || showAddMilkLogDialog || showAddEggLogDialog ||
             showAddFinanceDialog || (editingFinanceRecord != null) || showAddEmployeeRequestDialog ||
             (proofUploadTaskTarget != null) || (proofModalTaskTarget != null)
@@ -194,7 +194,7 @@ fun MkulimaAppContent(
     BackHandler(enabled = hasOpenOverlay || selectedTab != 0) {
         when {
             showWorkerManagementScreen -> showWorkerManagementScreen = false
-            showSettingsDialog -> showSettingsDialog = false
+            showSettingsPanel -> showSettingsPanel = false
             showRemindersDialog -> showRemindersDialog = false
             proofModalTaskTarget != null -> proofModalTaskTarget = null
             proofUploadTaskTarget != null -> proofUploadTaskTarget = null
@@ -345,22 +345,30 @@ fun MkulimaAppContent(
         )
     }
 
-    if (showSettingsDialog) {
-        SettingsDialog(
+    SlidingSettingsPanel(
+        visible = showSettingsPanel,
             settings = farmSettings,
             userSession = userSession,
-            onDismiss = { showSettingsDialog = false },
+            onDismiss = { showSettingsPanel = false },
             onSaveSettings = { newSettings: com.example.data.FarmSettings ->
                 viewModel.updateSettings(newSettings)
-                showSettingsDialog = false
             },
-            onOpenWorkerManagement = { showWorkerManagementScreen = true },
+            onSaveFarmName = { farmName ->
+                viewModel.updateFarmName(
+                    farmName,
+                    onSuccess = { showSettingsPanel = false },
+                    onError = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+                )
+            },
+            onOpenWorkerManagement = {
+                showSettingsPanel = false
+                showWorkerManagementScreen = true
+            },
             onLogout = {
                 viewModel.logout()
-                showSettingsDialog = false
+                showSettingsPanel = false
             }
-        )
-    }
+    )
 
     if (showRemindersDialog) {
         FarmRemindersDialog(
@@ -419,7 +427,7 @@ fun MkulimaAppContent(
                                 modifier = Modifier.weight(1f, fill = false)
                             ) {
                                 IconButton(
-                                    onClick = { showSettingsDialog = true },
+                                    onClick = { showSettingsPanel = true },
                                     modifier = Modifier.testTag("topbar_menu_settings_button")
                                 ) {
                                     Icon(

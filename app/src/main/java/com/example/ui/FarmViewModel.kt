@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -475,7 +476,9 @@ class FarmViewModel(
                     dam = dam,
                     notes = notes.trim()
                 )
-                withContext(Dispatchers.IO) { repository.insertUnitAndReturnPrepared(newUnit) }
+                val savedUnit = withContext(Dispatchers.IO) { repository.insertUnitAndReturnPrepared(newUnit) }
+                if (isCattleUnit(savedUnit)) synchronizeDewormingTask(savedUnit)
+                savedUnit
             }.onSuccess(onCreated).onFailure { error ->
                 onError(error.message ?: "Unable to save the animal. Please try again.")
             }
@@ -484,7 +487,11 @@ class FarmViewModel(
 
     fun updateUnit(unit: FarmUnit) {
         viewModelScope.launch {
+            val previousDob = allUnits.value.find { it.id == unit.id }?.dob
             repository.updateUnit(unit)
+            if (isCattleUnit(unit) && previousDob != unit.dob) {
+                synchronizeDewormingTask(unit)
+            }
         }
     }
 
@@ -949,6 +956,12 @@ class FarmViewModel(
                     }
 
                     synchronizeRepeatHeatCheckTasks(event, existing)
+                    if (isDewormingEvent(event.category, event.title, event.details)) {
+                        synchronizeDewormingTask(
+                            existing,
+                            sourceEvents = allCattleEvents.value.filterNot { it.id == event.id } + event
+                        )
+                    }
                 }
             }
         }
@@ -968,7 +981,17 @@ class FarmViewModel(
             )
             repository.updateCattleEvent(event)
             val cow = allUnits.value.find { it.id == unitId }
-            if (cow != null) synchronizeRepeatHeatCheckTasks(event, cow)
+            if (cow != null) {
+                synchronizeRepeatHeatCheckTasks(event, cow)
+                if (isDewormingEvent(event.category, event.title, event.details) ||
+                    isDewormingEvent(existingEvent.category, existingEvent.title, existingEvent.details)
+                ) {
+                    synchronizeDewormingTask(
+                        cow,
+                        sourceEvents = allCattleEvents.value.filterNot { it.id == event.id } + event
+                    )
+                }
+            }
         }
     }
 
@@ -978,6 +1001,14 @@ class FarmViewModel(
             repository.deleteCattleEvent(eventId)
             if (event != null) {
                 repository.softDeleteTasksBySyncIdPrefix("repeat-heat-${event.syncId}-day-", event.farmId)
+                if (isDewormingEvent(event.category, event.title, event.details)) {
+                    allUnits.value.find { it.id == event.unitId }?.let { cow ->
+                        synchronizeDewormingTask(
+                            cow,
+                            sourceEvents = allCattleEvents.value.filterNot { it.id == event.id }
+                        )
+                    }
+                }
             }
         }
     }
@@ -989,6 +1020,94 @@ class FarmViewModel(
             combinedText.contains("on heat", ignoreCase = true) ||
             combinedText.contains("heat observed", ignoreCase = true) ||
             combinedText.contains("estrus", ignoreCase = true)
+    }
+
+    private fun isCattleUnit(unit: FarmUnit): Boolean =
+        !unit.type.contains("poultry", ignoreCase = true)
+
+    private fun isDewormingEvent(category: String, title: String, details: String): Boolean {
+        val combinedText = "$category $title $details"
+        return category.equals("DEWORMING", ignoreCase = true) ||
+            category.equals("DEWORM", ignoreCase = true) ||
+            combinedText.contains("deworm", ignoreCase = true)
+    }
+
+    private fun parseFarmDate(rawValue: String): Date? {
+        val raw = rawValue.trim()
+        if (raw.isBlank()) return null
+        return listOf("dd MMM yyyy", "dd MMM, yyyy", "yyyy-MM-dd", "dd/MM/yyyy")
+            .firstNotNullOfOrNull { pattern ->
+                runCatching {
+                    SimpleDateFormat(pattern, Locale.getDefault()).apply { isLenient = false }.parse(raw)
+                }.getOrNull()
+            }
+    }
+
+    private fun Date.plusCalendarAmount(field: Int, amount: Int): Date =
+        Calendar.getInstance().apply {
+            time = this@plusCalendarAmount
+            add(field, amount)
+        }.time
+
+    /**
+     * A calf starts with a first due date 30 days after birth. Monthly intervals
+     * continue through the six-month date; the next completed deworming at or
+     * after that threshold begins the three-month adult cycle.
+     */
+    private fun calculateNextDewormingDate(cow: FarmUnit, latestDeworming: CattleEvent?): Date {
+        val birthDate = parseFarmDate(cow.dob)
+        if (latestDeworming == null) {
+            val firstCalfDueDate = birthDate?.plusCalendarAmount(Calendar.DAY_OF_YEAR, 30)
+            return if (firstCalfDueDate != null && firstCalfDueDate.after(Date())) firstCalfDueDate else Date()
+        }
+
+        val lastDate = parseFarmDate(latestDeworming.date) ?: return Date()
+        val sixMonthDate = birthDate?.plusCalendarAmount(Calendar.MONTH, 6)
+        val monthlyCandidate = lastDate.plusCalendarAmount(Calendar.MONTH, 1)
+        return if (sixMonthDate != null && !monthlyCandidate.after(sixMonthDate)) {
+            monthlyCandidate
+        } else {
+            lastDate.plusCalendarAmount(Calendar.MONTH, 3)
+        }
+    }
+
+    private fun latestDewormingEvent(events: List<CattleEvent>): CattleEvent? =
+        events.filter { isDewormingEvent(it.category, it.title, it.details) }
+            .maxByOrNull { parseFarmDate(it.date)?.time ?: 0L }
+
+    private suspend fun synchronizeDewormingTask(
+        cow: FarmUnit,
+        sourceEvents: List<CattleEvent> = allCattleEvents.value
+    ) {
+        if (!isCattleUnit(cow)) return
+
+        val latestDeworming = latestDewormingEvent(sourceEvents.filter { it.unitId == cow.id })
+        val dueDate = calculateNextDewormingDate(cow, latestDeworming)
+        val dueDateText = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(dueDate)
+        val taskSyncId = "cattle-deworming-${cow.farmId}-${cow.id}"
+        val targetName = if (cow.tagNumber.isBlank()) cow.name else "${cow.name} • Tag ${cow.tagNumber}"
+        val cycleDescription = if (latestDeworming == null) {
+            "No deworming log is recorded. Add a completed deworming log after treatment so the next date is calculated automatically."
+        } else if (parseFarmDate(cow.dob)?.plusCalendarAmount(Calendar.MONTH, 6)?.let { !dueDate.before(it) } == true) {
+            "This cow is on the adult three-month deworming cycle."
+        } else {
+            "This calf is on the monthly deworming cycle until six months of age."
+        }
+
+        repository.softDeleteTasksBySyncIdPrefix(taskSyncId, cow.farmId)
+        repository.insertTask(
+            FarmTask(
+                syncId = taskSyncId,
+                farmId = cow.farmId,
+                title = "Deworm ${cow.name}",
+                category = TaskCategory.LIVESTOCK,
+                targetUnit = targetName,
+                priority = if (isDueTodayOrEarlier(dueDateText)) TaskPriority.HIGH else TaskPriority.MEDIUM,
+                scheduledTime = dueDateText,
+                instructions = cycleDescription,
+                assignedWorker = "Lead Operator"
+            )
+        )
     }
 
     /** Rebuilds the repeat-heat checks so they always match the current source event. */

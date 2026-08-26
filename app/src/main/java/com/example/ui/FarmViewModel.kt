@@ -169,6 +169,14 @@ class FarmViewModel(
     }
 }
 
+    fun updateFarmName(farmName: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            authManager.updateFarmName(farmName)
+                .onSuccess(onSuccess)
+                .onFailure { onError(it.message ?: "Unable to update the farm name.") }
+        }
+    }
+
     val rawTasks: StateFlow<List<FarmTask>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getTasksForFarm(farmId)

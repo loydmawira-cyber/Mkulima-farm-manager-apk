@@ -22,6 +22,7 @@ import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkLog
+import com.example.data.MonthlyReport
 import com.example.data.PoultryLog
 import com.example.data.ReminderCompletion
 import com.example.data.RequestStatus
@@ -122,6 +123,14 @@ class FarmViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val allMonthlyReports: StateFlow<List<MonthlyReport>> = currentSession.flatMapLatest { session ->
+        repository.getMonthlyReportsForFarm(session?.farmId ?: "FARM-DEFAULT")
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 

@@ -699,11 +699,12 @@ fun FlocksScreen(
     val allDbPoultryLogs by viewModel.allPoultryLogs.collectAsStateWithLifecycle(initialValue = emptyList())
     val reminderCompletions by viewModel.reminderCompletions.collectAsStateWithLifecycle(initialValue = emptyList())
 
-    val roomAnimals = remember(units, milkLogs, allDbCattleEvents) {
-        units.map { unit ->
-            val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true)
-            val cowLogs = milkLogs.filter { it.cowName.equals(unit.name, ignoreCase = true) }
-            val unitDbEvents = allDbCattleEvents.filter { it.unitId == unit.id }.map {
+    val milkLogsByCow = remember(milkLogs) {
+        milkLogs.groupBy { log -> log.cowName.trim().lowercase() }
+    }
+    val cattleEventsByUnit = remember(allDbCattleEvents) {
+        allDbCattleEvents.groupBy { it.unitId }.mapValues { (_, events) ->
+            events.map {
                 CattleEventItem(
                     id = it.id.toString(),
                     category = it.category,
@@ -714,6 +715,13 @@ fun FlocksScreen(
                     metricValue = it.metricValue ?: ""
                 )
             }
+        }
+    }
+    val roomAnimals = remember(units, milkLogsByCow, cattleEventsByUnit) {
+        units.map { unit ->
+            val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true)
+            val cowLogs = milkLogsByCow[unit.name.trim().lowercase()].orEmpty()
+            val unitDbEvents = cattleEventsByUnit[unit.id].orEmpty()
             val lastMilkStr = if (isPoultry) {
                 "${unit.headCount} Birds"
             } else if (cowLogs.isNotEmpty()) {

@@ -12,8 +12,7 @@ import kotlinx.coroutines.launch
 
 val MIGRATION_13_14 = object : Migration(13, 14) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL(
-            """
+        db.execSQL("""
             CREATE TABLE IF NOT EXISTS `reminder_completions` (
                 `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 `syncId` TEXT NOT NULL,
@@ -24,16 +23,13 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
                 `updatedAt` INTEGER NOT NULL,
                 `isDeleted` INTEGER NOT NULL
             )
-            """.trimIndent()
-        )
+        """.trimIndent())
     }
 }
 
-
 val MIGRATION_14_15 = object : Migration(14, 15) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL(
-            """
+        db.execSQL("""
             CREATE TABLE IF NOT EXISTS `poultry_logs` (
                 `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 `syncId` TEXT NOT NULL,
@@ -61,20 +57,7 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
                 `updatedAt` INTEGER NOT NULL,
                 `isDeleted` INTEGER NOT NULL
             )
-            """.trimIndent()
-        )
-    }
-}
-
-
-val MIGRATION_16_17 = object : Migration(16, 17) {
-    override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `automaticFeedDeductionEnabled` INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `feedDeductionLastRunDate` TEXT NOT NULL DEFAULT ''")
-        db.execSQL("ALTER TABLE `inventory_items` ADD COLUMN `intendedLivestockType` TEXT NOT NULL DEFAULT 'GENERAL'")
-        db.execSQL("ALTER TABLE `inventory_items` ADD COLUMN `intendedUnitId` INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("CREATE TABLE IF NOT EXISTS `feed_plans` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `syncId` TEXT NOT NULL, `farmId` TEXT NOT NULL, `targetUnitId` INTEGER NOT NULL, `targetUnitSyncId` TEXT NOT NULL, `targetUnitName` TEXT NOT NULL, `livestockType` TEXT NOT NULL, `inventoryItemId` INTEGER NOT NULL, `inventoryItemSyncId` TEXT NOT NULL, `inventoryItemName` TEXT NOT NULL, `consumptionKind` TEXT NOT NULL, `dailyQuantityKg` REAL NOT NULL, `isEnabled` INTEGER NOT NULL, `lastProcessedDate` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL)")
-        db.execSQL("CREATE TABLE IF NOT EXISTS `inventory_movements` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `syncId` TEXT NOT NULL, `farmId` TEXT NOT NULL, `inventoryItemId` INTEGER NOT NULL, `inventoryItemName` TEXT NOT NULL, `targetUnitId` INTEGER NOT NULL, `targetUnitName` TEXT NOT NULL, `movementType` TEXT NOT NULL, `quantityDeltaKg` REAL NOT NULL, `balanceAfterKg` REAL NOT NULL, `occurredOn` TEXT NOT NULL, `sourceKey` TEXT NOT NULL, `notes` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL)")
+        """.trimIndent())
     }
 }
 
@@ -97,6 +80,42 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
     }
 }
 
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `automaticFeedDeductionEnabled` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `feedDeductionLastRunDate` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `inventory_items` ADD COLUMN `intendedLivestockType` TEXT NOT NULL DEFAULT 'GENERAL'")
+        db.execSQL("ALTER TABLE `inventory_items` ADD COLUMN `intendedUnitId` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `feed_plans` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `syncId` TEXT NOT NULL, `farmId` TEXT NOT NULL, `targetUnitId` INTEGER NOT NULL, `targetUnitSyncId` TEXT NOT NULL, `targetUnitName` TEXT NOT NULL, `livestockType` TEXT NOT NULL, `inventoryItemId` INTEGER NOT NULL, `inventoryItemSyncId` TEXT NOT NULL, `inventoryItemName` TEXT NOT NULL, `consumptionKind` TEXT NOT NULL, `dailyQuantityKg` REAL NOT NULL, `isEnabled` INTEGER NOT NULL, `lastProcessedDate` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `inventory_movements` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `syncId` TEXT NOT NULL, `farmId` TEXT NOT NULL, `inventoryItemId` INTEGER NOT NULL, `inventoryItemName` TEXT NOT NULL, `targetUnitId` INTEGER NOT NULL, `targetUnitName` TEXT NOT NULL, `movementType` TEXT NOT NULL, `quantityDeltaKg` REAL NOT NULL, `balanceAfterKg` REAL NOT NULL, `occurredOn` TEXT NOT NULL, `sourceKey` TEXT NOT NULL, `notes` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL)")
+    }
+}
+
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `monthlyReportsEnabled` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("""CREATE TABLE IF NOT EXISTS `monthly_reports` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `syncId` TEXT NOT NULL,
+            `farmId` TEXT NOT NULL,
+            `reportMonth` TEXT NOT NULL,
+            `title` TEXT NOT NULL,
+            `generatedAt` INTEGER NOT NULL,
+            `fileUrl` TEXT NOT NULL,
+            `storageKey` TEXT NOT NULL,
+            `totalIncome` REAL NOT NULL,
+            `totalExpense` REAL NOT NULL,
+            `netBalance` REAL NOT NULL,
+            `inventoryItemCount` INTEGER NOT NULL,
+            `inventoryValue` REAL NOT NULL,
+            `totalMilkLitres` REAL NOT NULL,
+            `totalEggs` INTEGER NOT NULL,
+            `updatedAt` INTEGER NOT NULL,
+            `isDeleted` INTEGER NOT NULL
+        )""")
+    }
+}
+
 @Database(
     entities = [
         FarmTask::class,
@@ -104,6 +123,7 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
         MilkLog::class,
         EggLog::class,
         FinanceRecord::class,
+        MonthlyReport::class,
         EmployeeRequest::class,
         CattleEvent::class,
         FarmSettings::class,
@@ -116,7 +136,7 @@ val MIGRATION_15_16 = object : Migration(15, 16) {
         FeedPlan::class,
         InventoryMovement::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -133,20 +153,17 @@ abstract class MkulimaDatabase : RoomDatabase() {
                     MkulimaDatabase::class.java,
                     "mkulima_farm_db"
                 )
-                .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
-                .fallbackToDestructiveMigrationOnDowngrade()
-                .addCallback(MkulimaDatabaseCallback(scope))
-                .build()
+                    .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                    .fallbackToDestructiveMigrationOnDowngrade()
+                    .addCallback(MkulimaDatabaseCallback(scope))
+                    .build()
                 INSTANCE = instance
                 instance
             }
         }
     }
 
-    private class MkulimaDatabaseCallback(
-        private val scope: CoroutineScope
-    ) : RoomDatabase.Callback() {
-
+    private class MkulimaDatabaseCallback(private val scope: CoroutineScope) : RoomDatabase.Callback() {
         override fun onCreate(db: SupportSQLiteDatabase) {
             super.onCreate(db)
             INSTANCE?.let { database ->
@@ -158,16 +175,15 @@ abstract class MkulimaDatabase : RoomDatabase() {
 
         suspend fun populateInitialData(farmDao: FarmDao) {
             farmDao.insertSettings(FarmSettings(farmId = "FARM-DEFAULT", syncId = "settings"))
-
-            // Default Farm Account without mock operational data
-            val defaultFarm = FarmAccount(
-                farmId = "FARM-DEFAULT",
-                farmName = "My Farm",
-                ownerId = "owner_default",
-                ownerName = "Farm Owner",
-                ownerEmailOrPhone = "owner@mkulima.farm"
+            farmDao.insertFarmAccount(
+                FarmAccount(
+                    farmId = "FARM-DEFAULT",
+                    farmName = "My Farm",
+                    ownerId = "owner_default",
+                    ownerName = "Farm Owner",
+                    ownerEmailOrPhone = "owner@mkulima.farm"
+                )
             )
-            farmDao.insertFarmAccount(defaultFarm)
         }
     }
 }

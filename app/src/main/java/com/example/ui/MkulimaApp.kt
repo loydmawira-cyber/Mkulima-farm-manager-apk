@@ -668,7 +668,11 @@ fun MkulimaAppContent(
                         automaticFeedDeductionEnabled = farmSettings.automaticFeedDeductionEnabled,
                         financeRecords = financeRecords,
                         onAddInventory = { viewModel.addInventoryItem(it) },
+                        onUpdateInventory = { viewModel.updateInventoryItem(it) },
+                        onDeleteInventory = { viewModel.deleteInventoryItem(it) },
                         onAddField = { viewModel.addFieldPlan(it) },
+                        onUpdateField = { viewModel.updateFieldPlan(it) },
+                        onDeleteField = { viewModel.deleteFieldPlan(it) },
                         onHarvest = { field, outcome, tonnes, saleAmount, harvestDate ->
                             viewModel.recordFieldHarvest(field, outcome, tonnes, saleAmount, harvestDate)
                         },

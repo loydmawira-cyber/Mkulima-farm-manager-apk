@@ -186,6 +186,14 @@ class FarmViewModel(
         }
     }
 
+    fun updateRecoveryEmail(email: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            authManager.updateRecoveryEmail(email)
+                .onSuccess(onSuccess)
+                .onFailure { onError(it.message ?: "Unable to update the recovery email.") }
+        }
+    }
+
     val rawTasks: StateFlow<List<FarmTask>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getTasksForFarm(farmId)

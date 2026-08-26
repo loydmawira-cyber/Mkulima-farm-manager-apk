@@ -804,9 +804,8 @@ class FarmViewModel(
     )
 
     /**
-     * The reminder engine may describe future scheduled tasks, but the active
-     * header badge and alert dialog must only receive reminders due today or
-     * earlier. Unknown labels remain visible rather than being hidden.
+     * Future scheduled tasks must not be presented as due today. Unknown labels
+     * remain in the due list because their date cannot be safely classified.
      */
     private fun isDueTodayOrEarlier(dueDateStr: String): Boolean {
         val raw = dueDateStr.trim()
@@ -824,8 +823,40 @@ class FarmViewModel(
                 runCatching {
                     SimpleDateFormat(pattern, Locale.getDefault()).apply { isLenient = false }.parse(raw)
                 }.getOrNull()
-            }
+        }
         return parsed?.let { !it.after(todayStart) } ?: true
+    }
+
+    private fun reminderDateOrNull(dueDateStr: String): Date? {
+        val raw = dueDateStr.trim()
+        if (raw.isBlank() || raw.equals("today", ignoreCase = true) || raw.contains("overdue", ignoreCase = true)) {
+            return null
+        }
+        return listOf("dd MMM yyyy", "dd MMM, yyyy", "yyyy-MM-dd", "dd/MM/yyyy")
+            .firstNotNullOfOrNull { pattern ->
+                runCatching {
+                    SimpleDateFormat(pattern, Locale.getDefault()).apply { isLenient = false }.parse(raw)
+                }.getOrNull()
+            }
+    }
+
+    /**
+     * Due reminders stay first. If none are due, show the next few dated future
+     * reminders rather than leaving the notification bell and dialog empty.
+     */
+    private fun selectVisibleReminders(
+        reminders: List<com.example.util.FarmReminder>
+    ): List<com.example.util.FarmReminder> {
+        val dueNow = reminders.filter { reminder -> isDueTodayOrEarlier(reminder.dueDateStr) }
+        if (dueNow.isNotEmpty()) return dueNow
+
+        return reminders
+            .mapNotNull { reminder ->
+                reminderDateOrNull(reminder.dueDateStr)?.let { dueDate -> reminder to dueDate.time }
+            }
+            .sortedBy { (_, dueAt) -> dueAt }
+            .take(5)
+            .map { (reminder, _) -> reminder }
     }
 
     val farmReminders: StateFlow<List<com.example.util.FarmReminder>> = combine(
@@ -849,12 +880,12 @@ class FarmViewModel(
                 }
             }
             val completedRuleKeys = completions.associate { it.ruleKey to it.completedAt }
-            com.example.util.FarmReminderEngine.computeAllReminders(
+            selectVisibleReminders(com.example.util.FarmReminderEngine.computeAllReminders(
                 units = units,
                 cattleEventsMap = eventsMap,
                 tasks = tasks,
                 completedRuleKeys = completedRuleKeys
-            ).filter { reminder -> isDueTodayOrEarlier(reminder.dueDateStr) }
+            ))
         }
     }.stateIn(
         scope = viewModelScope,

@@ -17,6 +17,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -587,6 +589,7 @@ private fun MilkProductionCanvas(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MilkLogScreen(
     milkLogs: List<MilkLog>,
@@ -818,8 +821,6 @@ fun MilkLogScreen(
     var analyticsEggTimeframe by remember { mutableStateOf("DAILY") } // DAILY, MONTH, YEAR
     var analyticsEggMonth by remember { mutableStateOf(defaultMonthName) }
     var analyticsEggYear by remember { mutableStateOf(defaultYearName) }
-    var analyticsEggMonthMenuExpanded by remember { mutableStateOf(false) }
-    var analyticsEggYearMenuExpanded by remember { mutableStateOf(false) }
     val eggAnalyticsYears = remember(currentYearNum) { (currentYearNum downTo (currentYearNum - 3)).map { it.toString() } }
 
     val filteredEggLogs = eggLogs.filter { log ->
@@ -2954,7 +2955,11 @@ fun MilkLogScreen(
                                 listOf("DAILY" to "Daily", "MONTH" to "Month", "YEAR" to "Year").forEach { (tfKey, tfLabel) ->
                                     FilterChip(
                                         selected = analyticsEggTimeframe == tfKey,
-                                        onClick = { analyticsEggTimeframe = tfKey },
+                                        onClick = {
+                                            analyticsEggTimeframe = tfKey
+                                            if (tfKey == "MONTH") analyticsEggMonth = "ALL"
+                                            if (tfKey == "YEAR") analyticsEggYear = "ALL"
+                                        },
                                         label = { Text(tfLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ForestGreenPrimary, selectedLabelColor = Color.White, containerColor = Color(0xFFF1F5F9), labelColor = Color(0xFF475569)),
                                         modifier = Modifier.weight(1f)
@@ -2962,22 +2967,40 @@ fun MilkLogScreen(
                                 }
                             }
                             if (analyticsEggTimeframe == "MONTH") {
-                                Box(modifier = Modifier.padding(top = 8.dp)) {
-                                    OutlinedButton(onClick = { analyticsEggMonthMenuExpanded = true }) { Text("Month: ${analyticsEggMonth}") }
-                                    DropdownMenu(expanded = analyticsEggMonthMenuExpanded, onDismissRequest = { analyticsEggMonthMenuExpanded = false }) {
-                                        (listOf("ALL") + monthsList).forEach { month ->
-                                            DropdownMenuItem(text = { Text(if (month == "ALL") "All months" else month) }, onClick = { analyticsEggMonth = month; analyticsEggMonthMenuExpanded = false })
-                                        }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("SELECT MONTH:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    (listOf("ALL") + monthsList).forEach { month ->
+                                        FilterChip(
+                                            selected = analyticsEggMonth == month,
+                                            onClick = { analyticsEggMonth = month },
+                                            label = { Text(if (month == "ALL") "All" else month.take(3), fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFDDF5E7), selectedLabelColor = Color(0xFF14532D), containerColor = Color(0xFFF8FAFC), labelColor = Color(0xFF475569))
+                                        )
                                     }
                                 }
                             }
                             if (analyticsEggTimeframe == "YEAR") {
-                                Box(modifier = Modifier.padding(top = 8.dp)) {
-                                    OutlinedButton(onClick = { analyticsEggYearMenuExpanded = true }) { Text("Year: ${analyticsEggYear}") }
-                                    DropdownMenu(expanded = analyticsEggYearMenuExpanded, onDismissRequest = { analyticsEggYearMenuExpanded = false }) {
-                                        (listOf("ALL") + eggAnalyticsYears).forEach { year ->
-                                            DropdownMenuItem(text = { Text(if (year == "ALL") "All years" else year) }, onClick = { analyticsEggYear = year; analyticsEggYearMenuExpanded = false })
-                                        }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("SELECT YEAR:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    (listOf("ALL") + eggAnalyticsYears).forEach { year ->
+                                        FilterChip(
+                                            selected = analyticsEggYear == year,
+                                            onClick = { analyticsEggYear = year },
+                                            label = { Text(if (year == "ALL") "All" else year, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFDDF5E7), selectedLabelColor = Color(0xFF14532D), containerColor = Color(0xFFF8FAFC), labelColor = Color(0xFF475569))
+                                        )
                                     }
                                 }
                             }

@@ -8,6 +8,7 @@ import com.example.data.FarmRepository
 import com.example.data.UserSession
 import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
+import com.example.notifications.FarmDeviceTokenRegistry
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
@@ -481,6 +482,7 @@ class AuthManager(
             putBoolean("can_view_requests", session.permissions.canViewRequests)
             commit()
         }
+        FarmDeviceTokenRegistry.registerOwnerDevice(context, session)
         _currentSession.value = session
         repository.syncEngine?.startSync(session.farmId)
     }

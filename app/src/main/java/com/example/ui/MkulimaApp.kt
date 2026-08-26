@@ -289,8 +289,11 @@ fun MkulimaAppContent(
             availableUnits = allUnits,
             onDismiss = { showAddMilkLogDialog = false },
             onSaveMilkLog = { cowName, unitName, litres, session, fat, date, notes ->
-                viewModel.addMilkLog(cowName, unitName, litres, session, fat, date, notes)
-                showAddMilkLogDialog = false
+                viewModel.addMilkLog(
+                    cowName, unitName, litres, session, fat, date, notes,
+                    onRecorded = { showAddMilkLogDialog = false },
+                    onError = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+                )
             }
         )
     }
@@ -695,11 +698,15 @@ fun MkulimaAppContent(
                         units = allUnits,
                         onAddMilkLogClick = { showAddMilkLogDialog = true },
                         onAddEggLogClick = { showAddEggLogDialog = true },
-                        onQuickSaveMilkLog = { cowName, litres, session, recordDate ->
+                        onQuickSaveMilkLog = { cowName, litres, session, recordDate, onResult ->
                             val finalDate = recordDate.ifBlank {
                                 java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date())
                             }
-                            viewModel.addMilkLog(cowName, "Cattle Unit", litres, session, 3.8, finalDate, "Recorded from Daily Log")
+                            viewModel.addMilkLog(
+                                cowName, "Cattle Unit", litres, session, 3.8, finalDate, "Recorded from Daily Log",
+                                onRecorded = { onResult(true, null) },
+                                onError = { message -> onResult(false, message) }
+                            )
                         },
                         onQuickSaveEggLog = { flockName, totalEggs, damagedEggs, grade, date, notes ->
                             viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, notes)

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -13,15 +14,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Safe pre-launch subscription page.
+ * Safe pre-approval subscription page.
  *
- * It intentionally does not create PlayBillingManager or contact Google Play.
- * This keeps Settings usable while the Play Console app, test release, products,
- * and server verification endpoint are not ready yet.
+ * Premium and Pro controls are intentionally interactive now, but they do not
+ * launch a payment or change access until the Play Console test setup and
+ * secure server verification are complete.
  */
 @Composable
 fun SubscriptionBillingScreen(
@@ -30,6 +32,8 @@ fun SubscriptionBillingScreen(
     onPurchaseForVerification: (purchaseToken: String, productIds: List<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -42,7 +46,7 @@ fun SubscriptionBillingScreen(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "Google Play subscription setup is not active yet. Your farm remains on its current plan and no payment is taken from this screen."
+            text = "Choose a plan now to see that it is ready. Google Play checkout will be connected after Play Console approval and test setup."
         )
 
         PlanCard(
@@ -52,13 +56,29 @@ fun SubscriptionBillingScreen(
         )
         PlanCard(
             title = "Premium",
-            details = "Up to 15 cattle and 2 poultry flocks, with all features. This annual plan will be available after the Google Play test setup is complete.",
-            price = "US$10 / year"
+            details = "Up to 15 cattle and 2 poultry flocks, with all features.",
+            price = "US$10 / year",
+            buttonText = "Choose Premium",
+            onChoose = {
+                Toast.makeText(
+                    context,
+                    "Premium is ready. Google Play checkout will be enabled after your Play Console approval and test setup.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         )
         PlanCard(
             title = "Pro",
-            details = "Unlimited cattle and poultry flocks, with all features. This annual plan will be available after the Google Play test setup is complete.",
-            price = "US$30 / year"
+            details = "Unlimited cattle and poultry flocks, with all features.",
+            price = "US$30 / year",
+            buttonText = "Choose Pro",
+            onChoose = {
+                Toast.makeText(
+                    context,
+                    "Pro is ready. Google Play checkout will be enabled after your Play Console approval and test setup.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         )
 
         Spacer(Modifier.height(4.dp))
@@ -72,12 +92,14 @@ fun SubscriptionBillingScreen(
 private fun PlanCard(
     title: String,
     details: String,
-    price: String
+    price: String,
+    buttonText: String? = null,
+    onChoose: (() -> Unit)? = null
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(title, fontWeight = FontWeight.Bold)
             Text(details)
@@ -86,6 +108,11 @@ private fun PlanCard(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
+            if (buttonText != null && onChoose != null) {
+                Button(onClick = onChoose, modifier = Modifier.fillMaxWidth()) {
+                    Text(buttonText)
+                }
+            }
         }
     }
 }

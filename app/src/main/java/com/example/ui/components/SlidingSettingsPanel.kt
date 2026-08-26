@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -73,6 +74,7 @@ fun SlidingSettingsPanel(
 
     var farmNameDraft by remember(userSession?.farmName) { mutableStateOf(userSession?.farmName.orEmpty()) }
     var farmTypeDraft by remember(settings.farmType) { mutableStateOf(settings.farmType) }
+    var monthlyReportsEnabledDraft by remember(settings.monthlyReportsEnabled) { mutableStateOf(settings.monthlyReportsEnabled) }
     val isOwner = userSession?.isOwner == true
     val canSaveFarmName = isOwner && farmNameDraft.trim().isNotBlank() && farmNameDraft.trim() != userSession?.farmName.orEmpty()
 
@@ -161,6 +163,28 @@ fun SlidingSettingsPanel(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                         ) { Text("SAVE FARM TYPE", fontWeight = FontWeight.Bold) }
+
+                        Spacer(Modifier.height(24.dp))
+                        Text("MONTHLY REPORTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(Modifier.height(8.dp))
+                        Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFF3F8F5), modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Automatic monthly report", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF153E2D))
+                                    Text("Creates the previous month’s report on the first day and saves it under Finance → Reports.", fontSize = 11.sp, color = Color(0xFF64748B))
+                                }
+                                Switch(
+                                    checked = monthlyReportsEnabledDraft,
+                                    onCheckedChange = { enabled ->
+                                        if (isOwner) {
+                                            monthlyReportsEnabledDraft = enabled
+                                            onSaveSettings(settings.copy(monthlyReportsEnabled = enabled))
+                                        }
+                                    },
+                                    enabled = isOwner
+                                )
+                            }
+                        }
 
                         if (isOwner) {
                             Spacer(Modifier.height(24.dp))

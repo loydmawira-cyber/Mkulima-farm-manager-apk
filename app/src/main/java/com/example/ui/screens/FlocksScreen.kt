@@ -100,6 +100,7 @@ import androidx.compose.material3.AlertDialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.CachePolicy
+import coil.request.Precision
 import com.example.R
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1670,11 +1671,16 @@ fun FlocksScreen(
                                             AsyncImage(
                                                 model = ImageRequest.Builder(LocalContext.current)
                                                     .data(animal.photoUri)
+                                                    .memoryCacheKey("animal-thumb-${animal.id}-${animal.photoUri}")
+                                                    .diskCacheKey("animal-thumb-${animal.id}-${animal.photoUri}")
+                                                    .size(100)
+                                                    .precision(Precision.INEXACT)
                                                     .crossfade(false)
                                                     .placeholder(R.drawable.ic_livestock_placeholder)
                                                     .error(R.drawable.ic_livestock_placeholder)
                                                     .memoryCachePolicy(CachePolicy.ENABLED)
                                                     .diskCachePolicy(CachePolicy.ENABLED)
+                                                    .networkCachePolicy(CachePolicy.ENABLED)
                                                     .build(),
                                                 contentDescription = "${animal.name} Photo",
                                                 contentScale = ContentScale.Crop,
@@ -2395,11 +2401,16 @@ fun AnimalDetailsView(
                                 AsyncImage(
                                     model = ImageRequest.Builder(LocalContext.current)
                                         .data(animal.photoUri)
+                                        .memoryCacheKey("animal-profile-${animal.id}-${animal.photoUri}")
+                                        .diskCacheKey("animal-profile-${animal.id}-${animal.photoUri}")
+                                        .size(640)
+                                        .precision(Precision.INEXACT)
                                         .crossfade(false)
                                         .placeholder(R.drawable.ic_livestock_placeholder)
                                         .error(R.drawable.ic_livestock_placeholder)
                                         .memoryCachePolicy(CachePolicy.ENABLED)
                                         .diskCachePolicy(CachePolicy.ENABLED)
+                                        .networkCachePolicy(CachePolicy.ENABLED)
                                         .build(),
                                     contentDescription = "${animal.name} Photo",
                                     contentScale = ContentScale.Crop,

@@ -136,35 +136,13 @@ fun SlidingSettingsPanel(
                                 .padding(bottom = 24.dp)
                         ) {
                         Spacer(Modifier.height(8.dp))
-                        Text("FARM PROFILE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Text("ACCOUNT & SESSION", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = farmNameDraft,
-                            onValueChange = { farmNameDraft = it },
-                            enabled = isOwner,
-                            label = { Text("Farm name") },
-                            leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
-                            supportingText = { Text(if (isOwner) "Shown across the app and shared with your farm." else "Only the farm owner can rename the farm.") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Button(
-                            onClick = { onSaveFarmName(farmNameDraft.trim()) },
-                            enabled = canSaveFarmName,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                        ) { Text("SAVE FARM NAME", fontWeight = FontWeight.Bold) }
-
                         if (isOwner) {
-                            Spacer(Modifier.height(24.dp))
-                            Text("ACCOUNT RECOVERY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                            Spacer(Modifier.height(8.dp))
                             Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFF3F8F5), modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Text("Recovery email", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF153E2D))
-                                    Text("Use a real email address to receive secure password reset links. This is especially important for phone-number accounts.", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text("Use a real email address to receive secure password reset links.", fontSize = 11.sp, color = Color(0xFF64748B))
                                     Spacer(Modifier.height(10.dp))
                                     OutlinedTextField(
                                         value = recoveryEmailDraft,
@@ -185,7 +163,38 @@ fun SlidingSettingsPanel(
                                     ) { Text("SAVE RECOVERY EMAIL", fontWeight = FontWeight.Bold) }
                                 }
                             }
+                            Spacer(Modifier.height(12.dp))
                         }
+                        Button(
+                            onClick = onLogout,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE2E2), contentColor = Color(0xFFB91C1C))
+                        ) {
+                            Icon(Icons.Filled.Logout, contentDescription = null)
+                            Text("  LOG OUT", fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(Modifier.height(24.dp))
+                        Text("FARM PROFILE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = farmNameDraft,
+                            onValueChange = { farmNameDraft = it },
+                            enabled = isOwner,
+                            label = { Text("Farm name") },
+                            leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                            supportingText = { Text(if (isOwner) "Shown across the app and shared with your farm." else "Only the farm owner can rename the farm.") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = { onSaveFarmName(farmNameDraft.trim()) },
+                            enabled = canSaveFarmName,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                        ) { Text("SAVE FARM NAME", fontWeight = FontWeight.Bold) }
 
                         Spacer(Modifier.height(24.dp))
                         Text("FARM TYPE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
@@ -246,24 +255,6 @@ fun SlidingSettingsPanel(
 
                         }
 
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .navigationBarsPadding(),
-                            color = Color(0xFFFCFDFB),
-                            shadowElevation = 12.dp
-                        ) {
-                            Button(
-                                onClick = onLogout,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 22.dp, vertical = 14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE2E2), contentColor = Color(0xFFB91C1C))
-                            ) {
-                                Icon(Icons.Filled.Logout, contentDescription = null)
-                                Text("  LOG OUT", fontWeight = FontWeight.Bold)
-                            }
-                        }
                     }
                 }
             }

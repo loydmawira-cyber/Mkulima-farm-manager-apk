@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.Button
@@ -65,6 +66,7 @@ fun SlidingSettingsPanel(
     onDismiss: () -> Unit,
     onSaveSettings: (FarmSettings) -> Unit,
     onSaveFarmName: (String) -> Unit,
+    onSaveRecoveryEmail: (String) -> Unit,
     onOpenWorkerManagement: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -75,8 +77,10 @@ fun SlidingSettingsPanel(
     var farmNameDraft by remember(userSession?.farmName) { mutableStateOf(userSession?.farmName.orEmpty()) }
     var farmTypeDraft by remember(settings.farmType) { mutableStateOf(settings.farmType) }
     var monthlyReportsEnabledDraft by remember(settings.monthlyReportsEnabled) { mutableStateOf(settings.monthlyReportsEnabled) }
+    var recoveryEmailDraft by remember { mutableStateOf("") }
     val isOwner = userSession?.isOwner == true
     val canSaveFarmName = isOwner && farmNameDraft.trim().isNotBlank() && farmNameDraft.trim() != userSession?.farmName.orEmpty()
+    val canSaveRecoveryEmail = isOwner && recoveryEmailDraft.trim().contains("@") && recoveryEmailDraft.trim().contains(".")
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -141,6 +145,36 @@ fun SlidingSettingsPanel(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                         ) { Text("SAVE FARM NAME", fontWeight = FontWeight.Bold) }
+
+                        if (isOwner) {
+                            Spacer(Modifier.height(24.dp))
+                            Text("ACCOUNT RECOVERY", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                            Spacer(Modifier.height(8.dp))
+                            Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFF3F8F5), modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("Recovery email", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF153E2D))
+                                    Text("Use a real email address to receive secure password reset links. This is especially important for phone-number accounts.", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Spacer(Modifier.height(10.dp))
+                                    OutlinedTextField(
+                                        value = recoveryEmailDraft,
+                                        onValueChange = { recoveryEmailDraft = it },
+                                        label = { Text("Recovery email address") },
+                                        placeholder = { Text("you@example.com") },
+                                        leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null) },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    Button(
+                                        onClick = { onSaveRecoveryEmail(recoveryEmailDraft.trim()) },
+                                        enabled = canSaveRecoveryEmail,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                                    ) { Text("SAVE RECOVERY EMAIL", fontWeight = FontWeight.Bold) }
+                                }
+                            }
+                        }
 
                         Spacer(Modifier.height(24.dp))
                         Text("FARM TYPE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))

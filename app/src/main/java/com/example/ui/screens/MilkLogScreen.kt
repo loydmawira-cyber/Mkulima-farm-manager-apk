@@ -88,6 +88,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.MilkLog
+import com.example.data.MilkLogEntryRules
 import com.example.data.EggLog
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
@@ -593,7 +594,7 @@ fun MilkLogScreen(
     units: List<com.example.data.FarmUnit> = emptyList(),
     onAddMilkLogClick: () -> Unit,
     onAddEggLogClick: () -> Unit = {},
-    onQuickSaveMilkLog: (cowName: String, litres: Double, session: String, date: String) -> Unit = { _, _, _, _ -> },
+    onQuickSaveMilkLog: (cowName: String, litres: Double, session: String, date: String, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _ -> },
     onQuickSaveEggLog: (flockName: String, totalEggs: Int, damagedEggs: Int, grade: String, date: String, notes: String?) -> Unit = { _, _, _, _, _, _ -> },
     onDeleteMilkLog: (Long) -> Unit,
     onDeleteEggLog: (Long) -> Unit,
@@ -707,6 +708,13 @@ fun MilkLogScreen(
     }
     var selectedLogDate by remember { mutableStateOf(todayDateStr) }
     var saveSuccessMessage by remember { mutableStateOf<String?>(null) }
+    var saveErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    val selectedDateIsFuture = MilkLogEntryRules.isFutureDate(selectedLogDate)
+    val selectedDateIsValid = MilkLogEntryRules.canonicalDateKey(selectedLogDate) != null
+    val selectedMilkSlotRecorded = selectedCow?.let { cow ->
+        milkLogs.any { log -> MilkLogEntryRules.isSameSlot(log, cow.name, selectedLogDate, selectedSession) }
+    } ?: false
 
     // --- PER COW ANALYTICS STATE ---
     var perCowSelectedCow by remember { mutableStateOf<AnimalCowItem>(cowsList.firstOrNull() ?: AnimalCowItem("#102", "Unknown", "Friesian", 120)) }
@@ -1682,10 +1690,17 @@ fun MilkLogScreen(
                             onClick = {
                                 val cowName = selectedCow?.name ?: cowSearchQuery.ifBlank { "Unassigned Cow" }
                                 val litres = milkLitresText.toDoubleOrNull() ?: 0.0
-                                if (litres > 0) {
-                                    onQuickSaveMilkLog(cowName, litres, selectedSession, selectedLogDate)
-                                    saveSuccessMessage = "✓ Logged ${"%.1f".format(litres)}L for $cowName ($selectedSession on $selectedLogDate)"
-                                    milkLitresText = ""
+                                if (litres > 0 && !selectedMilkSlotRecorded && !selectedDateIsFuture && selectedDateIsValid) {
+                                    onQuickSaveMilkLog(cowName, litres, selectedSession, selectedLogDate) { saved, message ->
+                                        if (saved) {
+                                            saveErrorMessage = null
+                                            saveSuccessMessage = "✓ Logged ${"%.1f".format(litres)}L for $cowName ($selectedSession on $selectedLogDate)"
+                                            milkLitresText = ""
+                                        } else {
+                                            saveSuccessMessage = null
+                                            saveErrorMessage = message ?: "Milk log was not saved."
+                                        }
+                                    }
                                 }
                             },
                             modifier = Modifier
@@ -1693,16 +1708,44 @@ fun MilkLogScreen(
                                 .height(48.dp)
                                 .testTag("quick_save_milk_btn"),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                            enabled = milkLitresText.isNotBlank() && (selectedCow != null || cowSearchQuery.isNotBlank())
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ForestGreenPrimary,
+                                disabledContainerColor = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFCBD5E1)
+                            ),
+                            enabled = milkLitresText.isNotBlank() && (selectedCow != null || cowSearchQuery.isNotBlank()) &&
+                                !selectedMilkSlotRecorded && !selectedDateIsFuture && selectedDateIsValid
                         ) {
                             Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "SAVE COW MILK LOG",
+                                text = when {
+                                    selectedMilkSlotRecorded -> "RECORDED"
+                                    selectedDateIsFuture -> "FUTURE DATE NOT ALLOWED"
+                                    !selectedDateIsValid -> "SELECT A VALID DATE"
+                                    else -> "SAVE COW MILK LOG"
+                                },
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+
+                        if (selectedMilkSlotRecorded || selectedDateIsFuture || !selectedDateIsValid) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = when {
+                                    selectedMilkSlotRecorded -> "This cow's ${MilkLogEntryRules.normalizedSession(selectedSession).lowercase()} milk is already recorded for this date. Delete it in Log History before recording again."
+                                    selectedDateIsFuture -> "Milk cannot be recorded for a future date."
+                                    else -> "Choose a valid date on or before today."
+                                },
+                                color = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFB91C1C),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        saveErrorMessage?.let { message ->
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(message, color = Color(0xFFB91C1C), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                         }
 
                         saveSuccessMessage?.let { msg ->

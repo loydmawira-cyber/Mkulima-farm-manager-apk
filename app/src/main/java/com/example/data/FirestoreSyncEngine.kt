@@ -189,6 +189,7 @@ class FirestoreSyncEngine(
         attachCollectionListener("field_plans") { applyRemoteFieldPlan(farmId, it) }
         attachCollectionListener("feed_plans") { applyRemoteFeedPlan(farmId, it) }
         attachCollectionListener("inventory_movements") { applyRemoteInventoryMovement(farmId, it) }
+        attachCollectionListener("monthly_reports") { applyRemoteMonthlyReport(farmId, it) }
 
         // Trigger initial push of any offline/dirty changes
         triggerPush(farmId)
@@ -237,6 +238,7 @@ class FirestoreSyncEngine(
                     "themeMode" to setting.themeMode,
                     "automaticFeedDeductionEnabled" to setting.automaticFeedDeductionEnabled,
                     "feedDeductionLastRunDate" to setting.feedDeductionLastRunDate,
+                    "monthlyReportsEnabled" to setting.monthlyReportsEnabled,
                     "updatedAt" to setting.updatedAt,
                     "isDeleted" to setting.isDeleted
                 )
@@ -555,6 +557,34 @@ class FirestoreSyncEngine(
             }
             if (maxMovementUpdatedAt > lastMovementPush) setWatermark(farmId, "push_inventory_movements", maxMovementUpdatedAt)
 
+            // 16. Generated monthly report metadata. File bytes remain in secure storage.
+            val lastReportsPush = getWatermark(farmId, "push_monthly_reports")
+            val dirtyReports = farmDao.getDirtyMonthlyReports(farmId, lastReportsPush)
+            var maxReportUpdatedAt = lastReportsPush
+            for (report in dirtyReports) {
+                val data = hashMapOf<String, Any>(
+                    "syncId" to report.syncId,
+                    "farmId" to farmId,
+                    "reportMonth" to report.reportMonth,
+                    "title" to report.title,
+                    "generatedAt" to report.generatedAt,
+                    "fileUrl" to report.fileUrl,
+                    "storageKey" to report.storageKey,
+                    "totalIncome" to report.totalIncome,
+                    "totalExpense" to report.totalExpense,
+                    "netBalance" to report.netBalance,
+                    "inventoryItemCount" to report.inventoryItemCount,
+                    "inventoryValue" to report.inventoryValue,
+                    "totalMilkLitres" to report.totalMilkLitres,
+                    "totalEggs" to report.totalEggs,
+                    "updatedAt" to report.updatedAt,
+                    "isDeleted" to report.isDeleted
+                )
+                farmRef.collection("monthly_reports").document(report.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (report.updatedAt > maxReportUpdatedAt) maxReportUpdatedAt = report.updatedAt
+            }
+            if (maxReportUpdatedAt > lastReportsPush) setWatermark(farmId, "push_monthly_reports", maxReportUpdatedAt)
+
             Log.d(TAG, "Successfully pushed dirty rows for farm: $farmId")
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to push dirty rows for farm $farmId", e)
@@ -579,6 +609,7 @@ class FirestoreSyncEngine(
                 themeMode = doc.getString("themeMode") ?: "SYSTEM",
                 automaticFeedDeductionEnabled = doc.getBoolean("automaticFeedDeductionEnabled") ?: false,
                 feedDeductionLastRunDate = doc.getString("feedDeductionLastRunDate") ?: "",
+                monthlyReportsEnabled = doc.getBoolean("monthlyReportsEnabled") ?: true,
                 updatedAt = remoteUpdatedAt,
                 isDeleted = doc.getBoolean("isDeleted") ?: false
             )
@@ -913,6 +944,35 @@ class FirestoreSyncEngine(
                 canViewRequests = doc.getBoolean("canViewRequests") ?: true
             )
             farmDao.insertWorker(worker)
+        }
+    }
+
+    private suspend fun applyRemoteMonthlyReport(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val existing = farmDao.getMonthlyReportBySyncId(syncId)
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            farmDao.insertMonthlyReport(
+                MonthlyReport(
+                    id = existing?.id ?: 0,
+                    syncId = syncId,
+                    farmId = farmId,
+                    reportMonth = doc.getString("reportMonth") ?: "",
+                    title = doc.getString("title") ?: "Monthly Farm Report",
+                    generatedAt = doc.getLong("generatedAt") ?: remoteUpdatedAt,
+                    fileUrl = doc.getString("fileUrl") ?: "",
+                    storageKey = doc.getString("storageKey") ?: "",
+                    totalIncome = doc.getDouble("totalIncome") ?: 0.0,
+                    totalExpense = doc.getDouble("totalExpense") ?: 0.0,
+                    netBalance = doc.getDouble("netBalance") ?: 0.0,
+                    inventoryItemCount = doc.getLong("inventoryItemCount")?.toInt() ?: 0,
+                    inventoryValue = doc.getDouble("inventoryValue") ?: 0.0,
+                    totalMilkLitres = doc.getDouble("totalMilkLitres") ?: 0.0,
+                    totalEggs = doc.getLong("totalEggs")?.toInt() ?: 0,
+                    updatedAt = remoteUpdatedAt,
+                    isDeleted = doc.getBoolean("isDeleted") ?: false
+                )
+            )
         }
     }
 }

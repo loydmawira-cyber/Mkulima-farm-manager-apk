@@ -297,6 +297,7 @@ class FirestoreSyncEngine(
                     "sire" to unit.sire,
                     "dam" to unit.dam,
                     "photoUri" to unit.photoUri,
+                    "notes" to unit.notes,
                     "updatedAt" to unit.updatedAt,
                     "isDeleted" to unit.isDeleted
                 )
@@ -678,6 +679,7 @@ class FirestoreSyncEngine(
                 sire = doc.getString("sire") ?: "",
                 dam = doc.getString("dam") ?: "",
                 photoUri = doc.getString("photoUri"),
+                notes = doc.getString("notes") ?: "",
                 updatedAt = remoteUpdatedAt,
                 isDeleted = isDeleted
             )

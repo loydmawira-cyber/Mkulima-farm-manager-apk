@@ -200,10 +200,14 @@ fun AddUnitDialog(
                     ) {
                         OutlinedTextField(
                             value = tagNumber,
-                            onValueChange = { tagNumber = it },
-                            label = { Text("Tag Number") },
-                            placeholder = { Text("e.g. #112") },
-                            modifier = Modifier.weight(1f),
+                            onValueChange = {},
+                            label = { Text("Tag Number (Auto-generated)") },
+                            placeholder = { Text("Assigned after saving") },
+                            supportingText = { Text("A unique cattle tag is assigned automatically.") },
+                            readOnly = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("cattle_tag_auto_generated"),
                             shape = RoundedCornerShape(12.dp),
                             singleLine = true
                         )

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -108,15 +110,15 @@ fun SlidingSettingsPanel(
                     color = Color(0xFFFCFDFB),
                     shadowElevation = 16.dp
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(22.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 22.dp, vertical = 16.dp)
+                        ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF153E2D))
+                                Text("Settings", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF153E2D))
                                 Text("Farm preferences and account", fontSize = 13.sp, color = Color(0xFF64748B))
                             }
                             IconButton(onClick = onDismiss) {
@@ -124,7 +126,16 @@ fun SlidingSettingsPanel(
                             }
                         }
 
-                        Spacer(Modifier.height(24.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .verticalScroll(rememberScrollState())
+                                .imePadding()
+                                .padding(horizontal = 22.dp)
+                                .padding(bottom = 24.dp)
+                        ) {
+                        Spacer(Modifier.height(8.dp))
                         Text("FARM PROFILE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
@@ -233,14 +244,25 @@ fun SlidingSettingsPanel(
                             }
                         }
 
-                        Spacer(Modifier.height(32.dp))
-                        Button(
-                            onClick = onLogout,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE2E2), contentColor = Color(0xFFB91C1C))
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding(),
+                            color = Color(0xFFFCFDFB),
+                            shadowElevation = 12.dp
                         ) {
-                            Icon(Icons.Filled.Logout, contentDescription = null)
-                            Text("  LOG OUT", fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = onLogout,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 22.dp, vertical = 14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE2E2), contentColor = Color(0xFFB91C1C))
+                            ) {
+                                Icon(Icons.Filled.Logout, contentDescription = null)
+                                Text("  LOG OUT", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

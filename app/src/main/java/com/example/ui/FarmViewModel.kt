@@ -26,6 +26,8 @@ import com.example.data.MonthlyReport
 import com.example.data.PoultryLog
 import com.example.data.ReminderCompletion
 import com.example.data.RequestStatus
+import com.example.data.FarmSubscriptionAccess
+import com.example.data.SubscriptionPolicy
 import com.example.data.TaskCategory
 import com.example.data.TaskPriority
 import com.example.data.UserSession
@@ -161,6 +163,22 @@ class FarmViewModel(
         started = SharingStarted.Eagerly,
         initialValue = FarmSettings()
     )
+
+    val subscriptionAccess: StateFlow<FarmSubscriptionAccess> = farmSettings
+        .map { settings ->
+            SubscriptionPolicy.accessFor(
+                tierName = settings.subscriptionTier,
+                statusName = settings.subscriptionStatus,
+                expiresAt = settings.subscriptionExpiresAt
+            )
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = SubscriptionPolicy.accessFor("FREE", "ACTIVE", 0L)
+        )
+
+    fun canWriteFarmData(): Boolean = !subscriptionAccess.value.isReadOnly
 
     val farmWorkers: StateFlow<List<WorkerAccount>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
@@ -304,6 +322,7 @@ class FarmViewModel(
         assignedWorker: String?
     ) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val newTask = FarmTask(
                 farmId = farmId,
@@ -329,6 +348,7 @@ class FarmViewModel(
         reminderUnitId: Long? = null
     ) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             if (sourceTaskId != null) {
                 // Reminder was generated from a real task — update that task directly
                 // instead of creating an orphaned duplicate.
@@ -380,6 +400,7 @@ class FarmViewModel(
     fun markReminderComplete(ruleKey: String, unitId: Long) {
         if (ruleKey.isBlank()) return
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             repository.markReminderComplete(farmId, ruleKey, unitId)
         }
@@ -389,6 +410,7 @@ class FarmViewModel(
     fun clearReminderCompletion(ruleKey: String) {
         if (ruleKey.isBlank()) return
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             repository.clearReminderCompletion(farmId, ruleKey)
         }
@@ -400,6 +422,7 @@ class FarmViewModel(
         notes: String?
     ) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val existingTask = repository.getTaskById(taskId) ?: return@launch
             val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
             val updatedTask = existingTask.copy(
@@ -418,6 +441,7 @@ class FarmViewModel(
 
     fun markTaskIncomplete(taskId: Long) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val existingTask = repository.getTaskById(taskId) ?: return@launch
             val updatedTask = existingTask.copy(
                 isCompleted = false,
@@ -431,6 +455,7 @@ class FarmViewModel(
 
     fun deleteTask(taskId: Long) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             repository.deleteTask(taskId)
         }
     }
@@ -455,6 +480,27 @@ class FarmViewModel(
         onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch {
+            val access = subscriptionAccess.value
+            if (access.isReadOnly) {
+                onError("Your ${access.tier.name.lowercase()} subscription has expired. Farm records are read-only until the owner renews.")
+                return@launch
+            }
+            val isCattle = type.contains("cattle", ignoreCase = true) || type.contains("cow", ignoreCase = true)
+            val isPoultry = type.contains("poultry", ignoreCase = true) || type.contains("flock", ignoreCase = true)
+            val activeUnits = allUnits.value.filterNot { it.isDeleted }
+            if (isCattle && activeUnits.count { isCattleUnit(it) } >= access.maxCattle) {
+                onError("${access.tier.name.lowercase().replaceFirstChar { it.uppercase() }} plan allows up to ${access.maxCattle} cattle. Upgrade to add another cow.")
+                return@launch
+            }
+            if (isPoultry && activeUnits.count { it.type.contains("poultry", ignoreCase = true) } >= access.maxPoultryFlocks) {
+                val message = if (access.maxPoultryFlocks == 0) {
+                    "Poultry entry is not included in the Free plan. Upgrade to Premium or Pro."
+                } else {
+                    "${access.tier.name.lowercase().replaceFirstChar { it.uppercase() }} plan allows up to ${access.maxPoultryFlocks} poultry flocks. Upgrade to add another flock."
+                }
+                onError(message)
+                return@launch
+            }
             runCatching {
                 val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
                 val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
@@ -487,6 +533,7 @@ class FarmViewModel(
 
     fun updateUnit(unit: FarmUnit) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val previousDob = allUnits.value.find { it.id == unit.id }?.dob
             repository.updateUnit(unit)
             if (isCattleUnit(unit) && previousDob != unit.dob) {
@@ -497,6 +544,7 @@ class FarmViewModel(
 
     fun updateUnitHeadCount(unitId: Long, newHeadCount: Int) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val existing = allUnits.value.find { it.id == unitId }
             if (existing != null) {
                 val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
@@ -511,6 +559,7 @@ class FarmViewModel(
 
     fun updateUnitPhoto(unitId: Long, photoUri: String?) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val existing = allUnits.value.find { it.id == unitId }
             if (existing != null) {
                 val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
@@ -525,6 +574,7 @@ class FarmViewModel(
 
     fun deleteUnit(unitId: Long) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             repository.deleteUnit(unitId)
         }
     }
@@ -542,6 +592,10 @@ class FarmViewModel(
         onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) {
+                onError("Subscription expired. Production records are read-only until the owner renews.")
+                return@launch
+            }
             runCatching {
                 val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
                 val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
@@ -566,6 +620,7 @@ class FarmViewModel(
 
     fun deleteMilkLog(logId: Long) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             repository.deleteMilkLog(logId)
         }
     }
@@ -579,6 +634,7 @@ class FarmViewModel(
         notes: String? = null
     ) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
             val log = EggLog(
@@ -596,6 +652,7 @@ class FarmViewModel(
 
     fun deleteEggLog(logId: Long) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             repository.deleteEggLog(logId)
         }
     }
@@ -604,6 +661,7 @@ class FarmViewModel(
     // ================= Assets: Inventory & Fields =================
     fun addInventoryItem(item: InventoryItem) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val isSilage = item.isSilage || item.category.equals("Silage", ignoreCase = true)
             val prepared = item.copy(farmId = farmId, isSilage = isSilage, unitCost = if (isSilage) 0.0 else item.unitCost)
@@ -617,30 +675,44 @@ class FarmViewModel(
     }
 
     fun updateInventoryItem(item: InventoryItem) {
-        viewModelScope.launch { repository.updateInventoryItem(item) }
+        viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
+            repository.updateInventoryItem(item)
+        }
     }
 
     fun deleteInventoryItem(item: InventoryItem) {
-        viewModelScope.launch { repository.deleteInventoryItem(item.id) }
+        viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
+            repository.deleteInventoryItem(item.id)
+        }
     }
 
     fun addFieldPlan(field: FieldPlan) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             repository.insertFieldPlan(field.copy(farmId = farmId))
         }
     }
 
     fun updateFieldPlan(field: FieldPlan) {
-        viewModelScope.launch { repository.updateFieldPlan(field) }
+        viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
+            repository.updateFieldPlan(field)
+        }
     }
 
     fun deleteFieldPlan(field: FieldPlan) {
-        viewModelScope.launch { repository.deleteFieldPlan(field.id) }
+        viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
+            repository.deleteFieldPlan(field.id)
+        }
     }
 
     fun recordFieldHarvest(field: FieldPlan, outcome: String, tonnes: Double, saleAmount: Double, harvestDate: String) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             if (tonnes <= 0.0 || field.status == "HARVESTED") return@launch
             val finalOutcome = outcome.uppercase()
             val updated = field.copy(status = "HARVESTED", harvestedDate = harvestDate, harvestOutcome = finalOutcome,
@@ -664,6 +736,7 @@ class FarmViewModel(
         date: String = ""
     ) {
         viewModelScope.launch {
+            if (!subscriptionAccess.value.canUseFinance) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
             val record = FinanceRecord(
@@ -680,12 +753,14 @@ class FarmViewModel(
 
     fun updateFinanceRecord(record: FinanceRecord) {
         viewModelScope.launch {
+            if (!subscriptionAccess.value.canUseFinance) return@launch
             repository.updateFinanceRecord(record)
         }
     }
 
     fun deleteFinanceRecord(recordId: Long) {
         viewModelScope.launch {
+            if (!subscriptionAccess.value.canUseFinance) return@launch
             repository.deleteFinanceRecord(recordId)
         }
     }
@@ -704,6 +779,7 @@ class FarmViewModel(
         reason: String
     ) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val sessionName = currentSession.value?.name ?: employeeName
             val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
@@ -724,6 +800,7 @@ class FarmViewModel(
 
     fun updateEmployeeRequestStatus(request: EmployeeRequest, newStatus: RequestStatus) {
         viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
             val updated = request.copy(status = newStatus)
             repository.updateEmployeeRequest(updated)
         }
@@ -915,9 +992,11 @@ class FarmViewModel(
         allUnits,
         rawTasks,
         allCattleEvents,
-        reminderCompletions
-    ) { units, tasks, cattleEvents, completions ->
+        reminderCompletions,
+        subscriptionAccess
+    ) { units, tasks, cattleEvents, completions, access ->
         withContext(Dispatchers.Default) {
+            if (!access.canReceiveReminders) return@withContext emptyList()
             val eventsMap = cattleEvents.groupBy { it.unitId }.mapValues { entry ->
                 entry.value.map {
                     com.example.ui.screens.CattleEventItem(

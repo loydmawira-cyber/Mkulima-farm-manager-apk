@@ -1670,7 +1670,7 @@ fun FlocksScreen(
                                             AsyncImage(
                                                 model = ImageRequest.Builder(LocalContext.current)
                                                     .data(animal.photoUri)
-                                                    .crossfade(true)
+                                                    .crossfade(false)
                                                     .placeholder(R.drawable.ic_livestock_placeholder)
                                                     .error(R.drawable.ic_livestock_placeholder)
                                                     .memoryCachePolicy(CachePolicy.ENABLED)
@@ -2395,7 +2395,7 @@ fun AnimalDetailsView(
                                 AsyncImage(
                                     model = ImageRequest.Builder(LocalContext.current)
                                         .data(animal.photoUri)
-                                        .crossfade(true)
+                                        .crossfade(false)
                                         .placeholder(R.drawable.ic_livestock_placeholder)
                                         .error(R.drawable.ic_livestock_placeholder)
                                         .memoryCachePolicy(CachePolicy.ENABLED)
@@ -4440,7 +4440,7 @@ fun FlockDetailsView(
                                     AsyncImage(
                                         model = ImageRequest.Builder(LocalContext.current)
                                             .data(flock.photoUri)
-                                            .crossfade(true)
+                                            .crossfade(false)
                                             .placeholder(R.drawable.ic_livestock_placeholder)
                                             .error(R.drawable.ic_livestock_placeholder)
                                             .memoryCachePolicy(CachePolicy.ENABLED)

@@ -404,6 +404,9 @@ interface FarmDao {
     @Query("SELECT * FROM field_plans WHERE syncId = :syncId LIMIT 1")
     suspend fun getFieldPlanBySyncId(syncId: String): FieldPlan?
 
+    @Query("SELECT * FROM field_plans WHERE id = :id AND isDeleted = 0 LIMIT 1")
+    suspend fun getFieldPlanById(id: Long): FieldPlan?
+
     @Query("SELECT * FROM field_plans WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyFieldPlans(farmId: String, since: Long): List<FieldPlan>
 

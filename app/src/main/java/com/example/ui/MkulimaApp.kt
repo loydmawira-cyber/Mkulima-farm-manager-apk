@@ -448,7 +448,7 @@ fun MkulimaAppContent(
             onDeleteWorker = { id -> viewModel.deleteWorker(id) },
             onClose = { showWorkerManagementScreen = false }
         )
-    } else {
+    } else if (!showSubscriptionBillingScreen) {
         Scaffold(
             topBar = {
                 TopAppBar(

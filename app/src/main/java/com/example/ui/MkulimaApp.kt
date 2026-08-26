@@ -365,6 +365,15 @@ fun MkulimaAppContent(
                     onError = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
                 )
             },
+            onSaveRecoveryEmail = { email ->
+                viewModel.updateRecoveryEmail(
+                    email,
+                    onSuccess = {
+                        Toast.makeText(context, "Recovery email updated. Confirm the verification email, then use it for password recovery.", Toast.LENGTH_LONG).show()
+                    },
+                    onError = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+                )
+            },
             onOpenWorkerManagement = {
                 showSettingsPanel = false
                 showWorkerManagementScreen = true

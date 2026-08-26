@@ -810,6 +810,40 @@ class FarmViewModel(
         initialValue = emptyList()
     )
 
+    private var lastDewormingBootstrapKey: String = ""
+
+    init {
+        // Existing cattle pre-date this feature, so build their first task after
+        // Room emits livestock and event data. The input key prevents duplicate
+        // task rewrites when unrelated recompositions occur.
+        viewModelScope.launch {
+            combine(allUnits, allCattleEvents) { units, events -> units to events }
+                .collect { (units, events) ->
+                    val session = currentSession.value ?: return@collect
+                    val cattle = units.filter(::isCattleUnit)
+                    if (cattle.isEmpty()) return@collect
+
+                    val sourceKey = buildString {
+                        append(session.farmId)
+                        cattle.sortedBy { it.id }.forEach { cow ->
+                            append("|${cow.id}:${cow.dob}:${cow.updatedAt}")
+                        }
+                        events.filter { isDewormingEvent(it.category, it.title, it.details) }
+                            .sortedBy { it.id }
+                            .forEach { event ->
+                                append("|${event.id}:${event.date}:${event.updatedAt}:${event.isDeleted}")
+                            }
+                    }
+                    if (sourceKey == lastDewormingBootstrapKey) return@collect
+                    lastDewormingBootstrapKey = sourceKey
+
+                    cattle.forEach { cow ->
+                        synchronizeDewormingTask(cow, sourceEvents = events)
+                    }
+                }
+        }
+    }
+
     /**
      * Future scheduled tasks must not be presented as due today. Unknown labels
      * remain in the due list because their date cannot be safely classified.

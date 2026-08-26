@@ -420,6 +420,41 @@ class AuthManager(
         )
     }
 
+    suspend fun updateFarmName(newFarmName: String): Result<String> = withContext(Dispatchers.IO) {
+        val cleanName = newFarmName.trim()
+        if (cleanName.isBlank()) return@withContext Result.failure(IllegalArgumentException("Enter a farm name."))
+        val session = _currentSession.value
+            ?: return@withContext Result.failure(IllegalStateException("No active farm session found."))
+        if (!session.isOwner) return@withContext Result.failure(IllegalAccessException("Only the farm owner can rename the farm."))
+
+        return@withContext runCatching {
+            val existing = repository.getFarmAccount(session.farmId)
+            val account = (existing ?: FarmAccount(
+                farmId = session.farmId,
+                farmName = cleanName,
+                ownerId = session.userId,
+                ownerName = session.name,
+                ownerEmailOrPhone = session.emailOrPhone
+            )).copy(farmName = cleanName, updatedAt = System.currentTimeMillis())
+            repository.updateFarmAccount(account)
+
+            val renamedSession = session.copy(farmName = cleanName)
+            saveSession(renamedSession)
+
+            getFirestore()?.let { db ->
+                val update = hashMapOf<String, Any>(
+                    "farmName" to cleanName,
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                runCatching {
+                    db.collection("farms").document(session.farmId).set(update, SetOptions.merge()).awaitTask()
+                    db.collection("users").document(session.userId).set(update, SetOptions.merge()).awaitTask()
+                }.onFailure { Log.w(TAG, "Farm name saved locally; remote update will retry when Firestore is available.", it) }
+            }
+            cleanName
+        }
+    }
+
     private fun saveSession(session: UserSession) {
         prefs.edit().apply {
             putBoolean("is_logged_out", false)

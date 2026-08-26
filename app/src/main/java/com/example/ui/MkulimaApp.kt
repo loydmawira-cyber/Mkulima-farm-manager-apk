@@ -148,6 +148,7 @@ fun MkulimaAppContent(
     val employeeRequests by viewModel.allEmployeeRequests.collectAsState()
     val allCattleEvents by viewModel.allCattleEvents.collectAsState(initial = emptyList())
     val farmSettings by viewModel.farmSettings.collectAsState()
+    val subscriptionAccess by viewModel.subscriptionAccess.collectAsState()
     val farmWorkers by viewModel.farmWorkers.collectAsState()
     val userSession by viewModel.currentSession.collectAsState()
     val userRole = userSession?.role ?: "Worker"
@@ -584,7 +585,18 @@ fun MkulimaAppContent(
                     if (userRole == "OWNER") {
                         NavigationBarItem(
                             selected = selectedTab == 3,
-                            onClick = { selectedTab = 3 },
+                            onClick = {
+                                if (subscriptionAccess.canUseFinance) {
+                                    selectedTab = 3
+                                } else {
+                                    val message = if (subscriptionAccess.isReadOnly) {
+                                        "Subscription expired. Finance and Reports are read-only until renewal."
+                                    } else {
+                                        "Finance and Reports are available on Premium and Pro."
+                                    }
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                }
+                            },
                             icon = {
                                 Icon(
                                     if (selectedTab == 3) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet,
@@ -744,7 +756,7 @@ fun MkulimaAppContent(
                         userRole = userRole
                     )
 
-                    3 -> if (userRole == "OWNER") FinanceScreen(
+                    3 -> if (userRole == "OWNER" && subscriptionAccess.canUseFinance) FinanceScreen(
                         records = financeRecords,
                         reports = monthlyReports,
                         onAddTransactionClick = { showAddFinanceDialog = true },

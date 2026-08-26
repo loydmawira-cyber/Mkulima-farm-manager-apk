@@ -67,7 +67,8 @@ fun AddUnitDialog(
         weightAtBirth: String,
         currentWeight: String,
         sire: String,
-        dam: String
+        dam: String,
+        notes: String
     ) -> Unit
 ) {
     val initialCategory = if (farmSettings?.farmType?.equals("Poultry Only", ignoreCase = true) == true) "POULTRY" else "CATTLE"
@@ -98,6 +99,7 @@ fun AddUnitDialog(
     var poultryDateAdded by remember { mutableStateOf(todayFormatted) }
     var poultryStatus by remember { mutableStateOf("Active Laying") }
     var poultryLocation by remember { mutableStateOf("Coop 2 - East Sector") }
+    var notes by remember { mutableStateOf("") }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -420,6 +422,20 @@ fun AddUnitDialog(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes / Origin (Optional)") },
+                    placeholder = { Text("e.g. Bought from ..., Hatched on farm, or health background") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("unit_notes_input"),
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 3
+                )
+
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
@@ -452,7 +468,8 @@ fun AddUnitDialog(
                                     weightAtBirth,
                                     currentWeight,
                                     sire,
-                                    dam
+                                    dam,
+                                    notes.trim()
                                 )
                             } else {
                                 val finalName = poultryName.ifBlank { "Poultry Flock" }
@@ -468,7 +485,8 @@ fun AddUnitDialog(
                                     "N/A",
                                     "1.8kg avg",
                                     "N/A",
-                                    "N/A"
+                                    "N/A",
+                                    notes.trim()
                                 )
                             }
                         },
@@ -483,4 +501,3 @@ fun AddUnitDialog(
         }
     }
 }
-

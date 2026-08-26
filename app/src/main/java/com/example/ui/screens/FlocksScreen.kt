@@ -204,7 +204,8 @@ data class AnimalDetailData(
     val disposalNotes: String = "",
     val headCountInt: Int = 1,
     val manuallySetStatus: String? = null,
-    val photoUri: String? = null
+    val photoUri: String? = null,
+    val notes: String = ""
 )
 
 data class FlockDisposalLogItem(
@@ -747,7 +748,8 @@ fun FlocksScreen(
                 sire = unit.sire.ifBlank { "N/A" },
                 dam = unit.dam.ifBlank { "N/A" },
                 headCountInt = unit.headCount,
-                photoUri = unit.photoUri
+                photoUri = unit.photoUri,
+                notes = unit.notes
             )
 
             val eval = CattleLifecycleEngine.evaluateCattleStage(animalDetail, unitDbEvents, cowLogs)
@@ -814,7 +816,8 @@ fun FlocksScreen(
         sire: String,
         dam: String,
         headCount: Int,
-        photoUri: String? = null
+        photoUri: String? = null,
+        notes: String? = null
     ) {
         val existing = mutableAnimals.find { it.id == animalId } ?: return
         val updated = existing.copy(
@@ -832,6 +835,7 @@ fun FlocksScreen(
             dam = dam,
             headCountInt = headCount,
             photoUri = if (photoUri != null) photoUri else existing.photoUri,
+            notes = notes ?: existing.notes,
             lastMilk = if (category.equals("POULTRY", ignoreCase = true)) "$headCount Birds" else existing.lastMilk
         )
         val idx = mutableAnimals.indexOfFirst { it.id == animalId }
@@ -872,7 +876,8 @@ fun FlocksScreen(
                         currentWeight = currentWeight,
                         sire = sire,
                         dam = dam,
-                        photoUri = if (photoUri != null) photoUri else matching.photoUri
+                        photoUri = if (photoUri != null) photoUri else matching.photoUri,
+                        notes = notes ?: matching.notes
                     )
                     onUpdateUnit(updatedUnit)
                 }
@@ -894,7 +899,8 @@ fun FlocksScreen(
                     currentWeight = currentWeight,
                     sire = sire,
                     dam = dam,
-                    photoUri = if (photoUri != null) photoUri else matching.photoUri
+                    photoUri = if (photoUri != null) photoUri else matching.photoUri,
+                    notes = notes ?: matching.notes
                 )
                 onUpdateUnit(updatedUnit)
             }
@@ -1193,7 +1199,7 @@ fun FlocksScreen(
         EditAnimalDialog(
             animal = animalToEdit!!,
             onDismiss = { animalToEdit = null },
-            onSaveAnimal = { name, tagNumber, breed, category, status, breedingStatus, age, dob, weightAtBirth, currentWeight, sire, dam, headCount, photoUri ->
+            onSaveAnimal = { name, tagNumber, breed, category, status, breedingStatus, age, dob, weightAtBirth, currentWeight, sire, dam, headCount, photoUri, notes ->
                 handleModifyAnimal(
                     animalId = animalToEdit!!.id,
                     name = name,
@@ -1209,7 +1215,8 @@ fun FlocksScreen(
                     sire = sire,
                     dam = dam,
                     headCount = headCount,
-                    photoUri = photoUri
+                    photoUri = photoUri,
+                    notes = notes
                 )
                 animalToEdit = null
             }
@@ -2494,6 +2501,23 @@ fun AnimalDetailsView(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            if (animal.notes.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFF0FDF4),
+                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text("Notes / Origin", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(animal.notes, fontSize = 13.sp, color = Color(0xFF334155))
                     }
                 }
             }
@@ -4539,6 +4563,23 @@ fun FlockDetailsView(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                if (flock.notes.isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFFFFBEB),
+                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text("Notes / Origin", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(flock.notes, fontSize = 13.sp, color = Color(0xFF334155))
                         }
                     }
                 }

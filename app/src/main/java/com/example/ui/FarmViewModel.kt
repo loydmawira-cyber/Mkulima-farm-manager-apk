@@ -850,13 +850,24 @@ class FarmViewModel(
         val dueNow = reminders.filter { reminder -> isDueTodayOrEarlier(reminder.dueDateStr) }
         if (dueNow.isNotEmpty()) return dueNow
 
+        val todayStartMillis = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
         return reminders
             .mapNotNull { reminder ->
                 reminderDateOrNull(reminder.dueDateStr)?.let { dueDate -> reminder to dueDate.time }
             }
             .sortedBy { (_, dueAt) -> dueAt }
             .take(5)
-            .map { (reminder, _) -> reminder }
+            .map { (reminder, dueAt) ->
+                reminder.copy(
+                    urgency = com.example.util.ReminderUrgency.UPCOMING,
+                    daysRemaining = ((dueAt - todayStartMillis) / 86_400_000L).toInt().coerceAtLeast(1)
+                )
+            }
     }
 
     val farmReminders: StateFlow<List<com.example.util.FarmReminder>> = combine(

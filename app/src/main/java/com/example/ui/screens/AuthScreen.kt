@@ -315,7 +315,7 @@ fun AuthScreen(
                                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Login", tint = ForestGreenPrimary)
                             }
                             Text(
-                                text = if (resetStep == 1) "Reset Password" else "Create New Password",
+                                text = "Reset Password",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)
@@ -326,7 +326,7 @@ fun AuthScreen(
 
                         if (resetStep == 1) {
                             Text(
-                                text = "Enter your registered email address or phone number to receive your instant verification code.",
+                                text = "Enter the real recovery email registered with your account. We will send a secure password reset link to that inbox.",
                                 fontSize = 13.sp,
                                 color = Color(0xFF475569),
                                 lineHeight = 18.sp
@@ -340,14 +340,10 @@ fun AuthScreen(
                                     emailOrPhone = it
                                     errorMessage = null
                                 },
-                                label = { Text("Registered Email or Phone Number") },
-                                placeholder = { Text("e.g. +254712345678 or owner@mkulima.farm") },
-                                leadingIcon = {
-                                    Icon(
-                                        if (emailOrPhone.contains("@")) Icons.Filled.Email else Icons.Filled.Phone,
-                                        contentDescription = null
-                                    )
-                                },
+                                label = { Text("Recovery Email Address") },
+                                placeholder = { Text("you@example.com") },
+                                leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                                 singleLine = true,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -360,8 +356,8 @@ fun AuthScreen(
 
                             Button(
                                 onClick = {
-                                    if (emailOrPhone.isBlank()) {
-                                        errorMessage = "Please enter your email or phone number."
+                                    if (!emailOrPhone.contains("@") || !emailOrPhone.contains(".")) {
+                                        errorMessage = "Enter the real recovery email registered with your account."
                                         return@Button
                                     }
                                     isLoading = true
@@ -369,7 +365,6 @@ fun AuthScreen(
                                     onForgotPassword(emailOrPhone) { msg ->
                                         isLoading = false
                                         successMessage = msg
-                                        resetStep = 2
                                     }
                                 },
                                 modifier = Modifier
@@ -383,7 +378,7 @@ fun AuthScreen(
                                 if (isLoading) {
                                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                                 } else {
-                                    Text("Send Verification Code", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
+                                    Text("Send Password Reset Link", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
                                 }
                             }
                         } else {
@@ -664,15 +659,15 @@ fun AuthScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Optional Email input
+                            // Required email recovery address for every new account.
                             OutlinedTextField(
                                 value = emailOrPhone,
                                 onValueChange = {
                                     emailOrPhone = it
                                     errorMessage = null
                                 },
-                                label = { Text("Email Address (Optional)") },
-                                placeholder = { Text("owner@mkulima.farm") },
+                                label = { Text("Recovery Email Address") },
+                                placeholder = { Text("you@example.com") },
                                 leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
@@ -965,10 +960,9 @@ fun AuthScreen(
                                     } else {
                                         ""
                                     }
-                                    val finalContact = if (finalFullPhone.isNotBlank()) finalFullPhone else emailOrPhone.trim()
-
-                                    if (finalContact.isBlank()) {
-                                        errorMessage = "Please provide a phone number or email address."
+                                    val recoveryEmail = emailOrPhone.trim()
+                                    if (!recoveryEmail.contains("@") || !recoveryEmail.contains(".")) {
+                                        errorMessage = "Enter a valid recovery email. Phone-number accounts use it to reset their password."
                                         return@Button
                                     }
                                     if (password.length < 6) {
@@ -982,7 +976,7 @@ fun AuthScreen(
                                     isLoading = true
                                     onSignUp(
                                         name,
-                                        finalContact,
+                                        recoveryEmail,
                                         password,
                                         farmName,
                                         selectedCountry.dialCode,
@@ -990,7 +984,7 @@ fun AuthScreen(
                                     ) { err ->
                                         isLoading = false
                                         if (err.contains("already exists", ignoreCase = true)) {
-                                            duplicateAccountAlertPhone = finalFullPhone.ifBlank { finalContact }
+                                            duplicateAccountAlertPhone = finalFullPhone.ifBlank { recoveryEmail }
                                         }
                                         errorMessage = err
                                     }

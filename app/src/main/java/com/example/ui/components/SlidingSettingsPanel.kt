@@ -69,6 +69,7 @@ fun SlidingSettingsPanel(
     onSaveSettings: (FarmSettings) -> Unit,
     onSaveFarmName: (String) -> Unit,
     onSaveRecoveryEmail: (String) -> Unit,
+    onOpenSubscriptionBilling: () -> Unit,
     onOpenWorkerManagement: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -161,6 +162,25 @@ fun SlidingSettingsPanel(
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                                     ) { Text("SAVE RECOVERY EMAIL", fontWeight = FontWeight.Bold) }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
+                        if (isOwner) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF3F8F5),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(onClick = onOpenSubscriptionBilling)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("Subscription & Billing", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF153E2D))
+                                    Text(
+                                        "Current plan: ${settings.subscriptionTier.lowercase().replaceFirstChar { it.uppercase() }}. Manage annual Premium or Pro through Google Play.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF64748B)
+                                    )
                                 }
                             }
                             Spacer(Modifier.height(12.dp))

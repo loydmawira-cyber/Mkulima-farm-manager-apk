@@ -69,7 +69,7 @@ class FarmViewModel(
         repository.getUnitsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -78,7 +78,7 @@ class FarmViewModel(
         repository.getMilkLogsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -87,7 +87,7 @@ class FarmViewModel(
         repository.getEggLogsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -96,7 +96,7 @@ class FarmViewModel(
         repository.getAllPoultryLogs(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -148,7 +148,7 @@ class FarmViewModel(
         repository.getSettingsForFarm(farmId).map { it ?: FarmSettings(farmId = farmId) }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = FarmSettings()
     )
 
@@ -503,24 +503,30 @@ class FarmViewModel(
         session: String,
         fatPercentage: Double = 3.8,
         date: String = "",
-        notes: String? = null
+        notes: String? = null,
+        onRecorded: (MilkLog) -> Unit = {},
+        onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-            val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-            val log = MilkLog(
-                farmId = farmId,
-                cowName = cowName.ifBlank { "Daisy (Friesian)" },
-                unitName = unitName.ifBlank { "Dairy Herd - Friesians" },
-                litres = litres,
-                session = session,
-                fatPercentage = fatPercentage,
-                date = date.ifBlank { todayFormatted },
-                loggedAt = nowFormatted,
-                notes = notes
-            )
-            repository.insertMilkLog(log)
+            runCatching {
+                val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+                val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+                val log = MilkLog(
+                    farmId = farmId,
+                    cowName = cowName.ifBlank { "Daisy (Friesian)" },
+                    unitName = unitName.ifBlank { "Dairy Herd - Friesians" },
+                    litres = litres,
+                    session = session,
+                    fatPercentage = fatPercentage,
+                    date = date.ifBlank { todayFormatted },
+                    loggedAt = nowFormatted,
+                    notes = notes
+                )
+                withContext(Dispatchers.IO) { repository.insertMilkLogAndReturn(log) }
+            }.onSuccess(onRecorded).onFailure { error ->
+                onError(error.message ?: "Unable to record milk. Please try again.")
+            }
         }
     }
 

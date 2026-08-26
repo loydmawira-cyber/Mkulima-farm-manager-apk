@@ -97,6 +97,7 @@ import com.example.ui.screens.FinanceScreen
 import com.example.ui.screens.AssetsScreen
 import com.example.ui.screens.FlocksScreen
 import com.example.ui.screens.MilkLogScreen
+import com.example.ui.screens.SubscriptionBillingScreen
 import com.example.notifications.RequestMkulimaNotifications
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.TagLivestockBg
@@ -182,6 +183,7 @@ fun MkulimaAppContent(
     var editingFinanceRecord by remember { mutableStateOf<FinanceRecord?>(null) }
     var showAddEmployeeRequestDialog by remember { mutableStateOf(false) }
     var showSettingsPanel by remember { mutableStateOf(false) }
+    var showSubscriptionBillingScreen by remember { mutableStateOf(false) }
     var showWorkerManagementScreen by remember { mutableStateOf(false) }
     var showRemindersDialog by remember { mutableStateOf(false) }
     var dismissedReminderIds by remember { mutableStateOf(setOf<String>()) }
@@ -192,13 +194,14 @@ fun MkulimaAppContent(
     }
 
     // Intercept back button to dismiss open dialogs/screens or return to Home tab without closing the app
-    val hasOpenOverlay = showWorkerManagementScreen || showSettingsPanel || showRemindersDialog || showAddTaskDialog ||
+    val hasOpenOverlay = showSubscriptionBillingScreen || showWorkerManagementScreen || showSettingsPanel || showRemindersDialog || showAddTaskDialog ||
             showAddUnitDialog || showAddMilkLogDialog || showAddEggLogDialog ||
             showAddFinanceDialog || (editingFinanceRecord != null) || showAddEmployeeRequestDialog ||
             (proofUploadTaskTarget != null) || (proofModalTaskTarget != null)
 
     BackHandler(enabled = hasOpenOverlay || selectedTab != 0) {
         when {
+            showSubscriptionBillingScreen -> showSubscriptionBillingScreen = false
             showWorkerManagementScreen -> showWorkerManagementScreen = false
             showSettingsPanel -> showSettingsPanel = false
             showRemindersDialog -> showRemindersDialog = false
@@ -376,6 +379,10 @@ fun MkulimaAppContent(
                     onError = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
                 )
             },
+            onOpenSubscriptionBilling = {
+                showSettingsPanel = false
+                showSubscriptionBillingScreen = true
+            },
             onOpenWorkerManagement = {
                 showSettingsPanel = false
                 showWorkerManagementScreen = true
@@ -385,6 +392,21 @@ fun MkulimaAppContent(
                 showSettingsPanel = false
             }
     )
+
+    if (showSubscriptionBillingScreen) {
+        SubscriptionBillingScreen(
+            onClose = { showSubscriptionBillingScreen = false },
+            onPurchaseForVerification = { _, _ ->
+                // The next server package replaces this notice with a verified
+                // purchase-token submission. Never unlock a tier locally here.
+                Toast.makeText(
+                    context,
+                    "Purchase received. Subscription activation will finish after secure server verification is connected.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        )
+    }
 
     if (showRemindersDialog) {
         FarmRemindersDialog(

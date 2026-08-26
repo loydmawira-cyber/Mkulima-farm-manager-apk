@@ -283,6 +283,12 @@ class FarmRepository(
         syncEngine?.triggerPush(prepared.farmId)
     }
 
+    suspend fun deleteInventoryItem(id: Long) {
+        val item = farmDao.getInventoryItemById(id)
+        farmDao.softDeleteInventoryItem(id)
+        item?.let { syncEngine?.triggerPush(it.farmId) }
+    }
+
     suspend fun receiveSilage(farmId: String, tonnes: Double, sourceField: String, receivedDate: String) {
         val existing = farmDao.getSilageItem(farmId)
         if (existing == null) {
@@ -318,6 +324,12 @@ class FarmRepository(
         val prepared = field.copy(updatedAt = System.currentTimeMillis())
         farmDao.updateFieldPlan(prepared)
         syncEngine?.triggerPush(prepared.farmId)
+    }
+
+    suspend fun deleteFieldPlan(id: Long) {
+        val field = farmDao.getFieldPlanById(id)
+        farmDao.softDeleteFieldPlan(id)
+        field?.let { syncEngine?.triggerPush(it.farmId) }
     }
 
     // Worker operations

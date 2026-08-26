@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -136,6 +138,7 @@ fun MkulimaAppContent(
     val milkLogs by viewModel.allMilkLogs.collectAsState()
     val eggLogs by viewModel.allEggLogs.collectAsState()
     val financeRecords by viewModel.allFinanceRecords.collectAsState()
+    val monthlyReports by viewModel.allMonthlyReports.collectAsState()
     val inventoryItems by viewModel.allInventoryItems.collectAsState()
     val fieldPlans by viewModel.allFieldPlans.collectAsState()
     val feedPlans by viewModel.allFeedPlans.collectAsState()
@@ -731,9 +734,19 @@ fun MkulimaAppContent(
 
                     3 -> if (userRole == "OWNER") FinanceScreen(
                         records = financeRecords,
+                        reports = monthlyReports,
                         onAddTransactionClick = { showAddFinanceDialog = true },
                         onEditTransaction = { editingFinanceRecord = it },
                         onDeleteTransaction = { viewModel.deleteFinanceRecord(it) },
+                        onOpenReport = { report ->
+                            if (report.fileUrl.isNotBlank()) {
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(report.fileUrl)))
+                                }.onFailure {
+                                    Toast.makeText(context, "Unable to open this report file.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
                         currency = farmSettings.currency
                     ) else { /* No-op for workers */ }
 

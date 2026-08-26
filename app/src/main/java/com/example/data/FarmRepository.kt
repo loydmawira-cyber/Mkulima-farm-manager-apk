@@ -27,6 +27,7 @@ class FarmRepository(
     fun getInventoryItemsForFarm(farmId: String): Flow<List<InventoryItem>> = farmDao.getInventoryItemsByFarm(farmId)
     fun getFeedPlansForFarm(farmId: String): Flow<List<FeedPlan>> = farmDao.getFeedPlansByFarm(farmId)
     fun getInventoryMovementsForFarm(farmId: String): Flow<List<InventoryMovement>> = farmDao.getInventoryMovementsByFarm(farmId)
+    fun getMonthlyReportsForFarm(farmId: String): Flow<List<MonthlyReport>> = farmDao.getMonthlyReportsByFarm(farmId)
     fun getFieldPlansForFarm(farmId: String): Flow<List<FieldPlan>> = farmDao.getFieldPlansByFarm(farmId)
     fun getEggLogsForFarm(farmId: String): Flow<List<EggLog>> = farmDao.getEggLogsByFarm(farmId)
     fun getFinanceRecordsForFarm(farmId: String): Flow<List<FinanceRecord>> = farmDao.getFinanceRecordsByFarm(farmId)
@@ -266,6 +267,19 @@ class FarmRepository(
         )
         farmDao.insertSettings(prepared)
         syncEngine?.triggerPush(settings.farmId)
+    }
+
+    suspend fun insertOrUpdateMonthlyReport(report: MonthlyReport): Long {
+        val existing = farmDao.getMonthlyReportBySyncId(report.syncId)
+        val prepared = report.copy(updatedAt = System.currentTimeMillis(), isDeleted = false)
+        if (existing == null) {
+            val id = farmDao.insertMonthlyReport(prepared)
+            syncEngine?.triggerPush(prepared.farmId)
+            return id
+        }
+        farmDao.updateMonthlyReport(prepared.copy(id = existing.id))
+        syncEngine?.triggerPush(prepared.farmId)
+        return existing.id
     }
 
 

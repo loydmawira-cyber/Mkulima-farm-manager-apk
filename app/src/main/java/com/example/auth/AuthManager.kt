@@ -135,6 +135,9 @@ class AuthManager(
             val fullDigits = if (rawDigits.startsWith(codeDigits) && rawDigits.length > codeDigits.length) rawDigits else "$codeDigits$localDigits"
             return "phone_${fullDigits}@mkulima.farm"
         }
+
+        fun isValidRecoveryEmail(value: String): Boolean =
+            value.matches(Regex("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$", RegexOption.IGNORE_CASE))
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences("mkulima_auth_prefs", Context.MODE_PRIVATE)
@@ -564,7 +567,7 @@ class AuthManager(
         val cleanPhone = phoneNumber.trim()
 
         if (cleanIdentifier.isBlank() && cleanPhone.isBlank()) {
-            return@withContext AuthResult.Error("Please provide an email or phone number.")
+            return@withContext AuthResult.Error("Please provide a recovery email and phone number, or a recovery email.")
         }
         if (password.length < 6) {
             return@withContext AuthResult.Error("Password must be at least 6 characters.")
@@ -578,8 +581,15 @@ class AuthManager(
             ""
         }
 
-        val primaryContact = if (fullPhoneNumber.isNotBlank()) fullPhoneNumber else cleanIdentifier
-        val authEmail = if (primaryContact.contains("@")) primaryContact.lowercase() else toAuthEmail(primaryContact, countryCode)
+        val recoveryEmail = cleanIdentifier.lowercase()
+        if (!isValidRecoveryEmail(recoveryEmail)) {
+            return@withContext AuthResult.Error(
+                if (fullPhoneNumber.isNotBlank()) "Enter a valid recovery email. Phone-number accounts use this email for password recovery."
+                else "Enter a valid email address."
+            )
+        }
+        val primaryContact = if (fullPhoneNumber.isNotBlank()) fullPhoneNumber else recoveryEmail
+        val authEmail = recoveryEmail
 
         if (fullPhoneNumber.isNotBlank() && checkPhoneNumberExists(fullPhoneNumber)) {
             return@withContext AuthResult.AccountAlreadyExists("An account with this phone number ($fullPhoneNumber) already exists. Please sign in instead.")
@@ -619,7 +629,7 @@ class AuthManager(
         val farmId = generateUniqueFarmId()
         val finalFarmName = cleanFarmName
         val finalUserId = cloudUid ?: "OWNER_${UUID.randomUUID().toString().take(8)}"
-        val emailValue = if (primaryContact.contains("@")) primaryContact else ""
+        val emailValue = recoveryEmail
 
         if (db != null) {
             try {
@@ -628,6 +638,7 @@ class AuthManager(
                     "uid" to finalUserId,
                     "name" to cleanName,
                     "email" to emailValue,
+                    "recoveryEmail" to recoveryEmail,
                     "authEmail" to authEmail,
                     "phone" to fullPhoneNumber,
                     "phoneNumber" to fullPhoneNumber,
@@ -757,6 +768,22 @@ class AuthManager(
             if (cleanDigits.startsWith("0")) {
                 candidateAuthEmails.add("phone_${cleanDigits.removePrefix("0")}@mkulima.farm")
                 candidateAuthEmails.add("phone_254${cleanDigits.removePrefix("0")}@mkulima.farm")
+            }
+
+            // New phone registrations use a real recovery email as their Firebase
+            // email/password identifier. Resolve that email from the caller's phone.
+            if (db != null) {
+                for (phoneVariant in getPhoneCandidateFormats(cleanIdentifier).distinct()) {
+                    try {
+                        val byPhone = db.collection("users")
+                            .whereEqualTo("phone", phoneVariant)
+                            .limit(1)
+                            .get()
+                            .awaitTask()
+                        val storedAuthEmail = byPhone.documents.firstOrNull()?.getString("authEmail")
+                        if (!storedAuthEmail.isNullOrBlank()) candidateAuthEmails.add(storedAuthEmail.lowercase())
+                    } catch (_: Throwable) { }
+                }
             }
         }
 
@@ -1040,53 +1067,24 @@ class AuthManager(
         return@withContext AuthResult.Error(errorMsg)
     }
 
-    suspend fun resetPassword(emailOrPhone: String): String = withContext(Dispatchers.IO) {
-        val clean = emailOrPhone.trim()
-        if (clean.isBlank()) return@withContext "Please enter your registered email or phone number."
-
+    suspend fun resetPassword(recoveryEmail: String): String = withContext(Dispatchers.IO) {
+        val cleanEmail = recoveryEmail.trim().lowercase()
+        if (!isValidRecoveryEmail(cleanEmail)) {
+            return@withContext "Enter the real recovery email registered with this account. Password reset links are sent by email."
+        }
         val auth = getFirebaseAuth()
-
-        if (clean.contains("@")) {
-            if (auth != null) {
-                try {
-                    auth.sendPasswordResetEmail(clean).awaitTask()
-                    return@withContext "Password reset instructions sent to $clean. Please check your inbox."
-                } catch (e: Throwable) {
-                    return@withContext "Could not send reset email. Please ensure the email address is correct."
-                }
-            } else {
-                return@withContext "Password reset instructions sent to $clean."
-            }
-        } else {
-            val authEmail = toAuthEmail(clean)
-            if (auth != null) {
-                try {
-                    auth.sendPasswordResetEmail(authEmail).awaitTask()
-                } catch (e: Throwable) {}
-            }
-            val code = (100000..999999).random().toString()
-            prefs.edit().putString("reset_code_$clean", code).apply()
-            return@withContext "Your password verification code is $code (SMS sent to $clean)."
+            ?: return@withContext "Password recovery is temporarily unavailable. Please try again shortly."
+        return@withContext try {
+            auth.sendPasswordResetEmail(cleanEmail).awaitTask()
+            "If this email is registered, a password reset link has been sent. Check your inbox and spam folder."
+        } catch (_: Throwable) {
+            // Keep this response neutral so email addresses cannot be probed.
+            "If this email is registered, a password reset link has been sent. Check your inbox and spam folder."
         }
     }
 
-    suspend fun completePasswordReset(emailOrPhone: String, newPass: String): Boolean = withContext(Dispatchers.IO) {
-        val clean = emailOrPhone.trim()
-        if (clean.isBlank() || newPass.length < 6) return@withContext false
-
-        repository.updateOwnerPassword(clean, newPass)
-        repository.updateWorkerPassword(clean, newPass)
-
-        try {
-            val auth = getFirebaseAuth()
-            val currentUser = auth?.currentUser
-            if (currentUser != null) {
-                currentUser.updatePassword(newPass).awaitTask()
-            }
-        } catch (e: Throwable) {}
-
-        return@withContext true
-    }
+    /** Password changes now happen only through the verified Firebase email link. */
+    suspend fun completePasswordReset(emailOrPhone: String, newPass: String): Boolean = false
 
     fun logout() {
         repository.syncEngine?.stopSync()

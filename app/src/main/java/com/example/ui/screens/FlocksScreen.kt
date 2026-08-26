@@ -100,7 +100,7 @@ import androidx.compose.material3.AlertDialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.CachePolicy
-import coil.request.Precision
+import coil.size.Precision
 import com.example.R
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts

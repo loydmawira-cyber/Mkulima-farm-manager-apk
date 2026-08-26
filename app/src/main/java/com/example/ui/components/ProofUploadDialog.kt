@@ -98,7 +98,6 @@ fun ProofUploadDialog(
 
     if (showCameraXDialog) {
         CameraCaptureDialog(
-            title = "Task Proof Capture",
             onDismiss = { showCameraXDialog = false },
             onPhotoCaptured = { uri ->
                 val savedUri = onSaveInternalPhoto(uri) ?: uri.toString()

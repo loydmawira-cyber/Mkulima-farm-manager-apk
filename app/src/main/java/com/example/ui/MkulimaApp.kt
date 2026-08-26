@@ -97,6 +97,7 @@ import com.example.ui.screens.FinanceScreen
 import com.example.ui.screens.AssetsScreen
 import com.example.ui.screens.FlocksScreen
 import com.example.ui.screens.MilkLogScreen
+import com.example.notifications.RequestMkulimaNotifications
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.TagLivestockBg
 import com.example.ui.theme.TagLivestockText
@@ -110,6 +111,7 @@ fun MkulimaApp(
     )
 ) {
     MkulimaThemeWrapper(viewModel) {
+        RequestMkulimaNotifications()
         MkulimaAppContent(viewModel)
     }
 }

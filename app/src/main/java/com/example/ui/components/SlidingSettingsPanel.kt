@@ -54,7 +54,7 @@ import com.example.data.FarmSettings
 import com.example.data.UserSession
 import com.example.ui.theme.ForestGreenPrimary
 
-/** A full-height Settings surface that slides in from the right instead of appearing as a pop-up. */
+/** A full-height Settings surface that slides in from the left instead of appearing as a pop-up. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SlidingSettingsPanel(
@@ -89,16 +89,16 @@ fun SlidingSettingsPanel(
 
             AnimatedVisibility(
                 visibleState = panelTransition,
-                enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-                exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
-                modifier = Modifier.align(Alignment.CenterEnd)
+                enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
+                exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
+                modifier = Modifier.align(Alignment.CenterStart)
             ) {
                 Surface(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(0.88f)
                         .widthIn(max = 420.dp),
-                    shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
+                    shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
                     color = Color(0xFFFCFDFB),
                     shadowElevation = 16.dp
                 ) {

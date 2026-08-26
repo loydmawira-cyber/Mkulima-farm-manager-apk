@@ -92,7 +92,8 @@ fun EditAnimalDialog(
         sire: String,
         dam: String,
         headCount: Int,
-        photoUri: String?
+        photoUri: String?,
+        notes: String
     ) -> Unit
 ) {
     val context = LocalContext.current
@@ -115,6 +116,7 @@ fun EditAnimalDialog(
     var breedingStatus by remember(animal) { mutableStateOf(animal.breedingStatus) }
     var ageText by remember(animal) { mutableStateOf(animal.age) }
     var photoUri by remember(animal) { mutableStateOf(animal.photoUri) }
+    var notes by remember(animal) { mutableStateOf(animal.notes) }
 
     // Poultry HeadCount
     var headCount by remember(animal) { mutableIntStateOf(animal.headCountInt.coerceAtLeast(1)) }
@@ -681,6 +683,20 @@ fun EditAnimalDialog(
                         )
                     }
 
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text("Notes / Origin (Optional)") },
+                        placeholder = { Text("e.g. Bought from ..., Hatched on farm, or health background") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_animal_notes_input"),
+                        shape = RoundedCornerShape(12.dp),
+                        minLines = 3
+                    )
+
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
@@ -735,7 +751,8 @@ fun EditAnimalDialog(
                                         sire,
                                         dam,
                                         headCount,
-                                        photoUri
+                                        photoUri,
+                                        notes.trim()
                                     )
                                 }
                             },

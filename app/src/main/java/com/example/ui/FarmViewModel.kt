@@ -186,14 +186,6 @@ class FarmViewModel(
         }
     }
 
-    fun updateRecoveryEmail(email: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
-        viewModelScope.launch {
-            authManager.updateRecoveryEmail(email)
-                .onSuccess(onSuccess)
-                .onFailure { onError(it.message ?: "Unable to update the recovery email.") }
-        }
-    }
-
     val rawTasks: StateFlow<List<FarmTask>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getTasksForFarm(farmId)
@@ -801,6 +793,31 @@ class FarmViewModel(
         initialValue = emptyList()
     )
 
+    /**
+     * The reminder engine may describe future scheduled tasks, but the active
+     * header badge and alert dialog must only receive reminders due today or
+     * earlier. Unknown labels remain visible rather than being hidden.
+     */
+    private fun isDueTodayOrEarlier(dueDateStr: String): Boolean {
+        val raw = dueDateStr.trim()
+        if (raw.isBlank() || raw.equals("today", ignoreCase = true) || raw.contains("overdue", ignoreCase = true)) {
+            return true
+        }
+        val todayStart = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.time
+        val parsed = listOf("dd MMM yyyy", "dd MMM, yyyy", "yyyy-MM-dd", "dd/MM/yyyy")
+            .firstNotNullOfOrNull { pattern ->
+                runCatching {
+                    SimpleDateFormat(pattern, Locale.getDefault()).apply { isLenient = false }.parse(raw)
+                }.getOrNull()
+            }
+        return parsed?.let { !it.after(todayStart) } ?: true
+    }
+
     val farmReminders: StateFlow<List<com.example.util.FarmReminder>> = combine(
         allUnits,
         rawTasks,
@@ -827,7 +844,7 @@ class FarmViewModel(
                 cattleEventsMap = eventsMap,
                 tasks = tasks,
                 completedRuleKeys = completedRuleKeys
-            )
+            ).filter { reminder -> isDueTodayOrEarlier(reminder.dueDateStr) }
         }
     }.stateIn(
         scope = viewModelScope,

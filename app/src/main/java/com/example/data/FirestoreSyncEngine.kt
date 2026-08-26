@@ -116,6 +116,15 @@ class FirestoreSyncEngine(
         prefs.edit().putLong("${farmId}_${key}", timestamp).apply()
     }
 
+    private fun subscriptionTimestamp(raw: String?): Long {
+        if (raw.isNullOrBlank()) return 0L
+        return runCatching {
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.parse(raw)?.time ?: 0L
+        }.getOrDefault(0L)
+    }
+
     fun startSync(farmId: String) {
         if (farmId.isBlank() || farmId == "FARM-DEFAULT") return
         synchronized(this) {
@@ -145,6 +154,25 @@ class FirestoreSyncEngine(
             activeListeners.add(settingsListener)
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to attach settings listener", e)
+        }
+
+        // Subscription state comes only from the verified server record. The
+        // normal settings push deliberately does not overwrite it from Android.
+        try {
+            val subscriptionListener = db.collection("farms").document(farmId)
+                .collection("meta").document("subscription")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e(TAG, "Error in subscription snapshot listener", error)
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null && snapshot.exists()) {
+                        scope.launch { applyRemoteSubscription(farmId, snapshot) }
+                    }
+                }
+            activeListeners.add(subscriptionListener)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to attach subscription listener", e)
         }
 
         // Helper for collection listeners
@@ -611,11 +639,28 @@ class FirestoreSyncEngine(
                 automaticFeedDeductionEnabled = doc.getBoolean("automaticFeedDeductionEnabled") ?: false,
                 feedDeductionLastRunDate = doc.getString("feedDeductionLastRunDate") ?: "",
                 monthlyReportsEnabled = doc.getBoolean("monthlyReportsEnabled") ?: true,
+                subscriptionTier = doc.getString("subscriptionTier") ?: existing?.subscriptionTier ?: "FREE",
+                subscriptionStatus = doc.getString("subscriptionStatus") ?: existing?.subscriptionStatus ?: "ACTIVE",
+                subscriptionExpiresAt = doc.getLong("subscriptionExpiresAt") ?: existing?.subscriptionExpiresAt ?: 0L,
                 updatedAt = remoteUpdatedAt,
                 isDeleted = doc.getBoolean("isDeleted") ?: false
             )
             farmDao.insertSettings(updated)
         }
+    }
+
+    private suspend fun applyRemoteSubscription(farmId: String, doc: DocumentSnapshot) {
+        val existing = farmDao.getSettingsSync(farmId) ?: FarmSettings(farmId = farmId)
+        val remoteUpdatedAt = subscriptionTimestamp(doc.getString("updatedAt")).takeIf { it > 0L }
+            ?: System.currentTimeMillis()
+        farmDao.insertSettings(
+            existing.copy(
+                subscriptionTier = doc.getString("tier") ?: "FREE",
+                subscriptionStatus = doc.getString("status") ?: "ACTIVE",
+                subscriptionExpiresAt = subscriptionTimestamp(doc.getString("expiresAt")),
+                updatedAt = maxOf(existing.updatedAt, remoteUpdatedAt)
+            )
+        )
     }
 
     private suspend fun applyRemoteTask(farmId: String, doc: DocumentSnapshot) {

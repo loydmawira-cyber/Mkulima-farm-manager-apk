@@ -441,6 +441,7 @@ class FarmViewModel(
         currentWeight: String = "",
         sire: String = "",
         dam: String = "",
+        notes: String = "",
         onCreated: (FarmUnit) -> Unit = {},
         onError: (String) -> Unit = {}
     ) {
@@ -463,7 +464,8 @@ class FarmViewModel(
                     weightAtBirth = weightAtBirth,
                     currentWeight = currentWeight,
                     sire = sire,
-                    dam = dam
+                    dam = dam,
+                    notes = notes.trim()
                 )
                 withContext(Dispatchers.IO) { repository.insertUnitAndReturnPrepared(newUnit) }
             }.onSuccess(onCreated).onFailure { error ->

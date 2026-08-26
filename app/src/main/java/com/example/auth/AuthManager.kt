@@ -467,17 +467,17 @@ class AuthManager(
     suspend fun updateRecoveryEmail(newRecoveryEmail: String): Result<String> = withContext(Dispatchers.IO) {
         val cleanEmail = newRecoveryEmail.trim().lowercase()
         if (!isValidRecoveryEmail(cleanEmail)) {
-            return@withContext Result.failure(IllegalArgumentException("Enter a valid recovery email address."))
+            return@withContext Result.failure<String>(IllegalArgumentException("Enter a valid recovery email address."))
         }
         val session = _currentSession.value
-            ?: return@withContext Result.failure(IllegalStateException("No active farm session found."))
+            ?: return@withContext Result.failure<String>(IllegalStateException("No active farm session found."))
         if (!session.isOwner) {
-            return@withContext Result.failure(IllegalAccessException("Only the farm owner can update the recovery email."))
+            return@withContext Result.failure<String>(IllegalAccessException("Only the farm owner can update the recovery email."))
         }
         val auth = getFirebaseAuth()
-            ?: return@withContext Result.failure(IllegalStateException("Authentication service is currently unavailable."))
+            ?: return@withContext Result.failure<String>(IllegalStateException("Authentication service is currently unavailable."))
         val user = auth.currentUser
-            ?: return@withContext Result.failure(IllegalStateException("Please sign in again before updating the recovery email."))
+            ?: return@withContext Result.failure<String>(IllegalStateException("Please sign in again before updating the recovery email."))
 
         return@withContext try {
             if (!user.email.equals(cleanEmail, ignoreCase = true)) {
@@ -493,15 +493,15 @@ class AuthManager(
                 ),
                 SetOptions.merge()
             )?.awaitTask()
-            cleanEmail
+            Result.success(cleanEmail)
         } catch (error: Throwable) {
             val message = error.message.orEmpty()
             when {
                 error is FirebaseAuthUserCollisionException || message.contains("already in use", ignoreCase = true) ->
-                    Result.failure(IllegalArgumentException("That recovery email is already used by another account."))
+                    Result.failure<String>(IllegalArgumentException("That recovery email is already used by another account."))
                 message.contains("recent login", ignoreCase = true) || message.contains("requires-recent-login", ignoreCase = true) ->
-                    Result.failure(IllegalStateException("For your security, sign out and sign in again, then update the recovery email."))
-                else -> Result.failure(IllegalStateException("Could not update the recovery email. Please try again."))
+                    Result.failure<String>(IllegalStateException("For your security, sign out and sign in again, then update the recovery email."))
+                else -> Result.failure<String>(IllegalStateException("Could not update the recovery email. Please try again."))
             }
         }
     }

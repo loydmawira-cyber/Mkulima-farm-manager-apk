@@ -122,6 +122,14 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
     }
 }
 
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `subscriptionTier` TEXT NOT NULL DEFAULT 'FREE'")
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `subscriptionStatus` TEXT NOT NULL DEFAULT 'ACTIVE'")
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `subscriptionExpiresAt` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [
         FarmTask::class,
@@ -142,7 +150,7 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
         FeedPlan::class,
         InventoryMovement::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -159,7 +167,7 @@ abstract class MkulimaDatabase : RoomDatabase() {
                     MkulimaDatabase::class.java,
                     "mkulima_farm_db"
                 )
-                    .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                    .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .addCallback(MkulimaDatabaseCallback(scope))
                     .build()

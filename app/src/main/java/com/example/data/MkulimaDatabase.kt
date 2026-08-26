@@ -116,6 +116,12 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
     }
 }
 
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `farm_units` ADD COLUMN `notes` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [
         FarmTask::class,
@@ -136,7 +142,7 @@ val MIGRATION_17_18 = object : Migration(17, 18) {
         FeedPlan::class,
         InventoryMovement::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -153,7 +159,7 @@ abstract class MkulimaDatabase : RoomDatabase() {
                     MkulimaDatabase::class.java,
                     "mkulima_farm_db"
                 )
-                    .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                    .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .addCallback(MkulimaDatabaseCallback(scope))
                     .build()

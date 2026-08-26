@@ -207,6 +207,28 @@ data class FinanceRecord(
     override val isDeleted: Boolean = false
 ) : SyncableEntity
 
+/** Metadata for a generated monthly farm report. The PDF file is stored securely outside Room. */
+@Entity(tableName = "monthly_reports")
+data class MonthlyReport(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    override val syncId: String = UUID.randomUUID().toString(),
+    override val farmId: String = "FARM-DEFAULT",
+    val reportMonth: String,
+    val title: String = "Monthly Farm Report",
+    val generatedAt: Long = System.currentTimeMillis(),
+    val fileUrl: String = "",
+    val storageKey: String = "",
+    val totalIncome: Double = 0.0,
+    val totalExpense: Double = 0.0,
+    val netBalance: Double = 0.0,
+    val inventoryItemCount: Int = 0,
+    val inventoryValue: Double = 0.0,
+    val totalMilkLitres: Double = 0.0,
+    val totalEggs: Int = 0,
+    override val updatedAt: Long = System.currentTimeMillis(),
+    override val isDeleted: Boolean = false
+) : SyncableEntity
+
 enum class RequestStatus {
     PENDING,
     APPROVED,
@@ -226,6 +248,7 @@ data class FarmSettings(
     val themeMode: String = "CLASSIC", // matches the app's default palette, so the first frame (before settings load from Room) doesn't flash a different theme
     val automaticFeedDeductionEnabled: Boolean = false,
     val feedDeductionLastRunDate: String = "",
+    val monthlyReportsEnabled: Boolean = true,
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity

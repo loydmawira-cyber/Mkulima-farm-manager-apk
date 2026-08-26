@@ -180,6 +180,22 @@ interface FarmDao {
     @Query("UPDATE finance_records SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun softDeleteFinanceRecord(id: Long, updatedAt: Long = System.currentTimeMillis())
 
+    // ================= Monthly Reports =================
+    @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY generatedAt DESC")
+    fun getMonthlyReportsByFarm(farmId: String): Flow<List<MonthlyReport>>
+
+    @Query("SELECT * FROM monthly_reports WHERE syncId = :syncId LIMIT 1")
+    suspend fun getMonthlyReportBySyncId(syncId: String): MonthlyReport?
+
+    @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getDirtyMonthlyReports(farmId: String, since: Long): List<MonthlyReport>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMonthlyReport(report: MonthlyReport): Long
+
+    @Update
+    suspend fun updateMonthlyReport(report: MonthlyReport)
+
     @Query("DELETE FROM finance_records WHERE id = :id")
     suspend fun deleteFinanceRecordById(id: Long)
 
@@ -214,7 +230,7 @@ interface FarmDao {
     @Query("DELETE FROM employee_requests WHERE id = :id")
     suspend fun deleteEmployeeRequestById(id: Long)
 
-    // ================= Settings =================
+    // ================= Farm Settings =================
     @Query("SELECT * FROM farm_settings WHERE farmId = :farmId LIMIT 1")
     fun getSettingsByFarm(farmId: String): Flow<FarmSettings?>
 

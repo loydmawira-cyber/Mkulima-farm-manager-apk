@@ -59,8 +59,8 @@ import java.io.File
 
 /**
  * Full-screen camera dialog shared by animal-photo and proof-photo flows.
- * The control tray uses navigation and keyboard insets so actions are never
- * hidden behind the phone's gesture/navigation area.
+ * The control tray uses navigation and keyboard insets plus a fixed safety
+ * margin because some full-screen dialog windows report zero navigation insets.
  */
 @Composable
 fun CameraCaptureDialog(
@@ -126,6 +126,9 @@ fun CameraCaptureDialog(
                         .background(Color.Black.copy(alpha = 0.78f))
                         .navigationBarsPadding()
                         .imePadding()
+                        // Keep the controls above the device navigation area even on
+                        // phones whose dialog window does not expose navigation insets.
+                        .padding(bottom = 44.dp)
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {

@@ -26,11 +26,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+
+      # This repository intentionally has no gradlew / Gradle wrapper. Android
+      # Gradle Plugin 9.1.1 requires Gradle 9.3.1, so download it explicitly.
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.3.1"
+          cache-provider: basic
 
       - name: Decode protected upload keystore
         env:
@@ -48,8 +55,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
           test -n "$STORE_PASSWORD" || { echo "Missing STORE_PASSWORD GitHub secret"; exit 1; }
-          chmod +x ./gradlew
-          ./gradlew bundleRelease --stacktrace
+          gradle bundleRelease --stacktrace
 
       - name: Upload signed App Bundle artifact
         uses: actions/upload-artifact@v4

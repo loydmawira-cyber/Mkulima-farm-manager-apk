@@ -43,10 +43,11 @@ jobs:
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/smart-farm-upload.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          # The phone key used Enter for its key password, so the key alias
+          # deliberately shares the keystore password saved above.
+          KEY_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
           test -n "$STORE_PASSWORD" || { echo "Missing STORE_PASSWORD GitHub secret"; exit 1; }
-          test -n "$KEY_PASSWORD" || { echo "Missing KEY_PASSWORD GitHub secret"; exit 1; }
           chmod +x ./gradlew
           ./gradlew bundleRelease --stacktrace
 

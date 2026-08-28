@@ -1207,20 +1207,33 @@ class FarmViewModel(
             "This calf is on the monthly deworming cycle until six months of age."
         }
 
-        repository.softDeleteTasksBySyncIdPrefix(taskSyncId, cow.farmId)
-        repository.insertTask(
-            FarmTask(
-                syncId = taskSyncId,
-                farmId = cow.farmId,
-                title = "Deworm ${cow.name}",
-                category = TaskCategory.LIVESTOCK,
-                targetUnit = targetName,
-                priority = if (isDueTodayOrEarlier(dueDateText)) TaskPriority.HIGH else TaskPriority.MEDIUM,
-                scheduledTime = dueDateText,
-                instructions = cycleDescription,
-                assignedWorker = "Lead Operator"
-            )
+        val existingTask = repository.getTaskBySyncId(taskSyncId)
+        val preserveCompletion = existingTask != null &&
+            existingTask.scheduledTime.trim() == dueDateText.trim() &&
+            existingTask.isCompleted
+
+        val synchronizedTask = FarmTask(
+            id = existingTask?.id ?: 0L,
+            syncId = taskSyncId,
+            farmId = cow.farmId,
+            title = "Deworm ${cow.name}",
+            category = TaskCategory.LIVESTOCK,
+            targetUnit = targetName,
+            priority = if (isDueTodayOrEarlier(dueDateText)) TaskPriority.HIGH else TaskPriority.MEDIUM,
+            scheduledTime = dueDateText,
+            instructions = cycleDescription,
+            assignedWorker = "Lead Operator",
+            isCompleted = preserveCompletion,
+            completedAt = if (preserveCompletion) existingTask?.completedAt else null,
+            proofPhotoUri = if (preserveCompletion) existingTask?.proofPhotoUri else null,
+            proofNotes = if (preserveCompletion) existingTask?.proofNotes else null
         )
+
+        if (existingTask != null) {
+            repository.updateTask(synchronizedTask)
+        } else {
+            repository.insertTask(synchronizedTask)
+        }
     }
 
     /** Rebuilds the repeat-heat checks so they always match the current source event. */

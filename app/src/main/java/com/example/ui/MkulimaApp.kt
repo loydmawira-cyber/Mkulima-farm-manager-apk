@@ -95,9 +95,9 @@ import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.WorkerManagementScreen
 import com.example.ui.screens.FinanceScreen
 import com.example.ui.screens.AssetsScreen
+import com.example.ui.screens.SubscriptionBillingScreen
 import com.example.ui.screens.FlocksScreen
 import com.example.ui.screens.MilkLogScreen
-import com.example.ui.screens.SubscriptionBillingScreen
 import com.example.notifications.RequestMkulimaNotifications
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.TagLivestockBg
@@ -379,34 +379,19 @@ fun MkulimaAppContent(
                     onError = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
                 )
             },
-            onOpenSubscriptionBilling = {
-                showSettingsPanel = false
-                showSubscriptionBillingScreen = true
-            },
             onOpenWorkerManagement = {
                 showSettingsPanel = false
                 showWorkerManagementScreen = true
+            },
+            onOpenSubscriptionBilling = {
+                showSettingsPanel = false
+                showSubscriptionBillingScreen = true
             },
             onLogout = {
                 viewModel.logout()
                 showSettingsPanel = false
             }
     )
-
-    if (showSubscriptionBillingScreen) {
-        SubscriptionBillingScreen(
-            onClose = { showSubscriptionBillingScreen = false },
-            onPurchaseForVerification = { _, _ ->
-                // The next server package replaces this notice with a verified
-                // purchase-token submission. Never unlock a tier locally here.
-                Toast.makeText(
-                    context,
-                    "Purchase received. Subscription activation will finish after secure server verification is connected.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        )
-    }
 
     if (showRemindersDialog) {
         FarmRemindersDialog(
@@ -437,7 +422,13 @@ fun MkulimaAppContent(
         )
     }
 
-    if (showWorkerManagementScreen) {
+    if (showSubscriptionBillingScreen) {
+        SubscriptionBillingScreen(
+            userSession = userSession,
+            subscriptionAccess = subscriptionAccess,
+            onClose = { showSubscriptionBillingScreen = false }
+        )
+    } else if (showWorkerManagementScreen) {
         WorkerManagementScreen(
             farmId = userSession?.farmId ?: "FARM-DEFAULT",
             farmName = userSession?.farmName ?: "Farm",
@@ -448,7 +439,7 @@ fun MkulimaAppContent(
             onDeleteWorker = { id -> viewModel.deleteWorker(id) },
             onClose = { showWorkerManagementScreen = false }
         )
-    } else if (!showSubscriptionBillingScreen) {
+    } else {
         Scaffold(
             topBar = {
                 TopAppBar(

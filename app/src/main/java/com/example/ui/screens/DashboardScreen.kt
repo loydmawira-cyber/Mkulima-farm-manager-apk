@@ -130,6 +130,43 @@ data class DashboardAlert(
     val categoryBadge: String = "MILK ALERT"
 )
 
+private fun parseDashboardCalendar(rawValue: String?): Calendar? {
+    val raw = rawValue?.trim().orEmpty()
+    if (raw.isBlank()) return null
+    if (raw.equals("today", ignoreCase = true)) return Calendar.getInstance()
+    val formats = listOf("dd MMM yyyy", "d MMM yyyy", "yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MM-yyyy", "d MMM")
+    return formats.firstNotNullOfOrNull { pattern ->
+        runCatching {
+            SimpleDateFormat(pattern, Locale.getDefault()).apply { isLenient = false }.parse(raw)?.let { parsed ->
+                Calendar.getInstance().apply { time = parsed }
+            }
+        }.getOrNull()
+    }
+}
+
+private fun dashboardSameCalendarDay(left: Calendar?, right: Calendar): Boolean =
+    left != null && left.get(Calendar.YEAR) == right.get(Calendar.YEAR) &&
+        left.get(Calendar.DAY_OF_YEAR) == right.get(Calendar.DAY_OF_YEAR)
+
+private fun dashboardInCurrentWeek(candidate: Calendar?, reference: Calendar): Boolean {
+    if (candidate == null) return false
+    val start = (reference.clone() as Calendar).apply {
+        firstDayOfWeek = Calendar.MONDAY
+        set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val endExclusive = (start.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }
+    return !candidate.before(start) && candidate.before(endExclusive)
+}
+
+private fun dashboardEggBusinessDate(log: EggLog): Calendar? {
+    val selectedDate = log.notes?.substringAfter("[", "").substringBefore("]", "")
+    return parseDashboardCalendar(selectedDate) ?: parseDashboardCalendar(log.loggedAt)
+}
+
 @Composable
 fun DashboardScreen(
     tasks: List<FarmTask> = emptyList(),
@@ -215,39 +252,49 @@ fun DashboardScreen(
         poultryUnits.size
     }
 
-    // Milk Production Calculations
-    val todayFormatted1 = remember { java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date()) }
-    val todayFormatted2 = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()) }
-    val todayFormatted3 = remember { java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()).format(java.util.Date()) }
-
-    val todayMilkLitres = remember(milkLogs) {
-        val todayLogs = milkLogs.filter { log ->
-            log.date.contains(todayFormatted1, ignoreCase = true) ||
-            log.date.contains(todayFormatted2, ignoreCase = true) ||
-            log.date.contains(todayFormatted3, ignoreCase = true) ||
-            log.date.contains("Today", ignoreCase = true) ||
-            log.loggedAt.contains(todayFormatted1, ignoreCase = true) ||
-            log.loggedAt.contains(todayFormatted3, ignoreCase = true) ||
-            log.loggedAt.contains("Today", ignoreCase = true)
+    // Production totals use the selected business date, never the audit/update timestamp.
+    // The key changes at midnight so the new day starts at zero without requiring a new record.
+    var dashboardTodayKey by remember {
+        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = Calendar.getInstance()
+            val nextMidnight = (now.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            delay((nextMidnight.timeInMillis - System.currentTimeMillis()).coerceAtLeast(1_000L))
+            dashboardTodayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         }
-        todayLogs.sumOf { it.litres }
     }
-    val weeklyMilkLitres = remember(milkLogs) {
-        milkLogs.sumOf { it.litres }
+    val dashboardToday = remember(dashboardTodayKey) { Calendar.getInstance() }
+
+    val todayMilkLitres = remember(milkLogs, dashboardTodayKey) {
+        milkLogs.filter { log ->
+            dashboardSameCalendarDay(parseDashboardCalendar(log.date), dashboardToday)
+        }.sumOf { it.litres }
+    }
+    val weeklyMilkLitres = remember(milkLogs, dashboardTodayKey) {
+        milkLogs.filter { log ->
+            dashboardInCurrentWeek(parseDashboardCalendar(log.date), dashboardToday)
+        }.sumOf { it.litres }
     }
 
-    // Egg Production Calculations
-    val todayEggsCount = remember(eggLogs) {
-        val todayLogs = eggLogs.filter { log ->
-            log.loggedAt.contains(todayFormatted1, ignoreCase = true) ||
-            log.loggedAt.contains(todayFormatted2, ignoreCase = true) ||
-            log.loggedAt.contains(todayFormatted3, ignoreCase = true) ||
-            log.loggedAt.contains("Today", ignoreCase = true)
-        }
-        todayLogs.sumOf { it.totalEggs }
+    // EggLog has no separate business-date column. If the entry screen encoded a selected date
+    // in notes, prefer it; otherwise loggedAt is the only available business timestamp.
+    val todayEggsCount = remember(eggLogs, dashboardTodayKey) {
+        eggLogs.filter { log ->
+            dashboardSameCalendarDay(dashboardEggBusinessDate(log), dashboardToday)
+        }.sumOf { it.totalEggs }
     }
-    val weeklyEggsCount = remember(eggLogs) {
-        eggLogs.sumOf { it.totalEggs }
+    val weeklyEggsCount = remember(eggLogs, dashboardTodayKey) {
+        eggLogs.filter { log ->
+            dashboardInCurrentWeek(dashboardEggBusinessDate(log), dashboardToday)
+        }.sumOf { it.totalEggs }
     }
 
     // Cattle Stage Breakdown Counts

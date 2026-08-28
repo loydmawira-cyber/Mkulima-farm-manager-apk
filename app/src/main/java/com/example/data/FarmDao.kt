@@ -199,8 +199,8 @@ interface FarmDao {
     @Query("SELECT * FROM monthly_reports WHERE syncId = :syncId LIMIT 1")
     suspend fun getMonthlyReportBySyncId(syncId: String): MonthlyReport?
 
-    @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY generatedAt DESC")
-    fun getMonthlyReportsForFarm(farmId: String): Flow<List<MonthlyReport>>
+    @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getDirtyMonthlyReports(farmId: String, since: Long): List<MonthlyReport>
 
     @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getMonthlyReportsUpdatedSince(farmId: String, since: Long): List<MonthlyReport>

@@ -168,6 +168,10 @@ fun MkulimaAppContent(
         return
     }
 
+    // StateFlow delegation is not smart-castable across the Compose branch.
+    // Capture the non-null session once for screens that require an owner session.
+    val activeSession = userSession ?: return
+
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
     val selectedStatusFilter by viewModel.selectedStatusFilter.collectAsState()
@@ -424,7 +428,7 @@ fun MkulimaAppContent(
 
     if (showSubscriptionBillingScreen) {
         SubscriptionBillingScreen(
-            userSession = userSession,
+            userSession = activeSession,
             subscriptionAccess = subscriptionAccess,
             onClose = { showSubscriptionBillingScreen = false }
         )

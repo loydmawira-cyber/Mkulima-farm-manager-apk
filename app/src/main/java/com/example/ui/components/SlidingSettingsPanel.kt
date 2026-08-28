@@ -140,6 +140,20 @@ fun SlidingSettingsPanel(
                         Text("ACCOUNT & SESSION", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(Modifier.height(8.dp))
                         if (isOwner) {
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    onOpenSubscriptionBilling()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFDDF5E7),
+                                    contentColor = Color(0xFF14532D)
+                                )
+                            ) {
+                                Text("SUBSCRIPTION & BILLING", fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(12.dp))
                             Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFF3F8F5), modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     Text("Recovery email", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF153E2D))
@@ -243,14 +257,6 @@ fun SlidingSettingsPanel(
 
                         if (isOwner) {
                             Spacer(Modifier.height(24.dp))
-                            Button(
-                                onClick = onOpenSubscriptionBilling,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8F5E9), contentColor = Color(0xFF166534))
-                            ) {
-                                Text("  SUBSCRIPTION & BILLING", fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(Modifier.height(10.dp))
                             Button(
                                 onClick = onOpenWorkerManagement,
                                 modifier = Modifier.fillMaxWidth(),

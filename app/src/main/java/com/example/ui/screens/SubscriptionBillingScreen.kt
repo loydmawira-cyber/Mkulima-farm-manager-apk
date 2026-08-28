@@ -60,6 +60,10 @@ fun SubscriptionBillingScreen(
     var pendingCheckoutTier by remember { mutableStateOf<PaystackCheckoutTier?>(null) }
     var pendingReference by remember { mutableStateOf<String?>(null) }
     var isVerifyingPayment by remember { mutableStateOf(false) }
+    val hasActivePremium = subscriptionAccess.status == SubscriptionStatus.ACTIVE &&
+        subscriptionAccess.tier == SubscriptionTier.PREMIUM
+    val hasActivePro = subscriptionAccess.status == SubscriptionStatus.ACTIVE &&
+        subscriptionAccess.tier == SubscriptionTier.PRO
     var message by remember {
         mutableStateOf(
             if (subscriptionAccess.status == SubscriptionStatus.EXPIRED) {
@@ -190,17 +194,28 @@ fun SubscriptionBillingScreen(
             title = "Premium",
             details = "Up to 15 cattle and 2 poultry flocks, with all features.",
             price = "US$10/year • KES 1,300 charged",
-            buttonText = if (startingTier == PaystackCheckoutTier.PREMIUM) null else "Choose Premium",
+            buttonText = when {
+                startingTier == PaystackCheckoutTier.PREMIUM -> null
+                hasActivePremium -> "Current plan"
+                hasActivePro -> null
+                else -> "Choose Premium"
+            },
             onChoose = { beginCheckout(PaystackCheckoutTier.PREMIUM) },
-            isLoading = startingTier == PaystackCheckoutTier.PREMIUM
+            isLoading = startingTier == PaystackCheckoutTier.PREMIUM,
+            isActionEnabled = !hasActivePremium
         )
         PlanCard(
             title = "Pro",
             details = "Unlimited cattle and poultry flocks, with all features.",
             price = "US$30/year • KES 3,900 charged",
-            buttonText = if (startingTier == PaystackCheckoutTier.PRO) null else "Choose Pro",
+            buttonText = when {
+                startingTier == PaystackCheckoutTier.PRO -> null
+                hasActivePro -> "Current plan"
+                else -> "Choose Pro"
+            },
             onChoose = { beginCheckout(PaystackCheckoutTier.PRO) },
-            isLoading = startingTier == PaystackCheckoutTier.PRO
+            isLoading = startingTier == PaystackCheckoutTier.PRO,
+            isActionEnabled = !hasActivePro
         )
 
         Spacer(Modifier.height(4.dp))
@@ -217,7 +232,8 @@ private fun PlanCard(
     price: String,
     buttonText: String?,
     onChoose: () -> Unit,
-    isLoading: Boolean = false
+    isLoading: Boolean = false,
+    isActionEnabled: Boolean = true
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -234,7 +250,7 @@ private fun PlanCard(
             if (buttonText != null || isLoading) {
                 Button(
                     onClick = onChoose,
-                    enabled = !isLoading,
+                    enabled = !isLoading && isActionEnabled,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     if (isLoading) {

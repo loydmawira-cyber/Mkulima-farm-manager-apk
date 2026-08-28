@@ -35,6 +35,7 @@ class FarmRepository(
     fun getEmployeeRequestsForWorker(farmId: String, workerId: String, emailOrPhone: String, name: String): Flow<List<EmployeeRequest>> =
         farmDao.getEmployeeRequestsForWorker(farmId, workerId, emailOrPhone, name)
     fun getSettingsForFarm(farmId: String): Flow<FarmSettings?> = farmDao.getSettingsByFarm(farmId)
+    fun getMonthlyReportsForFarm(farmId: String): Flow<List<MonthlyReport>> = farmDao.getMonthlyReportsForFarm(farmId)
     fun getWorkersForFarm(farmId: String): Flow<List<WorkerAccount>> = farmDao.getWorkersByFarm(farmId)
 
     suspend fun getTaskById(id: Long): FarmTask? = farmDao.getTaskById(id)

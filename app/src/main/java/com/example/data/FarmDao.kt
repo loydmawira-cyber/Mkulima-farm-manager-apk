@@ -109,6 +109,9 @@ interface FarmDao {
     @Query("SELECT * FROM milk_logs WHERE syncId = :syncId LIMIT 1")
     suspend fun getMilkLogBySyncId(syncId: String): MilkLog?
 
+    @Query("SELECT * FROM milk_logs WHERE id = :id LIMIT 1")
+    suspend fun getMilkLogById(id: Long): MilkLog?
+
     @Query("SELECT * FROM milk_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyMilkLogs(farmId: String, since: Long): List<MilkLog>
 
@@ -136,6 +139,9 @@ interface FarmDao {
 
     @Query("SELECT * FROM egg_logs WHERE syncId = :syncId LIMIT 1")
     suspend fun getEggLogBySyncId(syncId: String): EggLog?
+
+    @Query("SELECT * FROM egg_logs WHERE id = :id LIMIT 1")
+    suspend fun getEggLogById(id: Long): EggLog?
 
     @Query("SELECT * FROM egg_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyEggLogs(farmId: String, since: Long): List<EggLog>
@@ -165,6 +171,9 @@ interface FarmDao {
     @Query("SELECT * FROM finance_records WHERE syncId = :syncId LIMIT 1")
     suspend fun getFinanceRecordBySyncId(syncId: String): FinanceRecord?
 
+    @Query("SELECT * FROM finance_records WHERE id = :id LIMIT 1")
+    suspend fun getFinanceRecordById(id: Long): FinanceRecord?
+
     @Query("SELECT * FROM finance_records WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyFinanceRecords(farmId: String, since: Long): List<FinanceRecord>
 
@@ -179,22 +188,6 @@ interface FarmDao {
 
     @Query("UPDATE finance_records SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun softDeleteFinanceRecord(id: Long, updatedAt: Long = System.currentTimeMillis())
-
-    // ================= Monthly Reports =================
-    @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY generatedAt DESC")
-    fun getMonthlyReportsByFarm(farmId: String): Flow<List<MonthlyReport>>
-
-    @Query("SELECT * FROM monthly_reports WHERE syncId = :syncId LIMIT 1")
-    suspend fun getMonthlyReportBySyncId(syncId: String): MonthlyReport?
-
-    @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
-    suspend fun getDirtyMonthlyReports(farmId: String, since: Long): List<MonthlyReport>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMonthlyReport(report: MonthlyReport): Long
-
-    @Update
-    suspend fun updateMonthlyReport(report: MonthlyReport)
 
     @Query("DELETE FROM finance_records WHERE id = :id")
     suspend fun deleteFinanceRecordById(id: Long)
@@ -211,6 +204,9 @@ interface FarmDao {
 
     @Query("SELECT * FROM employee_requests WHERE syncId = :syncId LIMIT 1")
     suspend fun getEmployeeRequestBySyncId(syncId: String): EmployeeRequest?
+
+    @Query("SELECT * FROM employee_requests WHERE id = :id LIMIT 1")
+    suspend fun getEmployeeRequestById(id: Long): EmployeeRequest?
 
     @Query("SELECT * FROM employee_requests WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyEmployeeRequests(farmId: String, since: Long): List<EmployeeRequest>
@@ -230,7 +226,7 @@ interface FarmDao {
     @Query("DELETE FROM employee_requests WHERE id = :id")
     suspend fun deleteEmployeeRequestById(id: Long)
 
-    // ================= Farm Settings =================
+    // ================= Settings =================
     @Query("SELECT * FROM farm_settings WHERE farmId = :farmId LIMIT 1")
     fun getSettingsByFarm(farmId: String): Flow<FarmSettings?>
 

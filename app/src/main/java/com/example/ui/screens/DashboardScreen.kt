@@ -70,6 +70,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import com.example.data.EggLog
 import com.example.data.EmployeeRequest
 import com.example.data.FarmTask
@@ -344,7 +345,25 @@ fun DashboardScreen(
         }
     }
 
-    val todayDateVariants = remember {
+    var todayKey by remember {
+        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = Calendar.getInstance()
+            val nextMidnight = (now.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            delay((nextMidnight.timeInMillis - System.currentTimeMillis()).coerceAtLeast(1_000L))
+            todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        }
+    }
+
+    val todayDateVariants = remember(todayKey) {
         val now = Date()
         listOf(
             SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(now),
@@ -358,28 +377,27 @@ fun DashboardScreen(
         )
     }
 
-    val todayTasksCount = remember(tasks, farmReminders) {
+    val todayTasksCount = remember(tasks, farmReminders, todayKey) {
         val isDateMatchingToday: (String?) -> Boolean = { str ->
             if (str.isNullOrBlank()) false
             else {
                 val trimmed = str.trim()
                 trimmed.contains("Today", ignoreCase = true) ||
-                        todayDateVariants.any { trimmed.contains(it, ignoreCase = true) }
+                    trimmed.contains("Overdue", ignoreCase = true) ||
+                    todayDateVariants.any { trimmed.contains(it, ignoreCase = true) }
             }
         }
 
         val todayTasks = tasks.filter { task ->
             !task.isCompleted && (
-                isDateMatchingToday(task.scheduledTime) ||
-                task.scheduledTime.isBlank() ||
-                task.priority == TaskPriority.HIGH
+                isDateMatchingToday(task.scheduledTime) || task.scheduledTime.isBlank()
             )
         }
 
         val todayReminders = farmReminders.filter { reminder ->
             !reminder.id.startsWith("task_") && !reminder.isCompleted && (
                 reminder.urgency == ReminderUrgency.TODAY ||
-                reminder.daysRemaining == 0 ||
+                reminder.daysRemaining <= 0 ||
                 isDateMatchingToday(reminder.dueDateStr)
             )
         }

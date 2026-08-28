@@ -16,7 +16,6 @@ class FarmRepository(
     val allEggLogs: Flow<List<EggLog>> = farmDao.getAllEggLogs()
     val allFinanceRecords: Flow<List<FinanceRecord>> = farmDao.getAllFinanceRecords()
     val allEmployeeRequests: Flow<List<EmployeeRequest>> = farmDao.getAllEmployeeRequests()
-    val allPoultryLogs: Flow<List<PoultryLog>> = farmDao.getAllPoultryLogs("FARM-DEFAULT")
 
     val farmSettings: Flow<FarmSettings?> = farmDao.getSettings()
 
@@ -27,7 +26,6 @@ class FarmRepository(
     fun getInventoryItemsForFarm(farmId: String): Flow<List<InventoryItem>> = farmDao.getInventoryItemsByFarm(farmId)
     fun getFeedPlansForFarm(farmId: String): Flow<List<FeedPlan>> = farmDao.getFeedPlansByFarm(farmId)
     fun getInventoryMovementsForFarm(farmId: String): Flow<List<InventoryMovement>> = farmDao.getInventoryMovementsByFarm(farmId)
-    fun getMonthlyReportsForFarm(farmId: String): Flow<List<MonthlyReport>> = farmDao.getMonthlyReportsByFarm(farmId)
     fun getFieldPlansForFarm(farmId: String): Flow<List<FieldPlan>> = farmDao.getFieldPlansByFarm(farmId)
     fun getEggLogsForFarm(farmId: String): Flow<List<EggLog>> = farmDao.getEggLogsByFarm(farmId)
     fun getFinanceRecordsForFarm(farmId: String): Flow<List<FinanceRecord>> = farmDao.getFinanceRecordsByFarm(farmId)
@@ -172,11 +170,11 @@ class FarmRepository(
     }
 
     suspend fun deleteMilkLog(id: Long) {
+        val log = farmDao.getMilkLogById(id)
+            ?: throw IllegalArgumentException("Milk log was not found.")
         val now = System.currentTimeMillis()
-        val allLogs = farmDao.getDirtyMilkLogs("FARM-DEFAULT", 0)
-        val log = allLogs.find { it.id == id }
         farmDao.softDeleteMilkLog(id, now)
-        syncEngine?.triggerPush(log?.farmId)
+        syncEngine?.triggerPush(log.farmId)
     }
 
     suspend fun insertEggLog(log: EggLog): Long {
@@ -199,11 +197,11 @@ class FarmRepository(
     }
 
     suspend fun deleteEggLog(id: Long) {
+        val log = farmDao.getEggLogById(id)
+            ?: throw IllegalArgumentException("Egg log was not found.")
         val now = System.currentTimeMillis()
-        val allLogs = farmDao.getDirtyEggLogs("FARM-DEFAULT", 0)
-        val log = allLogs.find { it.id == id }
         farmDao.softDeleteEggLog(id, now)
-        syncEngine?.triggerPush(log?.farmId)
+        syncEngine?.triggerPush(log.farmId)
     }
 
     suspend fun insertFinanceRecord(record: FinanceRecord): Long {
@@ -226,11 +224,11 @@ class FarmRepository(
     }
 
     suspend fun deleteFinanceRecord(id: Long) {
+        val record = farmDao.getFinanceRecordById(id)
+            ?: throw IllegalArgumentException("Finance record was not found.")
         val now = System.currentTimeMillis()
-        val allRecs = farmDao.getDirtyFinanceRecords("FARM-DEFAULT", 0)
-        val rec = allRecs.find { it.id == id }
         farmDao.softDeleteFinanceRecord(id, now)
-        syncEngine?.triggerPush(rec?.farmId)
+        syncEngine?.triggerPush(record.farmId)
     }
 
     suspend fun insertEmployeeRequest(request: EmployeeRequest): Long {
@@ -253,11 +251,11 @@ class FarmRepository(
     }
 
     suspend fun deleteEmployeeRequest(id: Long) {
+        val request = farmDao.getEmployeeRequestById(id)
+            ?: throw IllegalArgumentException("Worker request was not found.")
         val now = System.currentTimeMillis()
-        val allReqs = farmDao.getDirtyEmployeeRequests("FARM-DEFAULT", 0)
-        val req = allReqs.find { it.id == id }
         farmDao.softDeleteEmployeeRequest(id, now)
-        syncEngine?.triggerPush(req?.farmId)
+        syncEngine?.triggerPush(request.farmId)
     }
 
     suspend fun updateSettings(settings: FarmSettings) {
@@ -267,19 +265,6 @@ class FarmRepository(
         )
         farmDao.insertSettings(prepared)
         syncEngine?.triggerPush(settings.farmId)
-    }
-
-    suspend fun insertOrUpdateMonthlyReport(report: MonthlyReport): Long {
-        val existing = farmDao.getMonthlyReportBySyncId(report.syncId)
-        val prepared = report.copy(updatedAt = System.currentTimeMillis(), isDeleted = false)
-        if (existing == null) {
-            val id = farmDao.insertMonthlyReport(prepared)
-            syncEngine?.triggerPush(prepared.farmId)
-            return id
-        }
-        farmDao.updateMonthlyReport(prepared.copy(id = existing.id))
-        syncEngine?.triggerPush(prepared.farmId)
-        return existing.id
     }
 
 
@@ -445,11 +430,11 @@ class FarmRepository(
     }
 
     suspend fun deleteCattleEvent(id: Long) {
+        val event = farmDao.getCattleEventById(id)
+            ?: throw IllegalArgumentException("Cattle event was not found.")
         val now = System.currentTimeMillis()
-        val allEvents = farmDao.getDirtyCattleEvents("FARM-DEFAULT", 0)
-        val event = allEvents.find { it.id == id }
         farmDao.softDeleteCattleEvent(id, now)
-        syncEngine?.triggerPush(event?.farmId)
+        syncEngine?.triggerPush(event.farmId)
     }
 
 

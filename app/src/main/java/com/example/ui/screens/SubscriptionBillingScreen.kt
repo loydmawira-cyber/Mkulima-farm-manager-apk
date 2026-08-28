@@ -231,15 +231,17 @@ private fun PlanCard(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
-            Button(
-                onClick = onChoose,
-                enabled = !isLoading,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(strokeWidth = 2.dp)
-                } else {
-                    Text(buttonText ?: "Start checkout")
+            if (buttonText != null || isLoading) {
+                Button(
+                    onClick = onChoose,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(strokeWidth = 2.dp)
+                    } else {
+                        Text(buttonText.orEmpty())
+                    }
                 }
             }
         }

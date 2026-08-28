@@ -682,19 +682,6 @@ fun FlocksScreen(
         }
     }
 
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val deletedPrefs = remember { context.getSharedPreferences("mkulima_deleted_animals", android.content.Context.MODE_PRIVATE) }
-    var deletedSet by remember {
-        mutableStateOf(
-            try {
-                deletedPrefs.getStringSet("deleted_ids", emptySet()) ?: emptySet()
-            } catch (e: Exception) {
-                val raw = try { deletedPrefs.getString("deleted_ids", "") ?: "" } catch (ex: Exception) { "" }
-                if (raw.isNotBlank()) raw.split(",").toSet() else emptySet()
-            }
-        )
-    }
-
     val allDbCattleEvents by viewModel.allCattleEvents.collectAsStateWithLifecycle(initialValue = emptyList())
     val allDbPoultryLogs by viewModel.allPoultryLogs.collectAsStateWithLifecycle(initialValue = emptyList())
     val reminderCompletions by viewModel.reminderCompletions.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -772,40 +759,19 @@ fun FlocksScreen(
         }
     }
 
-    val initialAnimals = remember(units, milkLogs, allDbCattleEvents, deletedSet) {
-        (roomAnimals + mockAnimals)
-            .filter { !deletedSet.contains(it.id) && !deletedSet.contains(it.name.lowercase()) }
-            .distinctBy { it.name }
-    }
-
-    val mutableAnimals = remember { mutableStateListOf<AnimalDetailData>().apply { addAll(initialAnimals) } }
+    val mutableAnimals = remember { mutableStateListOf<AnimalDetailData>() }
 
     val allAnimalEventsMap = remember {
         mutableStateMapOf<String, SnapshotStateList<CattleEventItem>>()
     }
 
-    LaunchedEffect(units, deletedSet, roomAnimals) {
-        roomAnimals.forEach { rAnimal ->
-            if (!deletedSet.contains(rAnimal.id) && !deletedSet.contains(rAnimal.name.lowercase())) {
-                val idx = mutableAnimals.indexOfFirst { it.id == rAnimal.id }
-                if (idx >= 0) {
-                    mutableAnimals[idx] = rAnimal
-                } else {
-                    val nameIdx = mutableAnimals.indexOfFirst { it.name.equals(rAnimal.name, ignoreCase = true) }
-                    if (nameIdx >= 0) {
-                        mutableAnimals[nameIdx] = rAnimal
-                    } else {
-                        mutableAnimals.add(rAnimal)
-                    }
-                }
-            }
-        }
-        mutableAnimals.removeAll { deletedSet.contains(it.id) || deletedSet.contains(it.name.lowercase()) }
+    LaunchedEffect(farmSettings.farmId, roomAnimals) {
+        val currentFarmAnimals = roomAnimals.distinctBy { it.id }
+        mutableAnimals.clear()
+        mutableAnimals.addAll(currentFarmAnimals)
         if (selectedAnimal != null) {
             val curr = mutableAnimals.find { it.id == selectedAnimal?.id || it.name.equals(selectedAnimal?.name, ignoreCase = true) }
-            if (curr != null) {
-                selectedAnimal = curr
-            }
+            selectedAnimal = curr
         }
     }
 
@@ -916,9 +882,6 @@ fun FlocksScreen(
     }
 
     fun handleDeleteAnimalCompletely(animal: AnimalDetailData) {
-        val newDeleted = deletedSet + animal.id + animal.name.lowercase() + (if (animal.id.startsWith("unit_")) animal.id.removePrefix("unit_") else "")
-        deletedSet = newDeleted
-        deletedPrefs.edit().putStringSet("deleted_ids", newDeleted).apply()
         mutableAnimals.removeAll { it.id == animal.id || it.name.equals(animal.name, ignoreCase = true) }
         if (selectedAnimal?.id == animal.id || selectedAnimal?.name.equals(animal.name, ignoreCase = true)) {
             selectedAnimal = null

@@ -191,7 +191,22 @@ interface FarmDao {
 
     @Query("DELETE FROM finance_records WHERE id = :id")
     suspend fun deleteFinanceRecordById(id: Long)
+    
+// ================= Monthly Reports =================
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMonthlyReport(report: MonthlyReport): Long
 
+    @Query("SELECT * FROM monthly_reports WHERE syncId = :syncId LIMIT 1")
+    suspend fun getMonthlyReportBySyncId(syncId: String): MonthlyReport?
+
+    @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY generatedAt DESC")
+    fun getMonthlyReportsForFarm(farmId: String): Flow<List<MonthlyReport>>
+
+    @Query("SELECT * FROM monthly_reports WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getMonthlyReportsUpdatedSince(farmId: String, since: Long): List<MonthlyReport>
+
+    @Query("UPDATE monthly_reports SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun softDeleteMonthlyReport(id: Long, updatedAt: Long = System.currentTimeMillis())
     // ================= Employee Requests =================
     @Query("SELECT * FROM employee_requests WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY id DESC")
     fun getEmployeeRequestsByFarm(farmId: String): Flow<List<EmployeeRequest>>

@@ -182,7 +182,9 @@ fun SubscriptionBillingScreen(
         PlanCard(
             title = "Free",
             details = "2 cattle only. No poultry, Finance, Reports, or Worker Management.",
-            price = "No cost"
+            price = "No cost",
+            buttonText = null,
+            onChoose = {}
         )
         PlanCard(
             title = "Premium",

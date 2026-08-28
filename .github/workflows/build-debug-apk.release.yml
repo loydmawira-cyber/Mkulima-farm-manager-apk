@@ -29,7 +29,13 @@ jobs:
           chmod +x ./gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        env:
+          GRADLE_OPTS: >-
+            -Dorg.gradle.daemon=false
+            -Dorg.gradle.parallel=false
+            -Dorg.gradle.configuration-cache=false
+            -Dkotlin.incremental=false
+        run: ./gradlew --no-daemon --no-build-cache --no-configuration-cache clean assembleDebug --stacktrace
 
       - name: Publish APK as GitHub Release asset
         env:

@@ -163,7 +163,9 @@ private fun dashboardInCurrentWeek(candidate: Calendar?, reference: Calendar): B
 }
 
 private fun dashboardEggBusinessDate(log: EggLog): Calendar? {
-    val selectedDate = log.notes?.substringAfter("[", "").substringBefore("]", "")
+    val selectedDate = log.notes?.let { notes ->
+        notes.substringAfter("[", "").substringBefore("]", "")
+    }
     return parseDashboardCalendar(selectedDate) ?: parseDashboardCalendar(log.loggedAt)
 }
 

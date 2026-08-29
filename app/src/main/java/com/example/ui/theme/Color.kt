@@ -7,8 +7,6 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * Single public source for the colors used by Smart Farm App screens and dialogs.
- * Replace the existing Color.kt or Colors.kt contents with this complete file.
- * Do not keep another file in com.example.ui.theme declaring any of these names.
  */
 
 private val ColorScheme.isLightScheme: Boolean
@@ -171,6 +169,7 @@ val TagHrText: Color
         light = { Color(0xFF9A3412) },
         dark = { Color(0xFFFFD7AA) },
     )
+
 val TagHRBg: Color
     @Composable
     get() = TagHrBg
@@ -178,7 +177,6 @@ val TagHRBg: Color
 val TagHRText: Color
     @Composable
     get() = TagHrText
-    )
 
 /** Livestock tag background and text. */
 val TagLivestockBg: Color
@@ -207,5 +205,4 @@ val TagYieldText: Color
     @Composable
     get() = MaterialTheme.colorScheme.byTheme(
         light = { Color(0xFF92400E) },
-        dark = { Color(0xFFFFE7A3) },
-    )
+        dark = { Color(0xFFFF

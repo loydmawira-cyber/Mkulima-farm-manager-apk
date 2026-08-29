@@ -321,48 +321,55 @@ object FarmReminderEngine {
                 }
 
                 // E. Cattle Deworming Reminders
-                if (isDewormingDue) {
+                val hasRecentDewormingEvent = events.any { event ->
+                    (event.category.equals("DEWORMING", ignoreCase = true) ||
+                        event.category.equals("DEWORM", ignoreCase = true) ||
+                        event.title.contains("Deworm", ignoreCase = true) ||
+                        event.details.contains("deworm", ignoreCase = true)) &&
+                        parseDate(event.date)?.let { (today.time - it.time) < 90L * 24 * 60 * 60 * 1000 } == true
+                }
+                val isDewormingSuppressed = hasRecentDewormingEvent ||
+                    isSuppressedByCompletion("cattle_deworm_${unit.id}", 30, completedRuleKeys, today) ||
+                    isSuppressedByCompletion("cattle_deworm_routine_${unit.id}", 90, completedRuleKeys, today)
+
+                if (isDewormingDue && !isDewormingSuppressed) {
                     val dewormRuleKey = "cattle_deworm_${unit.id}"
-                    if (!isSuppressedByCompletion(dewormRuleKey, 14, completedRuleKeys, today)) {
-                        reminders.add(
-                            FarmReminder(
-                                id = dewormRuleKey,
-                                type = ReminderType.DEWORMING,
-                                title = "Quarterly Deworming (Liver Fluke & Roundworms)",
-                                targetName = unit.name,
-                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
-                                dueDateStr = unit.lastUpdated.ifBlank { dateFormat.format(today) },
-                                daysRemaining = 0,
-                                urgency = ReminderUrgency.TODAY,
-                                details = "Deworming cycle overdue or due today for ${unit.name}.",
-                                recommendation = "Administer Albendazole 10% oral drench (10ml per 100kg bodyweight) or Closantel.",
-                                actionLabel = "Log Deworming",
-                                unitId = unit.id
-                            )
+                    reminders.add(
+                        FarmReminder(
+                            id = dewormRuleKey,
+                            type = ReminderType.DEWORMING,
+                            title = "Quarterly Deworming (Liver Fluke & Roundworms)",
+                            targetName = unit.name,
+                            targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
+                            dueDateStr = unit.lastUpdated.ifBlank { dateFormat.format(today) },
+                            daysRemaining = 0,
+                            urgency = ReminderUrgency.TODAY,
+                            details = "Deworming cycle overdue or due today for ${unit.name}.",
+                            recommendation = "Administer Albendazole 10% oral drench (10ml per 100kg bodyweight) or Closantel.",
+                            actionLabel = "Log Deworming",
+                            unitId = unit.id
                         )
-                    }
-                } else {
+                    )
+                } else if (!isDewormingDue && !isDewormingSuppressed) {
                     val routineDewormRuleKey = "cattle_deworm_routine_${unit.id}"
-                    if (!isSuppressedByCompletion(routineDewormRuleKey, 21, completedRuleKeys, today)) {
-                        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 21) }
-                        val upcomingDewormDateStr = dateFormat.format(cal.time)
-                        reminders.add(
-                            FarmReminder(
-                                id = routineDewormRuleKey,
-                                type = ReminderType.DEWORMING,
-                                title = "Routine Seasonal Deworming",
-                                targetName = unit.name,
-                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
-                                dueDateStr = upcomingDewormDateStr,
-                                daysRemaining = 21,
-                                urgency = ReminderUrgency.UPCOMING,
-                                details = "Scheduled seasonal anti-parasitic drench for pasture grazing stock.",
-                                recommendation = "Alternate between Albendazole and Ivermectin/Levamisole to prevent drug resistance.",
-                                actionLabel = "Log Deworming",
-                                unitId = unit.id
-                            )
+                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 21) }
+                    val upcomingDewormDateStr = dateFormat.format(cal.time)
+                    reminders.add(
+                        FarmReminder(
+                            id = routineDewormRuleKey,
+                            type = ReminderType.DEWORMING,
+                            title = "Routine Seasonal Deworming",
+                            targetName = unit.name,
+                            targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else unit.breed,
+                            dueDateStr = upcomingDewormDateStr,
+                            daysRemaining = 21,
+                            urgency = ReminderUrgency.UPCOMING,
+                            details = "Scheduled seasonal anti-parasitic drench for pasture grazing stock.",
+                            recommendation = "Alternate between Albendazole and Ivermectin/Levamisole to prevent drug resistance.",
+                            actionLabel = "Log Deworming",
+                            unitId = unit.id
                         )
-                    }
+                    )
                 }
             }
         }

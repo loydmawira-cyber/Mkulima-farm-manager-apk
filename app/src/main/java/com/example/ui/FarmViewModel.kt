@@ -417,6 +417,26 @@ class FarmViewModel(
         }
     }
 
+    private fun findMatchingUnitForTask(task: FarmTask, units: List<FarmUnit>): FarmUnit? {
+        val syncIdParts = task.syncId.split("-")
+        val unitIdFromSync = syncIdParts.lastOrNull()?.toLongOrNull()
+        if (unitIdFromSync != null && unitIdFromSync > 0) {
+            val direct = units.find { it.id == unitIdFromSync }
+            if (direct != null) return direct
+        }
+        val targetName = task.targetUnit.trim()
+        if (targetName.isNotBlank() && targetName != "General Farm Area" && targetName != "General Farm Task") {
+            val directMatch = units.find {
+                it.name.equals(targetName, ignoreCase = true) ||
+                    "${it.name} • Tag ${it.tagNumber}".equals(targetName, ignoreCase = true) ||
+                    (it.tagNumber.isNotBlank() && targetName.contains(it.tagNumber, ignoreCase = true)) ||
+                    targetName.contains(it.name, ignoreCase = true)
+            }
+            if (directMatch != null) return directMatch
+        }
+        return units.find { task.title.contains(it.name, ignoreCase = true) }
+    }
+
     fun completeTaskWithProof(
         taskId: Long,
         photoUriString: String?,
@@ -426,13 +446,102 @@ class FarmViewModel(
             if (!canWriteFarmData()) return@launch
             val existingTask = repository.getTaskById(taskId) ?: return@launch
             val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+            val dateFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
             val updatedTask = existingTask.copy(
                 isCompleted = true,
                 completedAt = nowFormatted,
                 proofPhotoUri = photoUriString ?: existingTask.proofPhotoUri,
-                proofNotes = notes ?: existingTask.proofNotes ?: "Task completed with photo verification."
+                proofNotes = notes ?: existingTask.proofNotes ?: "Task completed with photo verification.",
+                updatedAt = System.currentTimeMillis()
             )
             repository.updateTask(updatedTask)
+
+            val farmId = existingTask.farmId.ifBlank { currentSession.value?.farmId ?: "FARM-DEFAULT" }
+            val isDeworm = existingTask.title.contains("Deworm", ignoreCase = true) ||
+                existingTask.syncId.contains("deworm", ignoreCase = true) ||
+                (existingTask.instructions?.contains("deworm", ignoreCase = true) == true)
+            val isVaccin = existingTask.title.contains("Vaccin", ignoreCase = true) ||
+                existingTask.syncId.contains("vac", ignoreCase = true) ||
+                (existingTask.instructions?.contains("vaccin", ignoreCase = true) == true)
+
+            val matchedUnit = findMatchingUnitForTask(existingTask, allUnits.value)
+            if (matchedUnit != null) {
+                if (isCattleUnit(matchedUnit)) {
+                    if (isDeworm) {
+                        val event = CattleEvent(
+                            farmId = farmId,
+                            unitId = matchedUnit.id,
+                            category = "DEWORMING",
+                            title = "Deworming Administered",
+                            date = dateFormatted,
+                            details = existingTask.instructions ?: "Routine deworming completed from Farm Tasks & Operations",
+                            notes = notes ?: "Completed on $nowFormatted"
+                        )
+                        repository.insertCattleEvent(event)
+                        repository.markReminderComplete(farmId, "cattle_deworm_${matchedUnit.id}", matchedUnit.id)
+                        repository.markReminderComplete(farmId, "cattle_deworm_routine_${matchedUnit.id}", matchedUnit.id)
+
+                        if (matchedUnit.healthStatus.contains("Deworm", ignoreCase = true)) {
+                            repository.updateUnit(matchedUnit.copy(healthStatus = "Healthy", lastUpdated = nowFormatted))
+                        }
+                        synchronizeDewormingTask(
+                            matchedUnit,
+                            sourceEvents = allCattleEvents.value.filterNot { it.id == event.id } + event
+                        )
+                    } else if (isVaccin) {
+                        val event = CattleEvent(
+                            farmId = farmId,
+                            unitId = matchedUnit.id,
+                            category = "VACCINATION",
+                            title = existingTask.title,
+                            date = dateFormatted,
+                            details = existingTask.instructions ?: "Vaccination administered from Tasks",
+                            notes = notes ?: "Completed on $nowFormatted"
+                        )
+                        repository.insertCattleEvent(event)
+                        repository.markReminderComplete(farmId, "cattle_vac_${matchedUnit.id}", matchedUnit.id)
+                        repository.markReminderComplete(farmId, "cattle_vac_routine_${matchedUnit.id}", matchedUnit.id)
+                        if (matchedUnit.healthStatus.contains("Vaccin", ignoreCase = true)) {
+                            repository.updateUnit(matchedUnit.copy(healthStatus = "Healthy", lastUpdated = nowFormatted))
+                        }
+                    }
+                } else {
+                    // Poultry unit
+                    if (isDeworm) {
+                        val pLog = PoultryLog(
+                            farmId = farmId,
+                            unitId = matchedUnit.id,
+                            logType = "VACCINATION",
+                            vaccineName = "Routine Deworming",
+                            targetStage = "Flock Deworming",
+                            vaccineStatus = "COMPLETED",
+                            date = dateFormatted,
+                            notes = notes ?: "Flock deworming completed"
+                        )
+                        repository.insertPoultryLog(pLog)
+                        repository.markReminderComplete(farmId, "poultry_deworm_${matchedUnit.id}", matchedUnit.id)
+                        if (matchedUnit.healthStatus.contains("Deworm", ignoreCase = true)) {
+                            repository.updateUnit(matchedUnit.copy(healthStatus = "Optimal", lastUpdated = nowFormatted))
+                        }
+                    } else if (isVaccin) {
+                        val pLog = PoultryLog(
+                            farmId = farmId,
+                            unitId = matchedUnit.id,
+                            logType = "VACCINATION",
+                            vaccineName = existingTask.title,
+                            targetStage = "Scheduled Vaccine",
+                            vaccineStatus = "COMPLETED",
+                            date = dateFormatted,
+                            notes = notes ?: "Vaccine completed"
+                        )
+                        repository.insertPoultryLog(pLog)
+                        repository.markReminderComplete(farmId, "poultry_vac_${matchedUnit.id}_${existingTask.id}", matchedUnit.id)
+                        if (matchedUnit.healthStatus.contains("Vaccin", ignoreCase = true)) {
+                            repository.updateUnit(matchedUnit.copy(healthStatus = "Optimal", lastUpdated = nowFormatted))
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1195,11 +1304,44 @@ class FarmViewModel(
     ) {
         if (!isCattleUnit(cow)) return
 
-        val latestDeworming = latestDewormingEvent(sourceEvents.filter { it.unitId == cow.id })
+        val targetName = if (cow.tagNumber.isBlank()) cow.name else "${cow.name} • Tag ${cow.tagNumber}"
+        val taskSyncId = "cattle-deworming-${cow.farmId}-${cow.id}"
+
+        val candidateTasks = repository.getTaskSnapshotForFarm(cow.farmId)
+            .filter { task ->
+                task.syncId == taskSyncId ||
+                    task.targetUnit.equals(targetName, ignoreCase = true)
+            }
+        val existingTask = candidateTasks.firstOrNull { it.syncId == taskSyncId }
+            ?: candidateTasks.firstOrNull { it.isCompleted }
+            ?: candidateTasks.firstOrNull()
+
+        var resolvedEvents = sourceEvents
+        var latestDeworming = latestDewormingEvent(resolvedEvents.filter { it.unitId == cow.id })
+
+        if (latestDeworming == null && existingTask != null && existingTask.isCompleted) {
+            val completedDateStr = existingTask.completedAt?.let { parseFarmDate(it.substringBefore(",")) }?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
+                ?: parseFarmDate(existingTask.scheduledTime)?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
+                ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+            val healEvent = CattleEvent(
+                farmId = cow.farmId,
+                unitId = cow.id,
+                category = "DEWORMING",
+                title = "Deworming Administered",
+                date = completedDateStr,
+                details = existingTask.instructions ?: "Routine deworming completed",
+                notes = existingTask.proofNotes ?: "Recorded from completed deworming task"
+            )
+            repository.insertCattleEvent(healEvent)
+            repository.markReminderComplete(cow.farmId, "cattle_deworm_${cow.id}", cow.id)
+            repository.markReminderComplete(cow.farmId, "cattle_deworm_routine_${cow.id}", cow.id)
+            resolvedEvents = sourceEvents.filterNot { it.id == healEvent.id } + healEvent
+            latestDeworming = healEvent
+        }
+
         val dueDate = calculateNextDewormingDate(cow, latestDeworming)
         val dueDateText = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(dueDate)
-        val taskSyncId = "cattle-deworming-${cow.farmId}-${cow.id}"
-        val targetName = if (cow.tagNumber.isBlank()) cow.name else "${cow.name} • Tag ${cow.tagNumber}"
+
         val cycleDescription = if (latestDeworming == null) {
             "No deworming log is recorded. Add a completed deworming log after treatment so the next date is calculated automatically."
         } else if (parseFarmDate(cow.dob)?.plusCalendarAmount(Calendar.MONTH, 6)?.let { !dueDate.before(it) } == true) {
@@ -1208,49 +1350,39 @@ class FarmViewModel(
             "This calf is on the monthly deworming cycle until six months of age."
         }
 
-                // Reconcile the canonical row and legacy rows from earlier app versions.
-        // Prefer a completed row for this exact due date so refresh cannot recreate it.
-        val candidateTasks = repository.getTaskSnapshotForFarm(cow.farmId)
-            .filter { task ->
-                task.syncId == taskSyncId ||
-                    task.syncId.endsWith("-${cow.id}") ||
-                    task.targetUnit.equals(targetName, ignoreCase = true)
-            }
-        val completedCurrentCycle = candidateTasks.firstOrNull { task ->
-            task.isCompleted && sameFarmDate(task.scheduledTime, dueDateText)
+        val preserveCompletion = when {
+            existingTask == null -> false
+            existingTask.isCompleted && !isDueTodayOrEarlier(dueDateText) -> true
+            existingTask.isCompleted && sameFarmDate(existingTask.scheduledTime, dueDateText) -> true
+            else -> false
         }
-        val existingTask = completedCurrentCycle
-            ?: candidateTasks.firstOrNull { it.syncId == taskSyncId }
-            ?: candidateTasks.firstOrNull { sameFarmDate(it.scheduledTime, dueDateText) }
-            ?: candidateTasks.firstOrNull()
-        val preserveCompletion = existingTask != null &&
-            sameFarmDate(existingTask.scheduledTime, dueDateText) &&
-            existingTask.isCompleted
+
         val synchronizedTask = FarmTask(
             id = existingTask?.id ?: 0L,
             syncId = taskSyncId,
             farmId = cow.farmId,
-            title = "Deworm ${cow.name}",
+            title = "Routine Deworming Treatment",
             category = TaskCategory.LIVESTOCK,
             targetUnit = targetName,
-            priority = if (isDueTodayOrEarlier(dueDateText)) TaskPriority.HIGH else TaskPriority.MEDIUM,
+            priority = if (preserveCompletion) TaskPriority.LOW else TaskPriority.HIGH,
             scheduledTime = dueDateText,
             instructions = cycleDescription,
             assignedWorker = "Lead Operator",
             isCompleted = preserveCompletion,
-            completedAt = if (preserveCompletion) existingTask?.completedAt else null,
+            completedAt = if (preserveCompletion) (existingTask?.completedAt ?: SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())) else null,
             proofPhotoUri = if (preserveCompletion) existingTask?.proofPhotoUri else null,
-            proofNotes = if (preserveCompletion) existingTask?.proofNotes else null
+            proofNotes = if (preserveCompletion) existingTask?.proofNotes else null,
+            updatedAt = System.currentTimeMillis()
         )
 
-                candidateTasks
+        candidateTasks
             .filter { it.id != existingTask?.id }
             .forEach { duplicate -> repository.deleteTask(duplicate.id) }
 
-        if (existingTask != null) {
-            repository.updateTask(synchronizedTask)
-        } else {
+        if (existingTask == null) {
             repository.insertTask(synchronizedTask)
+        } else {
+            repository.updateTask(synchronizedTask)
         }
     }
 

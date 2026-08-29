@@ -96,6 +96,7 @@ import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 data class MilkTotalsSummary(
     val totalLitres: String,
@@ -700,16 +701,31 @@ fun MilkLogScreen(
     var selectedSession by remember { mutableStateOf("Morning") } // Morning, Afternoon, Evening
 
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
-    val todayDateStr = remember { dateFormat.format(Date()) }
-    val yesterdayDateStr = remember {
+    var milkCalendarDayKey by remember { mutableStateOf(dateFormat.format(Date())) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = java.util.Calendar.getInstance()
+            val nextMidnight = (now.clone() as java.util.Calendar).apply {
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            delay((nextMidnight.timeInMillis - System.currentTimeMillis()).coerceAtLeast(1_000L))
+            milkCalendarDayKey = dateFormat.format(Date())
+        }
+    }
+    val todayDateStr = remember(milkCalendarDayKey) { dateFormat.format(Date()) }
+    val yesterdayDateStr = remember(milkCalendarDayKey) {
         val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, -1) }
         dateFormat.format(cal.time)
     }
-    val twoDaysAgoDateStr = remember {
+    val twoDaysAgoDateStr = remember(milkCalendarDayKey) {
         val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, -2) }
         dateFormat.format(cal.time)
     }
-    var selectedLogDate by remember { mutableStateOf(todayDateStr) }
+    var selectedLogDate by remember(milkCalendarDayKey) { mutableStateOf(todayDateStr) }
     var saveSuccessMessage by remember { mutableStateOf<String?>(null) }
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -1175,7 +1191,7 @@ fun MilkLogScreen(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         // Dynamic Totals and Line Chart Calculation based on overallTimeframe, selectedHerdMonth, and selectedHerdYear
-                        val (summary, chartData, xLabels) = remember(milkLogs, overallTimeframe, selectedHerdMonth, selectedHerdYear) {
+                        val (summary, chartData, xLabels) = remember(milkLogs, overallTimeframe, selectedHerdMonth, selectedHerdYear, milkCalendarDayKey) {
                             if (milkLogs.isEmpty()) {
                                 Triple(
                                     MilkTotalsSummary("0.0 L", "0.0 L/day", "No records", "0 logs recorded"),

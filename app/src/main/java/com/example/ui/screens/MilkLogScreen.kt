@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.animation.AnimatedVisibility
 import com.example.util.CattleLifecycleEngine
 import com.example.util.CattleStage

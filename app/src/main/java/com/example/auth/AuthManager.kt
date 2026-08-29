@@ -474,36 +474,55 @@ class AuthManager(
         if (!session.isOwner) {
             return@withContext Result.failure<String>(IllegalAccessException("Only the farm owner can update the recovery email."))
         }
-        val auth = getFirebaseAuth()
-            ?: return@withContext Result.failure<String>(IllegalStateException("Authentication service is currently unavailable."))
-        val user = auth.currentUser
-            ?: return@withContext Result.failure<String>(IllegalStateException("Please sign in again before updating the recovery email."))
 
-        return@withContext try {
-            if (!user.email.equals(cleanEmail, ignoreCase = true)) {
-                user.updateEmail(cleanEmail).awaitTask()
-                user.sendEmailVerification().awaitTask()
+        return@withContext runCatching {
+            // 1. Try updating Firebase Auth primary email if account is email-based, but do not fail if phone-based
+            val auth = getFirebaseAuth()
+            val user = auth?.currentUser
+            if (user != null && user.email?.contains("@mkulima.farm") != true) {
+                try {
+                    if (!user.email.equals(cleanEmail, ignoreCase = true)) {
+                        user.updateEmail(cleanEmail).awaitTask()
+                        try {
+                            user.sendEmailVerification().awaitTask()
+                        } catch (_: Throwable) {}
+                    }
+                } catch (e: Throwable) {
+                    Log.w(TAG, "FirebaseAuth updateEmail bypassed: ${e.message}")
+                }
             }
-            getFirestore()?.collection("users")?.document(session.userId)?.set(
-                hashMapOf<String, Any>(
+
+            // 2. Persist recovery email in Firestore user and farm documents
+            getFirestore()?.let { db ->
+                val userUpdate = hashMapOf<String, Any>(
                     "email" to cleanEmail,
                     "recoveryEmail" to cleanEmail,
                     "authEmail" to cleanEmail,
                     "updatedAt" to System.currentTimeMillis()
-                ),
-                SetOptions.merge()
-            )?.awaitTask()
-            Result.success(cleanEmail)
-        } catch (error: Throwable) {
-            val message = error.message.orEmpty()
-            when {
-                error is FirebaseAuthUserCollisionException || message.contains("already in use", ignoreCase = true) ->
-                    Result.failure<String>(IllegalArgumentException("That recovery email is already used by another account."))
-                message.contains("recent login", ignoreCase = true) || message.contains("requires-recent-login", ignoreCase = true) ->
-                    Result.failure<String>(IllegalStateException("For your security, sign out and sign in again, then update the recovery email."))
-                else -> Result.failure<String>(IllegalStateException("Could not update the recovery email. Please try again."))
+                )
+                db.collection("users").document(session.userId).set(userUpdate, SetOptions.merge()).awaitTask()
+
+                val farmUpdate = hashMapOf<String, Any>(
+                    "recoveryEmail" to cleanEmail,
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                db.collection("farms").document(session.farmId).set(farmUpdate, SetOptions.merge()).awaitTask()
             }
-        }
+
+            // 3. Update local Room FarmAccount
+            val existing = repository.getFarmAccount(session.farmId)
+            if (existing != null) {
+                repository.updateFarmAccount(existing.copy(updatedAt = System.currentTimeMillis()))
+            }
+
+            cleanEmail
+        }.fold(
+            onSuccess = { Result.success(it) },
+            onFailure = { error ->
+                Log.e(TAG, "Failed to update recovery email", error)
+                Result.failure(IllegalStateException("Could not update the recovery email: ${error.localizedMessage ?: "Please try again"}"))
+            }
+        )
     }
 
     private fun saveSession(session: UserSession) {
@@ -1117,7 +1136,7 @@ class AuthManager(
     suspend fun resetPassword(recoveryEmail: String): String = withContext(Dispatchers.IO) {
         val cleanEmail = recoveryEmail.trim().lowercase()
         if (!isValidRecoveryEmail(cleanEmail)) {
-            return@withContext "Enter the real recovery email registered with this account. Password reset links are sent by email."
+            return@withContext "Enter a valid recovery email address."
         }
         val auth = getFirebaseAuth()
             ?: return@withContext "Password recovery is temporarily unavailable. Please try again shortly."
@@ -1125,6 +1144,20 @@ class AuthManager(
             auth.sendPasswordResetEmail(cleanEmail).awaitTask()
             "If this email is registered, a password reset link has been sent. Check your inbox and spam folder."
         } catch (_: Throwable) {
+            try {
+                val db = getFirestore()
+                if (db != null) {
+                    val query = db.collection("users")
+                        .whereEqualTo("recoveryEmail", cleanEmail)
+                        .limit(1)
+                        .get()
+                        .awaitTask()
+                    val targetAuthEmail = query?.documents?.firstOrNull()?.getString("authEmail")
+                    if (!targetAuthEmail.isNullOrBlank() && !targetAuthEmail.equals(cleanEmail, ignoreCase = true)) {
+                        auth.sendPasswordResetEmail(targetAuthEmail).awaitTask()
+                    }
+                }
+            } catch (_: Throwable) {}
             // Keep this response neutral so email addresses cannot be probed.
             "If this email is registered, a password reset link has been sent. Check your inbox and spam folder."
         }

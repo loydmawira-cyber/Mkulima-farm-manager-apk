@@ -438,6 +438,8 @@ private fun MilkProductionCanvas(
         }
     }
 
+    val selectedGlowColor = ForestGreenPrimary.copy(alpha = 0.25f)
+
     Canvas(
         modifier = modifier
             .padding(horizontal = 8.dp)
@@ -446,24 +448,18 @@ private fun MilkProductionCanvas(
                     val width = size.width.toFloat()
                     val paddingLeft = 36.dp.toPx()
                     val paddingRight = 24.dp.toPx()
-                    val usableWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1f)
+                    val plotWidth = width - paddingLeft - paddingRight
                     val pointCount = dataPoints.size
-                    val spacingX = if (pointCount > 1) usableWidth / (pointCount - 1) else usableWidth / 2
-
-                    var closestIdx = 0
-                    var minDistance = Float.MAX_VALUE
-
-                    for (i in 0 until pointCount) {
-                        val px = paddingLeft + (if (pointCount > 1) i * spacingX else usableWidth / 2)
-                        val dist = kotlin.math.abs(offset.x - px)
-                        if (dist < minDistance) {
-                            minDistance = dist
-                            closestIdx = i
-                        }
-                    }
-
-                    if (minDistance < spacingX * 0.8f || pointCount <= 3) {
-                        onPointSelected(closestIdx)
+                    if (pointCount > 1) {
+                        val spacing = plotWidth / (pointCount - 1)
+                        val touchX = offset.x - paddingLeft
+                        val rawIndex = (touchX / spacing).toInt()
+                        val remainder = (touchX % spacing) / spacing
+                        val nearestIndex = if (remainder > 0.5f) rawIndex + 1 else rawIndex
+                        val clampedIndex = nearestIndex.coerceIn(0, pointCount - 1)
+                        onPointSelected(clampedIndex)
+                    } else if (pointCount == 1) {
+                        onPointSelected(0)
                     }
                 }
             }
@@ -472,77 +468,82 @@ private fun MilkProductionCanvas(
         val height = size.height
         val paddingLeft = 36.dp.toPx()
         val paddingRight = 24.dp.toPx()
-        val bottomLabelHeight = 28.dp.toPx()
-        val graphHeight = (height - bottomLabelHeight).coerceAtLeast(10f)
-        val usableWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1f)
+        val paddingTop = 28.dp.toPx()
+        val paddingBottom = 28.dp.toPx()
+        val plotWidth = width - paddingLeft - paddingRight
+        val plotHeight = height - paddingTop - paddingBottom
 
-        // Horizontal Grid Lines with Y-Axis reference numbers
+        val pointCount = dataPoints.size
+        if (pointCount == 0) return@Canvas
+
+        val spacing = if (pointCount > 1) plotWidth / (pointCount - 1) else 0f
+
+        // Draw 3 horizontal grid lines (Max, Mid, Min)
         val gridSteps = 3
         for (i in 0..gridSteps) {
-            val y = graphHeight * (i.toFloat() / gridSteps)
+            val ratio = i.toFloat() / gridSteps
+            val y = paddingTop + plotHeight * ratio
+            val gridVal = displayMax - (range * ratio)
+
             drawLine(
-                color = Color(0xFFF1F5F9),
+                color = Color(0xFFE2E8F0),
                 start = Offset(paddingLeft, y),
                 end = Offset(width - paddingRight, y),
-                strokeWidth = 1.dp.toPx()
+                strokeWidth = 1.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
             )
-            val gridVal = displayMax - (i.toFloat() / gridSteps) * range
+
+            // Y-Axis Label on the left
+            val labelStr = if (gridVal % 1.0f == 0f) "%.0f".format(gridVal) else "%.1f".format(gridVal)
             drawContext.canvas.nativeCanvas.drawText(
-                "%.0f%s".format(gridVal, unitSuffix),
-                2.dp.toPx(),
-                (y + 4.dp.toPx()).coerceAtMost(graphHeight - 2.dp.toPx()),
+                labelStr,
+                4.dp.toPx(),
+                y + 4.dp.toPx(),
                 gridTextPaint
             )
         }
 
-        // Calculate point coordinates
-        val pointCount = dataPoints.size
-        val spacingX = if (pointCount > 1) usableWidth / (pointCount - 1) else usableWidth / 2
+        // Calculate points
         val points = dataPoints.mapIndexed { idx, value ->
-            val x = paddingLeft + (if (pointCount > 1) idx * spacingX else usableWidth / 2)
-            val normalizedY = (value - displayMin) / range
-            val y = graphHeight - (normalizedY * (graphHeight * 0.72f) + graphHeight * 0.12f)
+            val x = if (pointCount == 1) paddingLeft + plotWidth / 2f else paddingLeft + idx * spacing
+            val normalizedY = if (range > 0f) (value - displayMin) / range else 0.5f
+            val y = paddingTop + plotHeight * (1f - normalizedY)
             Offset(x, y)
         }
 
-        if (points.size > 1) {
-            // Build Smooth Curved Path
-            val strokePath = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                for (i in 0 until points.size - 1) {
-                    val p1 = points[i]
-                    val p2 = points[i + 1]
-                    val controlX = (p1.x + p2.x) / 2
-                    cubicTo(controlX, p1.y, controlX, p2.y, p2.x, p2.y)
-                }
-            }
-
-            // Fill Path (Gradient)
-            val fillPath = Path().apply {
-                addPath(strokePath)
-                lineTo(points.last().x, graphHeight)
-                lineTo(points.first().x, graphHeight)
-                close()
-            }
-
-            drawPath(
-                path = fillPath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(gradientTop, gradientBottom),
-                    startY = 0f,
-                    endY = graphHeight
-                )
-            )
-
-            // Draw Smooth Line
-            drawPath(
-                path = strokePath,
-                color = lineColor,
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-            )
+        // Area Gradient under line
+        val fillPath = Path().apply {
+            moveTo(points.first().x, paddingTop + plotHeight)
+            points.forEach { lineTo(it.x, it.y) }
+            lineTo(points.last().x, paddingTop + plotHeight)
+            close()
         }
+        drawPath(
+            path = fillPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(gradientTop, gradientBottom),
+                startY = paddingTop,
+                endY = paddingTop + plotHeight
+            )
+        )
 
-        // Draw Dots and Values
+        // Plot the connecting line
+        val strokePath = Path().apply {
+            points.forEachIndexed { idx, point ->
+                if (idx == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+            }
+        }
+        drawPath(
+            path = strokePath,
+            color = lineColor,
+            style = Stroke(
+                width = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+        )
+
+        // Draw points and values
         points.forEachIndexed { idx, point ->
             val isSelected = selectedIndex == idx
             val valAmt = dataPoints[idx]
@@ -550,7 +551,7 @@ private fun MilkProductionCanvas(
             if (isSelected) {
                 // Glow ring for selected point
                 drawCircle(
-                    color = ForestGreenPrimary.copy(alpha = 0.25f),
+                    color = selectedGlowColor,
                     radius = 12.dp.toPx(),
                     center = point
                 )

@@ -29,6 +29,14 @@ val FarmGreenPrimary: Color
     @Composable
     get() = ForestGreenPrimary
 
+/** Backward-compatible light-green name used by older screens. */
+val FarmGreenLight: Color
+    @Composable
+    get() = MaterialTheme.colorScheme.byTheme(
+        light = { Color(0xFFDCFCE7) },
+        dark = { Color(0xFFB1F1C9) },
+    )
+
 /** Backward-compatible dark-green name used by older screens. */
 val FarmGreenDark: Color
     @Composable
@@ -147,6 +155,21 @@ val TagHerbText: Color
     get() = MaterialTheme.colorScheme.byTheme(
         light = { Color(0xFF3F6212) },
         dark = { Color(0xFFD9F99D) },
+    )
+
+/** Heat/reminder tag background and text. */
+val TagHrBg: Color
+    @Composable
+    get() = MaterialTheme.colorScheme.byTheme(
+        light = { Color(0xFFFFEDD5) },
+        dark = { Color(0xFF7C2D12) },
+    )
+
+val TagHrText: Color
+    @Composable
+    get() = MaterialTheme.colorScheme.byTheme(
+        light = { Color(0xFF9A3412) },
+        dark = { Color(0xFFFFD7AA) },
     )
 
 /** Livestock tag background and text. */

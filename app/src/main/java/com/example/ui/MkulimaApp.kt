@@ -121,7 +121,8 @@ fun MkulimaApp(
 fun MkulimaThemeWrapper(viewModel: FarmViewModel, content: @Composable () -> Unit) {
     val farmSettings by viewModel.farmSettings.collectAsState()
     val cachedThemeMode = remember { viewModel.authManager.getCachedThemeMode() }
-    val effectiveThemeMode = cachedThemeMode ?: farmSettings.themeMode
+    // The farm-scoped setting is authoritative after it loads; cache is only the first-frame fallback.
+    val effectiveThemeMode = farmSettings.themeMode.ifBlank { cachedThemeMode ?: "CLASSIC" }
     MkulimaTheme(themeMode = effectiveThemeMode) {
         content()
     }

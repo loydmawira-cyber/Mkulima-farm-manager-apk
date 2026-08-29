@@ -47,6 +47,7 @@ import com.example.data.FarmUnit
 import com.example.data.TaskCategory
 import com.example.data.TaskPriority
 import com.example.ui.theme.FarmGreenPrimary
+import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -341,8 +342,8 @@ fun AddTaskDialog(
                             }
                         },
                         modifier = Modifier.testTag("save_task_button"),
-                        shape = RoundedCornerShape(100.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                     ) {
                         Text("Create Task", fontWeight = FontWeight.Bold)
                     }

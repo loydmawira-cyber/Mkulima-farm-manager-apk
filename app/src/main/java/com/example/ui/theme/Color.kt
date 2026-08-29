@@ -205,4 +205,5 @@ val TagYieldText: Color
     @Composable
     get() = MaterialTheme.colorScheme.byTheme(
         light = { Color(0xFF92400E) },
-        dark = { Color(0xFFFF
+        dark = { Color(0xFFFFE7A3) },
+    )

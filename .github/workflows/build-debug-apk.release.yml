@@ -32,6 +32,14 @@ jobs:
           fi
           chmod +x ./gradlew
 
+      - name: Select fixed KSP version
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' -o -name 'build.gradle' -o -name 'build.gradle.kts' -o -name 'libs.versions.toml' \) -print0 | xargs -0 -r sed -i 's/2\.3\.5/2.3.11/g'
+          echo 'KSP declarations after update:'
+          grep -RIn --include='settings.gradle' --include='settings.gradle.kts' --include='build.gradle' --include='build.gradle.kts' --include='libs.versions.toml' 'com.google.devtools.ksp\|kspVersion\|kotlinSymbolProcessing' . || true
+
       - name: Configure headless Gradle and KSP
         shell: bash
         run: |

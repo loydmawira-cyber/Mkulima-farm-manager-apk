@@ -24,6 +24,16 @@ val ForestGreenPrimary: Color
     @Composable
     get() = MaterialTheme.colorScheme.primary
 
+/** Backward-compatible name used by older proof-upload screens. */
+val FarmGreenPrimary: Color
+    @Composable
+    get() = ForestGreenPrimary
+
+/** Backward-compatible dark-green name used by older screens. */
+val FarmGreenDark: Color
+    @Composable
+    get() = ForestGreenDark
+
 /** Dark/light gradient green used by the authentication and hero surfaces. */
 val ForestGreenDark: Color
     @Composable

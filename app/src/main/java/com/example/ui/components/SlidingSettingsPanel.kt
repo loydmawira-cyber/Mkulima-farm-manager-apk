@@ -79,6 +79,9 @@ fun SlidingSettingsPanel(
 
     var farmNameDraft by remember(userSession?.farmName) { mutableStateOf(userSession?.farmName.orEmpty()) }
     var farmTypeDraft by remember(settings.farmType) { mutableStateOf(settings.farmType) }
+    var themeModeDraft by remember(settings.themeMode) {
+        mutableStateOf(settings.themeMode.ifBlank { "CLASSIC" }.uppercase())
+    }
     var monthlyReportsEnabledDraft by remember(settings.monthlyReportsEnabled) { mutableStateOf(settings.monthlyReportsEnabled) }
     var recoveryEmailDraft by remember { mutableStateOf("") }
     val isOwner = userSession?.isOwner == true
@@ -232,6 +235,47 @@ fun SlidingSettingsPanel(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                         ) { Text("SAVE FARM TYPE", fontWeight = FontWeight.Bold) }
+
+                        Spacer(Modifier.height(24.dp))
+                        Text("APP THEME", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFF3F8F5),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text("Choose appearance", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF153E2D))
+                                Text("This preference is saved for this farm and applies after synchronization.", fontSize = 11.sp, color = Color(0xFF64748B))
+                                Spacer(Modifier.height(10.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    listOf(
+                                        "CLASSIC" to "Classic",
+                                        "DARK" to "Dark",
+                                        "SYSTEM" to "System"
+                                    ).forEach { (value, label) ->
+                                        FilterChip(
+                                            selected = themeModeDraft == value,
+                                            onClick = {
+                                                if (isOwner) {
+                                                    themeModeDraft = value
+                                                    onSaveSettings(settings.copy(themeMode = value))
+                                                }
+                                            },
+                                            enabled = isOwner,
+                                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = Color(0xFFDDF5E7),
+                                                selectedLabelColor = Color(0xFF14532D)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
                         Spacer(Modifier.height(24.dp))
                         Text("MONTHLY REPORTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))

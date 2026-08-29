@@ -24,61 +24,46 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Generate Gradle wrapper
+        shell: bash
         run: |
-          gradle wrapper --gradle-version 9.3.1
+          set -euo pipefail
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper --gradle-version 9.3.1
+          fi
           chmod +x ./gradlew
 
-      - name: Upgrade KSP for headless CI
+      - name: Configure headless Gradle and KSP
+        shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          direct_pattern = re.compile(
-              r'(id\(["\']com\.google\.devtools\.ksp["\']\)\s*version\s*["\'])[^"\']+(["\'])'
-          )
-          catalog_pattern = re.compile(
-              r'(^\s*(?:ksp|kspVersion|kotlinSymbolProcessing)\s*=\s*["\'])[^"\']+(["\'])',
-              re.MULTILINE,
-          )
-
-          changed = []
-          for path in Path('.').rglob('*'):
-              if not path.is_file() or path.name not in {'build.gradle', 'build.gradle.kts', 'libs.versions.toml'}:
-                  continue
-              text = path.read_text(encoding='utf-8')
-              updated = direct_pattern.sub(r'\g<1>2.3.7\g<2>', text)
-              if path.name == 'libs.versions.toml':
-                  updated = catalog_pattern.sub(r'\g<1>2.3.7\g<2>', updated)
-              if updated != text:
-                  path.write_text(updated, encoding='utf-8')
-                  changed.append(str(path))
-
-          print('KSP files updated:')
-          for item in changed:
-              print(f' - {item}')
-          if not changed:
-              print(' - no direct KSP declaration found; verify the project uses KSP 2.3.7 already')
-          PY
-          grep -RIn --include='build.gradle' --include='build.gradle.kts' --include='libs.versions.toml' 'com.google.devtools.ksp\|kspVersion\|kotlinSymbolProcessing' . || true
+          set -euo pipefail
+          touch gradle.properties
+          {
+            echo ''
+            echo 'org.gradle.daemon=false'
+            echo 'org.gradle.parallel=false'
+            echo 'org.gradle.configuration-cache=false'
+            echo 'kotlin.incremental=false'
+            echo 'ksp.incremental=false'
+            echo 'ksp.incremental.log=false'
+            echo 'ksp.useKSP2=true'
+          } >> gradle.properties
+          echo 'Gradle/KSP configuration:'
+          grep -E '^(org.gradle.daemon|org.gradle.parallel|org.gradle.configuration-cache|kotlin.incremental|ksp\.)' gradle.properties || true
 
       - name: Build Debug APK
+        shell: bash
         env:
-          JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
-          GRADLE_OPTS: >-
-            -Dorg.gradle.daemon=false
-            -Dorg.gradle.parallel=false
-            -Dorg.gradle.configuration-cache=false
-            -Dkotlin.incremental=false
-            -Dksp.incremental=false
-            -Dksp.incremental.log=false
-        run: ./gradlew --no-daemon --no-build-cache --no-configuration-cache -Pksp.incremental=false clean assembleDebug --stacktrace
+          JAVA_TOOL_OPTIONS: '-Djava.awt.headless=true'
+          GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.configuration-cache=false -Dkotlin.incremental=false -Dksp.incremental=false'
+        run: ./gradlew --no-daemon --no-build-cache --no-configuration-cache -Pksp.incremental=false -Pksp.useKSP2=true clean assembleDebug --stacktrace
 
       - name: Publish APK as GitHub Release asset
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          set -euo pipefail
+          APK_PATH='app/build/outputs/apk/debug/app-debug.apk'
           test -f "$APK_PATH"
           TAG="debug-apk-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           gh release create "$TAG" "$APK_PATH" \

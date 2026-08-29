@@ -30,11 +30,37 @@ jobs:
 
       - name: Upgrade KSP for headless CI
         run: |
-          find . -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print0 \
-            | xargs -0 sed -i \
-              -e 's/id[[:space:]]*(\"com.google.devtools.ksp\")[[:space:]]*version[[:space:]]*\"[^\"]*\"/id(\"com.google.devtools.ksp\") version \"2.3.7\"/g' \
-              -e 's/id[[:space:]]*\x27com.google.devtools.ksp\x27[[:space:]]*version[[:space:]]*\x27[^\x27]*\x27/id(\x27com.google.devtools.ksp\x27) version \x272.3.7\x27/g'
-          grep -RIn --include='build.gradle' --include='build.gradle.kts' 'com.google.devtools.ksp' . || true
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          direct_pattern = re.compile(
+              r'(id\(["\']com\.google\.devtools\.ksp["\']\)\s*version\s*["\'])[^"\']+(["\'])'
+          )
+          catalog_pattern = re.compile(
+              r'(^\s*(?:ksp|kspVersion|kotlinSymbolProcessing)\s*=\s*["\'])[^"\']+(["\'])',
+              re.MULTILINE,
+          )
+
+          changed = []
+          for path in Path('.').rglob('*'):
+              if not path.is_file() or path.name not in {'build.gradle', 'build.gradle.kts', 'libs.versions.toml'}:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              updated = direct_pattern.sub(r'\g<1>2.3.7\g<2>', text)
+              if path.name == 'libs.versions.toml':
+                  updated = catalog_pattern.sub(r'\g<1>2.3.7\g<2>', updated)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+                  changed.append(str(path))
+
+          print('KSP files updated:')
+          for item in changed:
+              print(f' - {item}')
+          if not changed:
+              print(' - no direct KSP declaration found; verify the project uses KSP 2.3.7 already')
+          PY
+          grep -RIn --include='build.gradle' --include='build.gradle.kts' --include='libs.versions.toml' 'com.google.devtools.ksp\|kspVersion\|kotlinSymbolProcessing' . || true
 
       - name: Build Debug APK
         env:

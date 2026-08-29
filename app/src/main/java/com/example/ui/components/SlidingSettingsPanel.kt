@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -143,6 +144,22 @@ fun SlidingSettingsPanel(
                         Text("ACCOUNT & SESSION", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(Modifier.height(8.dp))
                         if (isOwner) {
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    onOpenWorkerManagement()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFE8F5E9),
+                                    contentColor = Color(0xFF166534)
+                                )
+                            ) {
+                                Icon(Icons.Filled.Groups, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("MANAGE FARM WORKERS", fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(10.dp))
                             Button(
                                 onClick = {
                                     onDismiss()
@@ -299,21 +316,7 @@ fun SlidingSettingsPanel(
                             }
                         }
 
-                        if (isOwner) {
-                            Spacer(Modifier.height(24.dp))
-                            Button(
-                                onClick = onOpenWorkerManagement,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8F5E9), contentColor = Color(0xFF166534))
-                            ) {
-                                Icon(Icons.Filled.Groups, contentDescription = null)
-                                Spacer(Modifier.height(0.dp))
-                                Text("  MANAGE WORKERS", fontWeight = FontWeight.Bold)
-                            }
                         }
-
-                        }
-
                     }
                 }
             }

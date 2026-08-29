@@ -100,29 +100,13 @@ private val DarkScheme = darkColorScheme(
 
 private val LocalMkulimaColors = staticCompositionLocalOf { LightMkulimaColors }
 
+/**
+ * Screen-specific legacy tokens such as ForestGreenPrimary and TagYieldText
+ * remain in the project’s existing Color.kt. Keeping them out of this file
+ * prevents duplicate top-level declarations when the theme is replaced.
+ */
 val MaterialTheme.mkulimaColors: MkulimaColors
     @Composable get() = LocalMkulimaColors.current
-
-val ForestGreenPrimary: Color
-    @Composable get() = MaterialTheme.mkulimaColors.primary
-
-val StatusUrgentRed: Color
-    @Composable get() = if (MaterialTheme.colorScheme.isLightScheme()) Color(0xFFB42318) else Color(0xFFFF8A80)
-
-val TagLivestockBg: Color
-    @Composable get() = if (MaterialTheme.colorScheme.isLightScheme()) Color(0xFFE0F2FE) else Color(0xFF164E63)
-
-val TagLivestockText: Color
-    @Composable get() = if (MaterialTheme.colorScheme.isLightScheme()) Color(0xFF075985) else Color(0xFFCFFAFE)
-
-val TagYieldBg: Color
-    @Composable get() = if (MaterialTheme.colorScheme.isLightScheme()) Color(0xFFFEF3C7) else Color(0xFF5A4210)
-
-val TagYieldText: Color
-    @Composable get() = if (MaterialTheme.colorScheme.isLightScheme()) Color(0xFF92400E) else Color(0xFFFFE7A3)
-
-private fun androidx.compose.material3.ColorScheme.isLightScheme(): Boolean =
-    background.red > 0.5f && background.blue > 0.5f
 
 @Composable
 fun MkulimaTheme(

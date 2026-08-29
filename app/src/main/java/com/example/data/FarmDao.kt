@@ -34,8 +34,17 @@ interface FarmDao {
     @Query("SELECT * FROM farm_tasks WHERE syncId = :syncId AND isDeleted = 0 LIMIT 1")
     suspend fun getTaskBySyncId(syncId: String): FarmTask?
 
-    @Query("UPDATE farm_tasks SET isDeleted = 1, updatedAt = :updatedAt WHERE syncId LIKE :syncIdPrefix || '%'")
-    suspend fun softDeleteTasksBySyncIdPrefix(syncIdPrefix: String, updatedAt: Long = System.currentTimeMillis())
+    @Query("SELECT * FROM farm_tasks WHERE farmId = :farmId AND syncId = :syncId AND isDeleted = 0 LIMIT 1")
+    suspend fun getTaskBySyncIdForFarm(farmId: String, syncId: String): FarmTask?
+
+    @Query("SELECT * FROM farm_tasks WHERE farmId = :farmId AND syncId LIKE :syncIdPrefix || '%' AND isDeleted = 0 ORDER BY isCompleted DESC, updatedAt DESC, id DESC")
+    suspend fun getTasksBySyncIdPrefix(farmId: String, syncIdPrefix: String): List<FarmTask>
+
+    @Query("SELECT * FROM farm_tasks WHERE farmId = :farmId AND isDeleted = 0 ORDER BY isCompleted DESC, updatedAt DESC, id DESC")
+    suspend fun getTaskSnapshotForFarm(farmId: String): List<FarmTask>
+
+    @Query("UPDATE farm_tasks SET isDeleted = 1, updatedAt = :updatedAt WHERE farmId = :farmId AND syncId LIKE :syncIdPrefix || '%'")
+    suspend fun softDeleteTasksBySyncIdPrefix(farmId: String, syncIdPrefix: String, updatedAt: Long = System.currentTimeMillis())
 
     @Query("SELECT * FROM farm_tasks WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyTasks(farmId: String, since: Long): List<FarmTask>

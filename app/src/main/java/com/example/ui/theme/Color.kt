@@ -170,6 +170,20 @@ val TagHrText: Color
     get() = MaterialTheme.colorScheme.byTheme(
         light = { Color(0xFF9A3412) },
         dark = { Color(0xFFFFD7AA) },
+        // ... existing code ...
+val TagHrText: Color
+    @Composable
+    get() = MaterialTheme.colorScheme.byTheme(
+        light = { Color(0xFF9A3412) },
+        dark = { Color(0xFFFFD7AA) },
+    )
+val TagHRBg: Color
+    @Composable
+    get() = TagHrBg
+
+val TagHRText: Color
+    @Composable
+    get() = TagHrText
     )
 
 /** Livestock tag background and text. */

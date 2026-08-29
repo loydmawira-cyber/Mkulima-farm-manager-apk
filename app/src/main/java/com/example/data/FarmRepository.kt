@@ -40,8 +40,16 @@ class FarmRepository(
 
     suspend fun getTaskById(id: Long): FarmTask? = farmDao.getTaskById(id)
     suspend fun getTaskBySyncId(syncId: String): FarmTask? = farmDao.getTaskBySyncId(syncId)
+    suspend fun getTaskBySyncIdForFarm(farmId: String, syncId: String): FarmTask? =
+        farmDao.getTaskBySyncIdForFarm(farmId, syncId)
+    suspend fun getTasksBySyncIdPrefix(farmId: String, syncIdPrefix: String): List<FarmTask> =
+        farmDao.getTasksBySyncIdPrefix(farmId, syncIdPrefix)
+
+    suspend fun getTaskSnapshotForFarm(farmId: String): List<FarmTask> =
+        farmDao.getTaskSnapshotForFarm(farmId)
+
     suspend fun softDeleteTasksBySyncIdPrefix(syncIdPrefix: String, farmId: String) {
-        farmDao.softDeleteTasksBySyncIdPrefix(syncIdPrefix)
+        farmDao.softDeleteTasksBySyncIdPrefix(farmId, syncIdPrefix)
         syncEngine?.triggerPush(farmId)
     }
 

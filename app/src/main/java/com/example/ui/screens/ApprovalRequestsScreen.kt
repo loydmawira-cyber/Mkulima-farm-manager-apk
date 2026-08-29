@@ -147,12 +147,12 @@ fun ApprovalRequestsScreen(
                             text = if (primarySectionIndex == 0) "Farm Tasks & Operations" else if (isOwner) "Worker Requests" else "My Requests",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Soil
+                            color = Color(0xFF1E293B)
                         )
                         Text(
                             text = if (primarySectionIndex == 0) "Assign, track and complete daily farm routines." else "Review employee leave and advance requests.",
                             fontSize = 12.sp,
-                            color = SoilSoft
+                            color = Color(0xFF64748B)
                         )
                     }
 
@@ -287,15 +287,14 @@ fun ApprovalRequestsScreen(
                         val pendingActive = selectedStatus == TaskStatusFilter.PENDING
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = if (pendingActive) ForestGreenPrimary else Color.White,
-                            border = BorderStroke(1.dp, if (pendingActive) ForestGreenPrimary else LineColor),
+                            color = if (pendingActive) ForestGreenPrimary else Color(0xFFF1F5F9),
+                            border = if (pendingActive) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { onStatusSelected(TaskStatusFilter.PENDING) }
-                                .testTag("filter_status_pending")
                         ) {
                             Row(
-                                modifier = Modifier.padding(vertical = 8.dp),
+                                modifier = Modifier.padding(vertical = 9.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -303,7 +302,7 @@ fun ApprovalRequestsScreen(
                                     text = "⏳ Pending (${tasks.count { !it.isCompleted }})",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (pendingActive) Color.White else Soil
+                                    color = if (pendingActive) Color.White else Color(0xFF334155)
                                 )
                             }
                         }
@@ -311,15 +310,14 @@ fun ApprovalRequestsScreen(
                         val allActive = selectedStatus == TaskStatusFilter.ALL
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = if (allActive) ForestGreenPrimary else Color.White,
-                            border = BorderStroke(1.dp, if (allActive) ForestGreenPrimary else LineColor),
+                            color = if (allActive) ForestGreenPrimary else Color(0xFFF1F5F9),
+                            border = if (allActive) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { onStatusSelected(TaskStatusFilter.ALL) }
-                                .testTag("filter_status_all")
                         ) {
                             Row(
-                                modifier = Modifier.padding(vertical = 8.dp),
+                                modifier = Modifier.padding(vertical = 9.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -327,7 +325,7 @@ fun ApprovalRequestsScreen(
                                     text = "📋 All (${tasks.size})",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (allActive) Color.White else Soil
+                                    color = if (allActive) Color.White else Color(0xFF334155)
                                 )
                             }
                         }
@@ -335,15 +333,14 @@ fun ApprovalRequestsScreen(
                         val completedActive = selectedStatus == TaskStatusFilter.COMPLETED
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = if (completedActive) ForestGreenPrimary else Color.White,
-                            border = BorderStroke(1.dp, if (completedActive) ForestGreenPrimary else LineColor),
+                            color = if (completedActive) ForestGreenPrimary else Color(0xFFF1F5F9),
+                            border = if (completedActive) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { onStatusSelected(TaskStatusFilter.COMPLETED) }
-                                .testTag("filter_status_completed")
                         ) {
                             Row(
-                                modifier = Modifier.padding(vertical = 8.dp),
+                                modifier = Modifier.padding(vertical = 9.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -351,7 +348,7 @@ fun ApprovalRequestsScreen(
                                     text = "✅ Done (${tasks.count { it.isCompleted }})",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (completedActive) Color.White else Soil
+                                    color = if (completedActive) Color.White else Color(0xFF334155)
                                 )
                             }
                         }
@@ -365,35 +362,37 @@ fun ApprovalRequestsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         item {
+                            val isAllSel = selectedCategory == null
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (selectedCategory == null) Soil else Color.White,
-                                border = BorderStroke(1.dp, if (selectedCategory == null) Soil else LineColor),
+                                color = if (isAllSel) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                border = if (isAllSel) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
                                 modifier = Modifier.clickable { onCategorySelected(null) }
                             ) {
                                 Text(
-                                    text = "All Categories",
+                                    text = "ALL",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (selectedCategory == null) Color.White else SoilSoft,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    color = if (isAllSel) Color.White else Color(0xFF334155),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
                             }
                         }
+
                         items(TaskCategory.values()) { category ->
                             val isCatSel = selectedCategory == category
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isCatSel) Soil else Color.White,
-                                border = BorderStroke(1.dp, if (isCatSel) Soil else LineColor),
+                                color = if (isCatSel) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                border = if (isCatSel) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
                                 modifier = Modifier.clickable { onCategorySelected(if (isCatSel) null else category) }
                             ) {
                                 Text(
-                                    text = category.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    text = category.name,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isCatSel) Color.White else SoilSoft,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    color = if (isCatSel) Color.White else Color(0xFF334155),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
                             }
                         }
@@ -751,5 +750,3 @@ fun ApprovalRequestCard(
         }
     }
 }
-
-

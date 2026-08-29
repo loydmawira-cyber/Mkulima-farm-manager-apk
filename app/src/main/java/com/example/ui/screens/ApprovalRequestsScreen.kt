@@ -258,22 +258,24 @@ fun ApprovalRequestsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("tasks_search_input"),
-                        placeholder = { Text("Search task name, unit, or worker...", fontSize = 13.sp, color = SoilSoft) },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = SoilSoft, modifier = Modifier.size(18.dp)) },
+                        placeholder = { Text("Search task name, unit, or worker...", fontSize = 13.sp, color = Color(0xFF64748B)) },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(18.dp)) },
                         trailingIcon = {
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { onSearchQueryChange("") }) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Clear", tint = SoilSoft, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Filled.Close, contentDescription = "Clear", tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
                                 }
                             }
                         },
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color(0xFF1E293B),
+                            unfocusedTextColor = Color(0xFF1E293B),
                             focusedContainerColor = Color.White,
                             unfocusedContainerColor = Color.White,
                             focusedBorderColor = ForestGreenPrimary,
-                            unfocusedBorderColor = LineColor
+                            unfocusedBorderColor = Color(0xFFCBD5E1)
                         )
                     )
                 }
@@ -406,7 +408,7 @@ fun ApprovalRequestsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, LineColor)
+                            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
                         ) {
                             Column(
                                 modifier = Modifier
@@ -424,14 +426,15 @@ fun ApprovalRequestsScreen(
                                         TaskStatusFilter.ALL -> "No tasks registered"
                                         else -> "No tasks found"
                                     },
-                                    fontSize = 15.sp,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Soil
+                                    color = Color(0xFF1E293B)
                                 )
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = "Tap '+ New Task' above to schedule farm operations.",
-                                    fontSize = 12.sp,
-                                    color = SoilSoft
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF64748B)
                                 )
                             }
                         }

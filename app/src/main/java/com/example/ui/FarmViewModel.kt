@@ -65,7 +65,8 @@ class FarmViewModel(
 
     val searchQuery = MutableStateFlow("")
     val selectedCategoryFilter = MutableStateFlow<TaskCategory?>(null)
-    val selectedStatusFilter = MutableStateFlow(TaskStatusFilter.ALL)
+    // Daily Task Operations should show active work by default; completed history remains available via Completed.
+    val selectedStatusFilter = MutableStateFlow(TaskStatusFilter.PENDING)
 
     // Farm Scoped Streams
     val allUnits: StateFlow<List<FarmUnit>> = currentSession.flatMapLatest { session ->
@@ -1207,11 +1208,24 @@ class FarmViewModel(
             "This calf is on the monthly deworming cycle until six months of age."
         }
 
-        val existingTask = repository.getTaskBySyncId(taskSyncId)
+                // Reconcile the canonical row and legacy rows from earlier app versions.
+        // Prefer a completed row for this exact due date so refresh cannot recreate it.
+        val candidateTasks = repository.getTaskSnapshotForFarm(cow.farmId)
+            .filter { task ->
+                task.syncId == taskSyncId ||
+                    task.syncId.endsWith("-${cow.id}") ||
+                    task.targetUnit.equals(targetName, ignoreCase = true)
+            }
+        val completedCurrentCycle = candidateTasks.firstOrNull { task ->
+            task.isCompleted && sameFarmDate(task.scheduledTime, dueDateText)
+        }
+        val existingTask = completedCurrentCycle
+            ?: candidateTasks.firstOrNull { it.syncId == taskSyncId }
+            ?: candidateTasks.firstOrNull { sameFarmDate(it.scheduledTime, dueDateText) }
+            ?: candidateTasks.firstOrNull()
         val preserveCompletion = existingTask != null &&
-            existingTask.scheduledTime.trim() == dueDateText.trim() &&
+            sameFarmDate(existingTask.scheduledTime, dueDateText) &&
             existingTask.isCompleted
-
         val synchronizedTask = FarmTask(
             id = existingTask?.id ?: 0L,
             syncId = taskSyncId,
@@ -1229,10 +1243,24 @@ class FarmViewModel(
             proofNotes = if (preserveCompletion) existingTask?.proofNotes else null
         )
 
+                candidateTasks
+            .filter { it.id != existingTask?.id }
+            .forEach { duplicate -> repository.deleteTask(duplicate.id) }
+
         if (existingTask != null) {
             repository.updateTask(synchronizedTask)
         } else {
             repository.insertTask(synchronizedTask)
+        }
+    }
+
+    private fun sameFarmDate(left: String, right: String): Boolean {
+        val leftDate = parseFarmDate(left)
+        val rightDate = parseFarmDate(right)
+        return if (leftDate != null && rightDate != null) {
+            leftDate.time == rightDate.time
+        } else {
+            left.trim().equals(right.trim(), ignoreCase = true)
         }
     }
 
@@ -1259,7 +1287,7 @@ class FarmViewModel(
             }
             val dueDate = dateFormat.format(calendar.time)
             val taskSyncId = "repeat-heat-$eventKey-day-$day"
-            if (repository.getTaskBySyncId(taskSyncId) != null) continue
+            if (repository.getTaskBySyncIdForFarm(cow.farmId, taskSyncId) != null) continue
 
             repository.insertTask(
                 FarmTask(

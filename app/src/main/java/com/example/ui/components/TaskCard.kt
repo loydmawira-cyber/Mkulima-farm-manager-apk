@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -65,6 +66,7 @@ import com.example.data.TaskCategory
 import com.example.data.TaskPriority
 import com.example.ui.theme.FarmGreenLight
 import com.example.ui.theme.FarmGreenPrimary
+import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.HarvestAmber
 import com.example.ui.theme.HarvestAmberLight
 import com.example.ui.theme.StatusCompleted
@@ -84,10 +86,10 @@ fun TaskCard(
     var taskMenuExpanded by remember { mutableStateOf(false) }
 
     val categoryColor = when (task.category) {
-        TaskCategory.LIVESTOCK -> Color(0xFF6750A4)
-        TaskCategory.CROPS -> Color(0xFF166534)
+        TaskCategory.LIVESTOCK -> Color(0xFF0284C7)
+        TaskCategory.CROPS -> ForestGreenPrimary
         TaskCategory.EQUIPMENT -> Color(0xFFD97706)
-        TaskCategory.GENERAL -> Color(0xFF49454F)
+        TaskCategory.GENERAL -> Color(0xFF475569)
     }
 
     val categoryIcon = when (task.category) {
@@ -108,11 +110,12 @@ fun TaskCard(
             .fillMaxWidth()
             .testTag("task_card_${task.id}")
             .clickable { expanded = !expanded },
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (task.isCompleted) Color(0xFFF3EDF7).copy(alpha = 0.5f) else Color.White
+            containerColor = if (task.isCompleted) Color(0xFFF8FAFC) else Color.White
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (task.isCompleted) 0.dp else 2.dp)
+        border = BorderStroke(1.dp, if (task.isCompleted) Color(0xFFE2E8F0) else Color(0xFFCBD5E1)),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (task.isCompleted) 0.dp else 1.dp)
     ) {
         Column(
             modifier = Modifier
@@ -286,7 +289,7 @@ fun TaskCard(
                 if (task.isCompleted) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = StatusCompleted.copy(alpha = 0.12f),
+                        color = Color(0xFFDCFCE7),
                         modifier = Modifier
                             .testTag("completed_badge_${task.id}")
                             .clickable { onViewProofClick(task) }
@@ -298,15 +301,15 @@ fun TaskCard(
                             Icon(
                                 imageVector = Icons.Filled.CheckCircle,
                                 contentDescription = "Completed",
-                                tint = StatusCompleted,
+                                tint = ForestGreenPrimary,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "VERIFIED",
+                                text = "DONE",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = StatusCompleted
+                                color = ForestGreenPrimary
                             )
                         }
                     }
@@ -314,19 +317,23 @@ fun TaskCard(
                     Button(
                         onClick = { onCompleteClick(task) },
                         modifier = Modifier.testTag("complete_button_${task.id}"),
-                        shape = RoundedCornerShape(100.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6750A4),
+                            containerColor = ForestGreenPrimary,
                             contentColor = Color.White
                         )
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Image,
-                            contentDescription = "Upload Proof",
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Proof & Done", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Complete",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }

@@ -28,14 +28,25 @@ jobs:
           gradle wrapper --gradle-version 9.3.1
           chmod +x ./gradlew
 
+      - name: Upgrade KSP for headless CI
+        run: |
+          find . -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print0 \
+            | xargs -0 sed -i \
+              -e 's/id[[:space:]]*(\"com.google.devtools.ksp\")[[:space:]]*version[[:space:]]*\"[^\"]*\"/id(\"com.google.devtools.ksp\") version \"2.3.7\"/g' \
+              -e 's/id[[:space:]]*\x27com.google.devtools.ksp\x27[[:space:]]*version[[:space:]]*\x27[^\x27]*\x27/id(\x27com.google.devtools.ksp\x27) version \x272.3.7\x27/g'
+          grep -RIn --include='build.gradle' --include='build.gradle.kts' 'com.google.devtools.ksp' . || true
+
       - name: Build Debug APK
         env:
+          JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
           GRADLE_OPTS: >-
             -Dorg.gradle.daemon=false
             -Dorg.gradle.parallel=false
             -Dorg.gradle.configuration-cache=false
             -Dkotlin.incremental=false
-        run: ./gradlew --no-daemon --no-build-cache --no-configuration-cache clean assembleDebug --stacktrace
+            -Dksp.incremental=false
+            -Dksp.incremental.log=false
+        run: ./gradlew --no-daemon --no-build-cache --no-configuration-cache -Pksp.incremental=false clean assembleDebug --stacktrace
 
       - name: Publish APK as GitHub Release asset
         env:

@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbCloudy
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -606,6 +607,8 @@ fun MilkLogScreen(
     onAddEggLogClick: () -> Unit = {},
     onQuickSaveMilkLog: (cowName: String, litres: Double, session: String, date: String, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _ -> },
     onSaveMilkUsageLog: (date: String, session: String, litresToCooperative: Double, litresHomeUse: Double, litresToCalves: Double, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _, _ -> },
+    onEditMilkUsageLog: (id: Long, litresToCooperative: Double, litresHomeUse: Double, litresToCalves: Double, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _ -> },
+    onDeleteMilkUsageLog: (Long) -> Unit = {},
     onQuickSaveEggLog: (flockName: String, totalEggs: Int, damagedEggs: Int, grade: String, date: String, notes: String?) -> Unit = { _, _, _, _, _, _ -> },
     onDeleteMilkLog: (Long) -> Unit,
     onDeleteEggLog: (Long) -> Unit,
@@ -1402,24 +1405,46 @@ fun MilkLogScreen(
             }
 
             item {
-                var usageTimeframe by remember { mutableStateOf("TODAY") }
-                val todayKey = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) }
-                val monthKey = remember { SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(Date()) }
-                val yearKey = remember { SimpleDateFormat("yyyy", Locale.getDefault()).format(Date()) }
+                var usageTimeframe by remember { mutableStateOf("TODAY") } // TODAY, MONTH, YEAR
+                var selectedUsageMonth by remember { mutableStateOf(defaultMonthName) }
+                var selectedUsageYear by remember { mutableStateOf(defaultYearName) }
+                var isUsageMonthMenuExpanded by remember { mutableStateOf(false) }
+                var isUsageYearMenuExpanded by remember { mutableStateOf(false) }
+                var longPressedUsageLog by remember { mutableStateOf<MilkUsageLog?>(null) }
+                var editingUsageLog by remember { mutableStateOf<MilkUsageLog?>(null) }
+                var deleteCandidateUsageLog by remember { mutableStateOf<MilkUsageLog?>(null) }
 
-                val filteredUsageLogs = remember(milkUsageLogs, usageTimeframe) {
+                val filteredUsageLogs = remember(milkUsageLogs, usageTimeframe, selectedUsageMonth, selectedUsageYear) {
+                    val nowCal = java.util.Calendar.getInstance()
+                    val cYear = nowCal.get(java.util.Calendar.YEAR)
+                    val cDayOfYear = nowCal.get(java.util.Calendar.DAY_OF_YEAR)
+                    val targetMonthIdx = monthsList.indexOfFirst { it.equals(selectedUsageMonth, ignoreCase = true) }
+                    val targetYearInt = selectedUsageYear.toIntOrNull() ?: cYear
+                    val shortMonthLabel = if (targetMonthIdx >= 0) {
+                        val cal = java.util.Calendar.getInstance().apply { set(java.util.Calendar.MONTH, targetMonthIdx) }
+                        SimpleDateFormat("MMM", Locale.getDefault()).format(cal.time)
+                    } else selectedUsageMonth.take(3)
+
                     milkUsageLogs.filter { usage ->
-                        val dateKey = MilkLogEntryRules.canonicalDateKey(usage.date) ?: return@filter false
-                        val parsed = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateKey) }.getOrNull() ?: return@filter false
+                        val c = parseMilkLogCalendar(usage.date)
                         when (usageTimeframe) {
-                            "TODAY" -> dateKey == MilkLogEntryRules.canonicalDateKey(todayKey)
-                            "MONTH" -> SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(parsed) == monthKey
-                            else -> SimpleDateFormat("yyyy", Locale.getDefault()).format(parsed) == yearKey
+                            "TODAY" -> (c != null && c.get(java.util.Calendar.YEAR) == cYear && c.get(java.util.Calendar.DAY_OF_YEAR) == cDayOfYear) ||
+                                usage.date.equals(todayDateStr, ignoreCase = true) ||
+                                usage.date.contains("Today", ignoreCase = true)
+                            "MONTH" -> if (c != null) {
+                                c.get(java.util.Calendar.MONTH) == targetMonthIdx && c.get(java.util.Calendar.YEAR) == targetYearInt
+                            } else {
+                                (usage.date.contains(selectedUsageMonth, ignoreCase = true) || usage.date.contains(shortMonthLabel, ignoreCase = true)) &&
+                                    usage.date.contains(targetYearInt.toString())
+                            }
+                            else -> if (c != null) {
+                                c.get(java.util.Calendar.YEAR) == targetYearInt
+                            } else {
+                                usage.date.contains(targetYearInt.toString())
+                            }
                         }
                     }.sortedByDescending {
-                        runCatching {
-                            MilkLogEntryRules.canonicalDateKey(it.date)?.let { key -> SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(key)?.time }
-                        }.getOrNull() ?: 0L
+                        parseMilkLogCalendar(it.date)?.timeInMillis ?: 0L
                     }
                 }
 
@@ -1447,25 +1472,165 @@ fun MilkLogScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            listOf("TODAY" to "Today", "MONTH" to "This Month", "YEAR" to "This Year").forEach { (key, label) ->
-                                val isSelected = usageTimeframe == key
+                            // 1. TODAY TAB
+                            val isUsageTodaySelected = usageTimeframe == "TODAY"
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isUsageTodaySelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                border = if (isUsageTodaySelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { usageTimeframe = "TODAY" }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Today",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isUsageTodaySelected) Color.White else Color(0xFF334155)
+                                    )
+                                }
+                            }
+
+                            // 2. MONTH TAB
+                            val isUsageMonthSelected = usageTimeframe == "MONTH"
+                            Box(modifier = Modifier.weight(1.1f)) {
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
-                                    border = if (isSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    color = if (isUsageMonthSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    border = if (isUsageMonthSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { usageTimeframe = key }
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            usageTimeframe = "MONTH"
+                                            isUsageMonthMenuExpanded = true
+                                        }
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(vertical = 9.dp),
-                                        horizontalArrangement = Arrangement.Center
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = label,
-                                            fontSize = 12.5.sp,
+                                            text = selectedUsageMonth,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) Color.White else Color(0xFF334155)
+                                            color = if (isUsageMonthSelected) Color.White else Color(0xFF334155),
+                                            maxLines = 1
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowDropDown,
+                                            contentDescription = "Select Month",
+                                            tint = if (isUsageMonthSelected) Color.White else Color(0xFF64748B),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = isUsageMonthMenuExpanded,
+                                    onDismissRequest = { isUsageMonthMenuExpanded = false },
+                                    modifier = Modifier.background(Color.White)
+                                ) {
+                                    monthsList.forEach { month ->
+                                        val isCurrent = month.equals(selectedUsageMonth, ignoreCase = true)
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = month,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                    )
+                                                    if (isCurrent) {
+                                                        Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedUsageMonth = month
+                                                usageTimeframe = "MONTH"
+                                                isUsageMonthMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 3. YEAR TAB
+                            val isUsageYearSelected = usageTimeframe == "YEAR"
+                            Box(modifier = Modifier.weight(1.1f)) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isUsageYearSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    border = if (isUsageYearSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            usageTimeframe = "YEAR"
+                                            isUsageYearMenuExpanded = true
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = selectedUsageYear,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isUsageYearSelected) Color.White else Color(0xFF334155),
+                                            maxLines = 1
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowDropDown,
+                                            contentDescription = "Select Year",
+                                            tint = if (isUsageYearSelected) Color.White else Color(0xFF64748B),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                                DropdownMenu(
+                                    expanded = isUsageYearMenuExpanded,
+                                    onDismissRequest = { isUsageYearMenuExpanded = false },
+                                    modifier = Modifier.background(Color.White)
+                                ) {
+                                    yearsList.forEach { yr ->
+                                        val isCurrent = yr == selectedUsageYear
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = yr,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                    )
+                                                    if (isCurrent) {
+                                                        Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedUsageYear = yr
+                                                usageTimeframe = "YEAR"
+                                                isUsageYearMenuExpanded = false
+                                            }
                                         )
                                     }
                                 }
@@ -1496,6 +1661,11 @@ fun MilkLogScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .pointerInput(usage.id) {
+                                            detectTapGestures(
+                                                onLongPress = { longPressedUsageLog = usage }
+                                            )
+                                        }
                                         .padding(vertical = 10.dp)
                                 ) {
                                     Column(modifier = Modifier.weight(1.1f)) {
@@ -1528,6 +1698,148 @@ fun MilkLogScreen(
                             }
                         }
                     }
+                }
+
+                // Long-press action menu: Edit / Delete
+                longPressedUsageLog?.let { targetLog ->
+                    Box {
+                        DropdownMenu(
+                            expanded = true,
+                            onDismissRequest = { longPressedUsageLog = null },
+                            modifier = Modifier.background(Color.White)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Edit", fontWeight = FontWeight.Bold, color = Color(0xFF1E293B)) },
+                                onClick = {
+                                    editingUsageLog = targetLog
+                                    longPressedUsageLog = null
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete", fontWeight = FontWeight.Bold, color = Color(0xFFB91C1C)) },
+                                onClick = {
+                                    deleteCandidateUsageLog = targetLog
+                                    longPressedUsageLog = null
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Edit dialog: Coop / Home / Calves fields only
+                editingUsageLog?.let { targetLog ->
+                    var editCoopInput by remember(targetLog.id) { mutableStateOf(if (targetLog.litresToCooperative == 0.0) "" else targetLog.litresToCooperative.toString()) }
+                    var editHomeInput by remember(targetLog.id) { mutableStateOf(if (targetLog.litresHomeUse == 0.0) "" else targetLog.litresHomeUse.toString()) }
+                    var editCalvesInput by remember(targetLog.id) { mutableStateOf(if (targetLog.litresToCalves == 0.0) "" else targetLog.litresToCalves.toString()) }
+                    var editErrorMessage by remember(targetLog.id) { mutableStateOf<String?>(null) }
+
+                    AlertDialog(
+                        onDismissRequest = { editingUsageLog = null },
+                        title = { Text("Edit Milk Usage", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column {
+                                Text(
+                                    text = "${targetLog.date} • ${MilkLogEntryRules.normalizedSession(targetLog.session).lowercase().replaceFirstChar { it.uppercase() }}",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Text("Coop (L)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                OutlinedTextField(
+                                    value = editCoopInput,
+                                    onValueChange = { editCoopInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Text("Home (L)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                OutlinedTextField(
+                                    value = editHomeInput,
+                                    onValueChange = { editHomeInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Text("Calves (L)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                OutlinedTextField(
+                                    value = editCalvesInput,
+                                    onValueChange = { editCalvesInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+
+                                editErrorMessage?.let { message ->
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(message, color = Color(0xFFB91C1C), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val coop = editCoopInput.toDoubleOrNull() ?: 0.0
+                                    val home = editHomeInput.toDoubleOrNull() ?: 0.0
+                                    val calves = editCalvesInput.toDoubleOrNull() ?: 0.0
+                                    if (coop == 0.0 && home == 0.0 && calves == 0.0) {
+                                        editErrorMessage = "Enter at least one usage amount."
+                                    } else {
+                                        onEditMilkUsageLog(targetLog.id, coop, home, calves) { success, message ->
+                                            if (success) {
+                                                editingUsageLog = null
+                                            } else {
+                                                editErrorMessage = message ?: "Unable to update milk usage."
+                                            }
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                            ) {
+                                Text("Save Changes", fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            OutlinedButton(onClick = { editingUsageLog = null }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
+
+                // Delete confirmation dialog
+                deleteCandidateUsageLog?.let { targetLog ->
+                    AlertDialog(
+                        onDismissRequest = { deleteCandidateUsageLog = null },
+                        title = { Text("Delete Record?", fontWeight = FontWeight.Bold) },
+                        text = { Text("Do you want to permanently delete this record?") },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    onDeleteMilkUsageLog(targetLog.id)
+                                    deleteCandidateUsageLog = null
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C))
+                            ) {
+                                Text("Delete", fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            OutlinedButton(onClick = { deleteCandidateUsageLog = null }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
                 }
             }
         }

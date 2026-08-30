@@ -35,6 +35,7 @@ import com.example.data.TaskPriority
 import com.example.data.UserSession
 import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
+import com.example.data.SyncStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow

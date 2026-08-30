@@ -22,6 +22,7 @@ import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkLog
+import com.example.data.MilkLogEntryRules
 import com.example.data.MilkUsageLog
 import com.example.data.MonthlyReport
 import com.example.data.PoultryLog
@@ -747,6 +748,7 @@ class FarmViewModel(
 
     fun saveMilkUsageLog(
         date: String,
+        session: String,
         litresToCooperative: Double,
         litresHomeUse: Double,
         litresToCalves: Double,
@@ -764,6 +766,7 @@ class FarmViewModel(
                 val usage = MilkUsageLog(
                     farmId = farmId,
                     date = date.ifBlank { todayFormatted },
+                    session = MilkLogEntryRules.normalizedSession(session),
                     litresToCooperative = litresToCooperative,
                     litresHomeUse = litresHomeUse,
                     litresToCalves = litresToCalves

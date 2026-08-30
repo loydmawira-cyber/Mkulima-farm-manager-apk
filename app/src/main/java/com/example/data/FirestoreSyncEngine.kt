@@ -2,6 +2,10 @@ package com.example.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -36,6 +40,25 @@ class FirestoreSyncEngine(
     private var activeFarmId: String? = null
     private val activeListeners = mutableListOf<ListenerRegistration>()
     private var pushJob: Job? = null
+
+    init {
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            if (cm != null) {
+                val request = NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build()
+                cm.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        Log.d(TAG, "Internet connectivity restored. Triggering offline sync push.")
+                        activeFarmId?.let { triggerPush(it) }
+                    }
+                })
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Could not register connectivity network callback: ${e.message}")
+        }
+    }
 
     private fun getFirestore(): FirebaseFirestore? {
         return try {

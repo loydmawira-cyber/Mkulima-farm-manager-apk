@@ -20,7 +20,10 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -162,6 +165,52 @@ class AuthManager(
         }
     }
 
+    /**
+     * Looks up the first document in [collection] whose [fields] match any of [values],
+     * without querying once per candidate value. Firestore's `whereIn` accepts up to 10
+     * values per query, so [values] is chunked and every (field × chunk) query is fired
+     * concurrently via [async] instead of sequentially awaiting each one. This turns what
+     * used to be dozens of blocking round-trips (one per phone-format guess) into a
+     * handful of parallel ones, which is the main fix for slow phone-number login.
+     * Field order is preserved as priority: if multiple fields match, the earliest field
+     * in [fields] wins.
+     */
+    private suspend fun firstMatchByFieldsIn(
+        db: FirebaseFirestore,
+        collection: String,
+        fields: List<String>,
+        values: List<String>
+    ): DocumentSnapshot? = coroutineScope {
+        val distinctValues = values.filter { it.isNotBlank() }.distinct()
+        if (distinctValues.isEmpty()) return@coroutineScope null
+        val chunks = distinctValues.chunked(10)
+
+        // Fire every (field, chunk) query at once instead of one-by-one.
+        val deferreds: List<Deferred<DocumentSnapshot?>> = fields.flatMap { field ->
+            chunks.map { chunk ->
+                async(Dispatchers.IO) {
+                    try {
+                        val snap = db.collection(collection)
+                            .whereIn(field, chunk)
+                            .limit(1)
+                            .get()
+                            .awaitTask()
+                        if (snap != null && !snap.isEmpty) snap.documents[0] else null
+                    } catch (e: Throwable) {
+                        null
+                    }
+                }
+            }
+        }
+
+        // Preserve field priority order when picking the result.
+        for (deferred in deferreds) {
+            val result = deferred.await()
+            if (result != null) return@coroutineScope result
+        }
+        null
+    }
+
     var lastAuthInitError: String? = null
 
     private fun getFirebaseAuth(): FirebaseAuth? {
@@ -285,20 +334,7 @@ class AuthManager(
                     if (userDocData == null) {
                         val phoneCandidate = currentUser.phoneNumber ?: prefs.getString("email_or_phone", null) ?: prefs.getString("last_email_or_phone", null) ?: ""
                         val formats = getPhoneCandidateFormats(phoneCandidate)
-                        for (fmt in formats) {
-                            try {
-                                val q1 = db.collection("users").whereEqualTo("phone", fmt).limit(1).get().awaitTask()
-                                if (q1 != null && !q1.isEmpty) {
-                                    userDocData = q1.documents[0].data
-                                    break
-                                }
-                                val q2 = db.collection("users").whereEqualTo("phoneNumber", fmt).limit(1).get().awaitTask()
-                                if (q2 != null && !q2.isEmpty) {
-                                    userDocData = q2.documents[0].data
-                                    break
-                                }
-                            } catch (e: Throwable) {}
-                        }
+                        userDocData = firstMatchByFieldsIn(db, "users", listOf("phone", "phoneNumber"), formats)?.data
                     }
                 }
 
@@ -565,45 +601,18 @@ class AuthManager(
     suspend fun findExistingFarmByPhone(fullPhoneOrRaw: String, defaultCountryCode: String = "+254"): Map<String, Any>? = withContext(Dispatchers.IO) {
         val db = getFirestore() ?: return@withContext null
         val formats = getPhoneCandidateFormats(fullPhoneOrRaw, defaultCountryCode)
-        for (fmt in formats) {
-            try {
-                // 1. Check farms collection where ownerContact matches phone format
-                val q1 = db.collection("farms").whereEqualTo("ownerContact", fmt).limit(1).get().awaitTask()
-                if (q1 != null && !q1.isEmpty) {
-                    val farmDoc = q1.documents[0]
-                    val data = farmDoc.data?.toMutableMap() ?: mutableMapOf<String, Any>()
-                    if (!data.containsKey("farmId")) {
-                        data["farmId"] = farmDoc.id
-                    }
-                    return@withContext data
-                }
+        val farmDoc = try {
+            firstMatchByFieldsIn(db, "farms", listOf("ownerContact", "ownerPhone", "phone"), formats)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Error querying farms for phone $fullPhoneOrRaw", e)
+            null
+        } ?: return@withContext null
 
-                // 2. Check farms collection where ownerPhone matches phone format
-                val q2 = db.collection("farms").whereEqualTo("ownerPhone", fmt).limit(1).get().awaitTask()
-                if (q2 != null && !q2.isEmpty) {
-                    val farmDoc = q2.documents[0]
-                    val data = farmDoc.data?.toMutableMap() ?: mutableMapOf<String, Any>()
-                    if (!data.containsKey("farmId")) {
-                        data["farmId"] = farmDoc.id
-                    }
-                    return@withContext data
-                }
-
-                // 3. Check farms collection where phone matches phone format
-                val q3 = db.collection("farms").whereEqualTo("phone", fmt).limit(1).get().awaitTask()
-                if (q3 != null && !q3.isEmpty) {
-                    val farmDoc = q3.documents[0]
-                    val data = farmDoc.data?.toMutableMap() ?: mutableMapOf<String, Any>()
-                    if (!data.containsKey("farmId")) {
-                        data["farmId"] = farmDoc.id
-                    }
-                    return@withContext data
-                }
-            } catch (e: Throwable) {
-                Log.w(TAG, "Error querying farms for format $fmt", e)
-            }
+        val data = farmDoc.data?.toMutableMap() ?: mutableMapOf<String, Any>()
+        if (!data.containsKey("farmId")) {
+            data["farmId"] = farmDoc.id
         }
-        return@withContext null
+        return@withContext data
     }
 
     suspend fun checkPhoneNumberExists(fullPhoneNumber: String): Boolean = withContext(Dispatchers.IO) {
@@ -839,17 +848,11 @@ class AuthManager(
             // New phone registrations use a real recovery email as their Firebase
             // email/password identifier. Resolve that email from the caller's phone.
             if (db != null) {
-                for (phoneVariant in getPhoneCandidateFormats(cleanIdentifier).distinct()) {
-                    try {
-                        val byPhone = db.collection("users")
-                            .whereEqualTo("phone", phoneVariant)
-                            .limit(1)
-                            .get()
-                            .awaitTask()
-                        val storedAuthEmail = byPhone.documents.firstOrNull()?.getString("authEmail")
-                        if (!storedAuthEmail.isNullOrBlank()) candidateAuthEmails.add(storedAuthEmail.lowercase())
-                    } catch (_: Throwable) { }
-                }
+                try {
+                    val doc = firstMatchByFieldsIn(db, "users", listOf("phone"), getPhoneCandidateFormats(cleanIdentifier))
+                    val storedAuthEmail = doc?.getString("authEmail")
+                    if (!storedAuthEmail.isNullOrBlank()) candidateAuthEmails.add(storedAuthEmail.lowercase())
+                } catch (_: Throwable) { }
             }
         }
 
@@ -1017,20 +1020,9 @@ class AuthManager(
 
             if (userDocData == null && db != null) {
                 val candidatePhones = getPhoneCandidateFormats(cleanIdentifier) + getPhoneCandidateFormats(authenticatedUser.phoneNumber ?: "")
-                for (phoneVariant in candidatePhones.distinct()) {
-                    try {
-                        val q1 = db.collection("users").whereEqualTo("phone", phoneVariant).limit(1).get().awaitTask()
-                        if (q1 != null && !q1.isEmpty) {
-                            userDocData = q1.documents[0].data
-                            break
-                        }
-                        val q2 = db.collection("users").whereEqualTo("phoneNumber", phoneVariant).limit(1).get().awaitTask()
-                        if (q2 != null && !q2.isEmpty) {
-                            userDocData = q2.documents[0].data
-                            break
-                        }
-                    } catch (e: Throwable) {}
-                }
+                try {
+                    userDocData = firstMatchByFieldsIn(db, "users", listOf("phone", "phoneNumber"), candidatePhones)?.data
+                } catch (e: Throwable) {}
             }
 
             val name = (userDocData?.get("name") as? String)

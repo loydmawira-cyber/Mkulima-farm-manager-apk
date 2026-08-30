@@ -65,6 +65,16 @@ class FarmViewModel(
 
     val currentSession: StateFlow<UserSession?> = authManager.currentSession
 
+    // Added StateFlow for observing sync status in UI:
+    val syncStatus: StateFlow<SyncStatus> = repository.syncEngine?.syncStatus
+        ?: MutableStateFlow(SyncStatus.Offline)
+
+    // Added manual sync trigger function:
+    fun triggerManualSync() {
+        val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+        repository.syncEngine?.triggerPush(farmId)
+    }
+
     val searchQuery = MutableStateFlow("")
     val selectedCategoryFilter = MutableStateFlow<TaskCategory?>(null)
     // Daily Task Operations should show active work by default; completed history remains available via Completed.

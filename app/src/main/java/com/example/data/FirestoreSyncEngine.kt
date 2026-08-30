@@ -41,6 +41,11 @@ class FirestoreSyncEngine(
     private val activeListeners = mutableListOf<ListenerRegistration>()
     private var pushJob: Job? = null
 
+    private val _syncStatus = MutableStateFlow<SyncStatus>(
+        if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
+    )
+    val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
+
     init {
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -51,7 +56,15 @@ class FirestoreSyncEngine(
                 cm.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
                     override fun onAvailable(network: Network) {
                         Log.d(TAG, "Internet connectivity restored. Triggering offline sync push.")
+                        isOnline = true
+                        _syncStatus.value = SyncStatus.Syncing
                         activeFarmId?.let { triggerPush(it) }
+                    }
+
+                    override fun onLost(network: Network) {
+                        Log.d(TAG, "Internet connectivity lost. Entering offline mode.")
+                        isOnline = false
+                        _syncStatus.value = SyncStatus.Offline
                     }
                 })
             }

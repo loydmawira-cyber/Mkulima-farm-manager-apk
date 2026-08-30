@@ -768,9 +768,9 @@ fun MkulimaAppContent(
                                 onError = { message -> onResult(false, message) }
                             )
                         },
-                        onSaveMilkUsageLog = { date, coop, home, calves, onResult ->
+                        onSaveMilkUsageLog = { date, session, coop, home, calves, onResult ->
                             viewModel.saveMilkUsageLog(
-                                date, coop, home, calves,
+                                date, session, coop, home, calves,
                                 onSaved = { onResult(true, null) },
                                 onError = { message -> onResult(false, message) }
                             )

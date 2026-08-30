@@ -22,6 +22,7 @@ import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkLog
+import com.example.data.MilkUsageLog
 import com.example.data.MonthlyReport
 import com.example.data.PoultryLog
 import com.example.data.ReminderCompletion

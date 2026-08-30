@@ -206,6 +206,7 @@ class FirestoreSyncEngine(
         attachCollectionListener("tasks") { applyRemoteTask(farmId, it) }
         attachCollectionListener("units") { applyRemoteUnit(farmId, it) }
         attachCollectionListener("milk_logs") { applyRemoteMilkLog(farmId, it) }
+        attachCollectionListener("milk_usage_logs") { applyRemoteMilkUsageLog(farmId, it) }
         attachCollectionListener("egg_logs") { applyRemoteEggLog(farmId, it) }
         attachCollectionListener("finance_records") { applyRemoteFinanceRecord(farmId, it) }
         attachCollectionListener("employee_requests") { applyRemoteEmployeeRequest(farmId, it) }
@@ -357,6 +358,27 @@ class FirestoreSyncEngine(
                 if (log.updatedAt > maxMilkUpdatedAt) maxMilkUpdatedAt = log.updatedAt
             }
             if (maxMilkUpdatedAt > lastMilkPush) setWatermark(farmId, "push_milk_logs", maxMilkUpdatedAt)
+
+            // 4b. Milk Usage Logs (Coop / Home / Calves split)
+            val lastMilkUsagePush = getWatermark(farmId, "push_milk_usage_logs")
+            val dirtyMilkUsage = farmDao.getDirtyMilkUsageLogs(farmId, lastMilkUsagePush)
+            var maxMilkUsageUpdatedAt = lastMilkUsagePush
+            for (usage in dirtyMilkUsage) {
+                val data = hashMapOf<String, Any?>(
+                    "syncId" to usage.syncId,
+                    "farmId" to farmId,
+                    "date" to usage.date,
+                    "litresToCooperative" to usage.litresToCooperative,
+                    "litresHomeUse" to usage.litresHomeUse,
+                    "litresToCalves" to usage.litresToCalves,
+                    "notes" to usage.notes,
+                    "updatedAt" to usage.updatedAt,
+                    "isDeleted" to usage.isDeleted
+                )
+                farmRef.collection("milk_usage_logs").document(usage.syncId).set(data, SetOptions.merge()).awaitTask()
+                if (usage.updatedAt > maxMilkUsageUpdatedAt) maxMilkUsageUpdatedAt = usage.updatedAt
+            }
+            if (maxMilkUsageUpdatedAt > lastMilkUsagePush) setWatermark(farmId, "push_milk_usage_logs", maxMilkUsageUpdatedAt)
 
             // 5. Egg Logs
             val lastEggPush = getWatermark(farmId, "push_egg_logs")
@@ -762,6 +784,29 @@ class FirestoreSyncEngine(
                 isDeleted = isDeleted
             )
             farmDao.insertMilkLog(log)
+        }
+    }
+
+    private suspend fun applyRemoteMilkUsageLog(farmId: String, doc: DocumentSnapshot) {
+        val syncId = doc.id
+        val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
+        val isDeleted = doc.getBoolean("isDeleted") ?: false
+        val existing = farmDao.getMilkUsageLogBySyncId(syncId)
+
+        if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val usage = MilkUsageLog(
+                id = existing?.id ?: 0,
+                syncId = syncId,
+                farmId = farmId,
+                date = doc.getString("date") ?: "",
+                litresToCooperative = doc.getDouble("litresToCooperative") ?: 0.0,
+                litresHomeUse = doc.getDouble("litresHomeUse") ?: 0.0,
+                litresToCalves = doc.getDouble("litresToCalves") ?: 0.0,
+                notes = doc.getString("notes"),
+                updatedAt = remoteUpdatedAt,
+                isDeleted = isDeleted
+            )
+            farmDao.insertMilkUsageLog(usage)
         }
     }
 

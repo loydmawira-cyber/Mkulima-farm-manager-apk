@@ -21,6 +21,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutionException
@@ -40,6 +43,21 @@ class FirestoreSyncEngine(
     private var activeFarmId: String? = null
     private val activeListeners = mutableListOf<ListenerRegistration>()
     private var pushJob: Job? = null
+
+    @Volatile
+    private var isOnline: Boolean = true
+
+    private fun isNetworkAvailable(context: Context): Boolean {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val network = cm?.activeNetwork ?: return false
+            val capabilities = cm.getNetworkCapabilities(network) ?: return false
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Could not check network availability: ${e.message}")
+            true // Assume online if we can't determine — avoids false "Offline" state
+        }
+    }
 
     private val _syncStatus = MutableStateFlow<SyncStatus>(
         if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
@@ -279,6 +297,7 @@ class FirestoreSyncEngine(
         pushJob?.cancel()
         pushJob = scope.launch {
             delay(300) // Debounce rapid writes
+            _syncStatus.value = SyncStatus.Syncing
             pushDirtyRows(targetFarmId)
         }
     }
@@ -674,8 +693,10 @@ class FirestoreSyncEngine(
             if (maxReportUpdatedAt > lastReportsPush) setWatermark(farmId, "push_monthly_reports", maxReportUpdatedAt)
 
             Log.d(TAG, "Successfully pushed dirty rows for farm: $farmId")
+            _syncStatus.value = SyncStatus.Synced
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to push dirty rows for farm $farmId", e)
+            _syncStatus.value = if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
         }
     }
 

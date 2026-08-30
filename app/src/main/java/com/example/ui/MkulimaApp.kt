@@ -70,6 +70,9 @@ import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkUsageLog
 import com.example.data.RequestStatus
+import com.example.data.SyncStatus
+import com.example.ui.components.SyncStatusBadge
+import com.example.ui.components.SyncStatusBanner
 import com.example.ui.components.AddEggLogDialog
 import com.example.ui.components.AddEmployeeRequestDialog
 import com.example.ui.components.AddFinanceRecordDialog
@@ -139,6 +142,7 @@ fun MkulimaAppContent(
 
     val filteredTasks by viewModel.filteredTasks.collectAsState()
     val allTasks by viewModel.rawTasks.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
     val allUnits by viewModel.allUnits.collectAsState()
     val milkLogs by viewModel.allMilkLogs.collectAsState()
     val milkUsageLogs by viewModel.allMilkUsageLogs.collectAsState()
@@ -489,6 +493,13 @@ fun MkulimaAppContent(
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Real-time Cloud Sync Status Indicator
+                                SyncStatusBadge(
+                                    status = syncStatus,
+                                    onClick = { viewModel.triggerManualSync() },
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+
                                 // Farm Reminders & Alerts Notification Bell
                                 IconButton(
                                     onClick = { showRemindersDialog = true },
@@ -658,12 +669,23 @@ fun MkulimaAppContent(
                 }
             }
         ) { innerPadding ->
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
                     .background(MaterialTheme.colorScheme.background)
             ) {
+                // Persistent sync & connectivity notification banner
+                SyncStatusBanner(
+                    status = syncStatus,
+                    onRetrySync = { viewModel.triggerManualSync() }
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f)
+                ) {
                 val effectiveTab = if (userRole != "OWNER") {
                     when(selectedTab) {
                         0 -> 2
@@ -837,6 +859,7 @@ fun MkulimaAppContent(
                         onAddRequestClick = { showAddEmployeeRequestDialog = true }
                     )
                 }
+            }
             }
         }
     }

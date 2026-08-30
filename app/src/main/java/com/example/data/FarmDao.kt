@@ -139,7 +139,36 @@ interface FarmDao {
     @Update
     suspend fun updateMilkLog(log: MilkLog)
 
-    // ================= Egg Logs =================
+    // ================= Milk Usage Logs (Coop / Home / Calves split) =================
+    @Query("SELECT * FROM milk_usage_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY date DESC, id DESC")
+    fun getMilkUsageLogsByFarm(farmId: String): Flow<List<MilkUsageLog>>
+
+    @Query("SELECT * FROM milk_usage_logs WHERE isDeleted = 0 ORDER BY date DESC, id DESC")
+    fun getAllMilkUsageLogs(): Flow<List<MilkUsageLog>>
+
+    @Query("SELECT * FROM milk_usage_logs WHERE syncId = :syncId LIMIT 1")
+    suspend fun getMilkUsageLogBySyncId(syncId: String): MilkUsageLog?
+
+    @Query("SELECT * FROM milk_usage_logs WHERE id = :id LIMIT 1")
+    suspend fun getMilkUsageLogById(id: Long): MilkUsageLog?
+
+    @Query("SELECT * FROM milk_usage_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
+    suspend fun getDirtyMilkUsageLogs(farmId: String, since: Long): List<MilkUsageLog>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMilkUsageLog(log: MilkUsageLog): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMilkUsageLogs(logs: List<MilkUsageLog>)
+
+    @Update
+    suspend fun updateMilkUsageLog(log: MilkUsageLog)
+
+    @Query("UPDATE milk_usage_logs SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun softDeleteMilkUsageLog(id: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM milk_usage_logs WHERE id = :id")
+    suspend fun deleteMilkUsageLogById(id: Long)
     @Query("SELECT * FROM egg_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY id DESC")
     fun getEggLogsByFarm(farmId: String): Flow<List<EggLog>>
 
@@ -468,6 +497,9 @@ interface FarmDao {
     @Query("DELETE FROM milk_logs WHERE farmId = :farmId")
     suspend fun deleteMilkLogsForFarm(farmId: String)
 
+    @Query("DELETE FROM milk_usage_logs WHERE farmId = :farmId")
+    suspend fun deleteMilkUsageLogsForFarm(farmId: String)
+
     @Query("DELETE FROM egg_logs WHERE farmId = :farmId")
     suspend fun deleteEggLogsForFarm(farmId: String)
 
@@ -492,6 +524,9 @@ interface FarmDao {
 
     @Query("DELETE FROM milk_logs")
     suspend fun deleteAllMilkLogs()
+
+    @Query("DELETE FROM milk_usage_logs")
+    suspend fun deleteAllMilkUsageLogs()
 
     @Query("DELETE FROM egg_logs")
     suspend fun deleteAllEggLogs()

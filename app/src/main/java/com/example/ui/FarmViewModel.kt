@@ -785,6 +785,29 @@ class FarmViewModel(
         }
     }
 
+    fun editMilkUsageLog(
+        id: Long,
+        litresToCooperative: Double,
+        litresHomeUse: Double,
+        litresToCalves: Double,
+        onSaved: (MilkUsageLog) -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            if (!canWriteFarmData()) {
+                onError("Subscription expired. Production records are read-only until the owner renews.")
+                return@launch
+            }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    repository.editMilkUsageLog(id, litresToCooperative, litresHomeUse, litresToCalves)
+                }
+            }.onSuccess(onSaved).onFailure { error ->
+                onError(error.message ?: "Unable to update milk usage. Please try again.")
+            }
+        }
+    }
+
     // Egg Logs
     fun addEggLog(
         unitName: String,

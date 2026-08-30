@@ -140,6 +140,7 @@ fun MkulimaAppContent(
     val allTasks by viewModel.rawTasks.collectAsState()
     val allUnits by viewModel.allUnits.collectAsState()
     val milkLogs by viewModel.allMilkLogs.collectAsState()
+    val milkUsageLogs by viewModel.allMilkUsageLogs.collectAsState()
     val eggLogs by viewModel.allEggLogs.collectAsState()
     val financeRecords by viewModel.allFinanceRecords.collectAsState()
     val monthlyReports by viewModel.allMonthlyReports.collectAsState()
@@ -751,6 +752,7 @@ fun MkulimaAppContent(
 
                     2 -> MilkLogScreen(
                         milkLogs = milkLogs,
+                        milkUsageLogs = milkUsageLogs,
                         eggLogs = eggLogs,
                         units = allUnits,
                         onAddMilkLogClick = { showAddMilkLogDialog = true },
@@ -762,6 +764,13 @@ fun MkulimaAppContent(
                             viewModel.addMilkLog(
                                 cowName, "Cattle Unit", litres, session, 3.8, finalDate, "Recorded from Daily Log",
                                 onRecorded = { onResult(true, null) },
+                                onError = { message -> onResult(false, message) }
+                            )
+                        },
+                        onSaveMilkUsageLog = { date, coop, home, calves, onResult ->
+                            viewModel.saveMilkUsageLog(
+                                date, coop, home, calves,
+                                onSaved = { onResult(true, null) },
                                 onError = { message -> onResult(false, message) }
                             )
                         },

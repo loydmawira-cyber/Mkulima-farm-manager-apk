@@ -605,7 +605,7 @@ fun MilkLogScreen(
     onAddMilkLogClick: () -> Unit,
     onAddEggLogClick: () -> Unit = {},
     onQuickSaveMilkLog: (cowName: String, litres: Double, session: String, date: String, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _ -> },
-    onSaveMilkUsageLog: (date: String, litresToCooperative: Double, litresHomeUse: Double, litresToCalves: Double, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _ -> },
+    onSaveMilkUsageLog: (date: String, session: String, litresToCooperative: Double, litresHomeUse: Double, litresToCalves: Double, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _, _ -> },
     onQuickSaveEggLog: (flockName: String, totalEggs: Int, damagedEggs: Int, grade: String, date: String, notes: String?) -> Unit = { _, _, _, _, _, _ -> },
     onDeleteMilkLog: (Long) -> Unit,
     onDeleteEggLog: (Long) -> Unit,
@@ -1500,7 +1500,14 @@ fun MilkLogScreen(
                                         .fillMaxWidth()
                                         .padding(vertical = 10.dp)
                                 ) {
-                                    Text(usage.date, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(1.1f))
+                                    Column(modifier = Modifier.weight(1.1f)) {
+                                        Text(usage.date, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                                        Text(
+                                            text = MilkLogEntryRules.normalizedSession(usage.session).lowercase().replaceFirstChar { it.uppercase() },
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
                                     Text("%.1fL".format(usage.totalAllocated), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
                                     Text("%.1fL".format(usage.litresToCalves), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
                                     Text("%.1fL".format(usage.litresHomeUse), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
@@ -1920,6 +1927,7 @@ fun MilkLogScreen(
 
             item {
                 var usageDateText by remember { mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())) }
+                var usageSession by remember { mutableStateOf("MORNING") }
                 var coopInput by remember { mutableStateOf("") }
                 var homeInput by remember { mutableStateOf("") }
                 var calvesInput by remember { mutableStateOf("") }
@@ -1967,6 +1975,29 @@ fun MilkLogScreen(
                             modifier = Modifier.fillMaxWidth(),
                             testTag = "milk_usage_date_picker"
                         )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text("SESSION", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("MORNING" to "Morning", "AFTERNOON" to "Afternoon", "EVENING" to "Evening").forEach { (value, label) ->
+                                val isSel = usageSession == value
+                                FilterChip(
+                                    selected = isSel,
+                                    onClick = { usageSession = value },
+                                    label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    modifier = Modifier.weight(1f).testTag("milk_usage_session_$value"),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
@@ -2034,15 +2065,15 @@ fun MilkLogScreen(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text("Morning", fontSize = 10.sp, color = Color(0xFF64748B))
+                                            Text("Morning", fontSize = 10.sp, fontWeight = if (usageSession == "MORNING") FontWeight.Bold else FontWeight.Normal, color = if (usageSession == "MORNING") ForestGreenPrimary else Color(0xFF64748B))
                                             Text("%.1fL".format(morningTotal), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                                         }
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text("Afternoon", fontSize = 10.sp, color = Color(0xFF64748B))
+                                            Text("Afternoon", fontSize = 10.sp, fontWeight = if (usageSession == "AFTERNOON") FontWeight.Bold else FontWeight.Normal, color = if (usageSession == "AFTERNOON") ForestGreenPrimary else Color(0xFF64748B))
                                             Text("%.1fL".format(afternoonTotal), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                                         }
                                         Column(modifier = Modifier.weight(1f)) {
-                                            Text("Evening", fontSize = 10.sp, color = Color(0xFF64748B))
+                                            Text("Evening", fontSize = 10.sp, fontWeight = if (usageSession == "EVENING") FontWeight.Bold else FontWeight.Normal, color = if (usageSession == "EVENING") ForestGreenPrimary else Color(0xFF64748B))
                                             Text("%.1fL".format(eveningTotal), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                                         }
                                     }
@@ -2108,10 +2139,12 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        val existingUsageForDate = remember(usageDateKey, milkUsageLogs) {
+                        val existingUsageForDate = remember(usageDateKey, usageSession, milkUsageLogs) {
                             if (usageDateKey == null) null
                             else milkUsageLogs.firstOrNull {
-                                !it.isDeleted && MilkLogEntryRules.canonicalDateKey(it.date) == usageDateKey
+                                !it.isDeleted &&
+                                    MilkLogEntryRules.canonicalDateKey(it.date) == usageDateKey &&
+                                    MilkLogEntryRules.normalizedSession(it.session) == usageSession
                             }
                         }
                         val alreadyRecorded = existingUsageForDate != null
@@ -2126,9 +2159,9 @@ fun MilkLogScreen(
                                 if (coop == 0.0 && home == 0.0 && calves == 0.0) {
                                     usageErrorMessage = "Enter at least one usage amount."
                                 } else {
-                                    onSaveMilkUsageLog(usageDateText, coop, home, calves) { success, message ->
+                                    onSaveMilkUsageLog(usageDateText, usageSession, coop, home, calves) { success, message ->
                                         if (success) {
-                                            usageSuccessMessage = "Milk usage saved for $usageDateText."
+                                            usageSuccessMessage = "Milk usage saved for $usageDateText (${usageSession.lowercase().replaceFirstChar { it.uppercase() }})."
                                             coopInput = ""
                                             homeInput = ""
                                             calvesInput = ""
@@ -2158,7 +2191,7 @@ fun MilkLogScreen(
                         if (alreadyRecorded) {
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = "A usage record already exists for this date. Delete it first to re-enter.",
+                                text = "A usage record already exists for this date and session. Delete it first to re-enter.",
                                 color = Color(0xFF64748B),
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Medium

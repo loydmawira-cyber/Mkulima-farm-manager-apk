@@ -87,6 +87,15 @@ class FarmViewModel(
         initialValue = emptyList()
     )
 
+    val allMilkUsageLogs: StateFlow<List<MilkUsageLog>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getMilkUsageLogsForFarm(farmId)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
+
     val allEggLogs: StateFlow<List<EggLog>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getEggLogsForFarm(farmId)
@@ -732,6 +741,43 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.deleteMilkLog(logId)
+        }
+    }
+
+    fun saveMilkUsageLog(
+        date: String,
+        litresToCooperative: Double,
+        litresHomeUse: Double,
+        litresToCalves: Double,
+        onSaved: (MilkUsageLog) -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            if (!canWriteFarmData()) {
+                onError("Subscription expired. Production records are read-only until the owner renews.")
+                return@launch
+            }
+            runCatching {
+                val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+                val todayFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+                val usage = MilkUsageLog(
+                    farmId = farmId,
+                    date = date.ifBlank { todayFormatted },
+                    litresToCooperative = litresToCooperative,
+                    litresHomeUse = litresHomeUse,
+                    litresToCalves = litresToCalves
+                )
+                withContext(Dispatchers.IO) { repository.saveMilkUsageLog(usage) }
+            }.onSuccess(onSaved).onFailure { error ->
+                onError(error.message ?: "Unable to save milk usage. Please try again.")
+            }
+        }
+    }
+
+    fun deleteMilkUsageLog(id: Long) {
+        viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
+            repository.deleteMilkUsageLog(id)
         }
     }
 

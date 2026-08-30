@@ -1409,19 +1409,17 @@ fun MilkLogScreen(
 
                 val filteredUsageLogs = remember(milkUsageLogs, usageTimeframe) {
                     milkUsageLogs.filter { usage ->
+                        val dateKey = MilkLogEntryRules.canonicalDateKey(usage.date) ?: return@filter false
+                        val parsed = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateKey) }.getOrNull() ?: return@filter false
                         when (usageTimeframe) {
-                            "TODAY" -> usage.date == todayKey
-                            "MONTH" -> runCatching {
-                                val parsed = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).parse(usage.date)
-                                parsed != null && SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(parsed) == monthKey
-                            }.getOrDefault(false)
-                            else -> runCatching {
-                                val parsed = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).parse(usage.date)
-                                parsed != null && SimpleDateFormat("yyyy", Locale.getDefault()).format(parsed) == yearKey
-                            }.getOrDefault(false)
+                            "TODAY" -> dateKey == MilkLogEntryRules.canonicalDateKey(todayKey)
+                            "MONTH" -> SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(parsed) == monthKey
+                            else -> SimpleDateFormat("yyyy", Locale.getDefault()).format(parsed) == yearKey
                         }
                     }.sortedByDescending {
-                        runCatching { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).parse(it.date)?.time }.getOrNull() ?: 0L
+                        runCatching {
+                            MilkLogEntryRules.canonicalDateKey(it.date)?.let { key -> SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(key)?.time }
+                        }.getOrNull() ?: 0L
                     }
                 }
 

@@ -1970,6 +1970,88 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
+                        // Auto-computed production total for the selected date, from all cows' milk logs
+                        val usageDateKey = remember(usageDateText) { MilkLogEntryRules.canonicalDateKey(usageDateText) }
+                        val dayMilkLogs = remember(usageDateKey, milkLogs) {
+                            if (usageDateKey == null) emptyList()
+                            else milkLogs.filter { MilkLogEntryRules.canonicalDateKey(it.date) == usageDateKey }
+                        }
+                        val morningTotal = remember(dayMilkLogs) {
+                            dayMilkLogs.filter { MilkLogEntryRules.normalizedSession(it.session) == "MORNING" }.sumOf { it.litres }
+                        }
+                        val afternoonTotal = remember(dayMilkLogs) {
+                            dayMilkLogs.filter { MilkLogEntryRules.normalizedSession(it.session) == "AFTERNOON" }.sumOf { it.litres }
+                        }
+                        val eveningTotal = remember(dayMilkLogs) {
+                            dayMilkLogs.filter { MilkLogEntryRules.normalizedSession(it.session) == "EVENING" }.sumOf { it.litres }
+                        }
+                        val dayGrandTotal = morningTotal + afternoonTotal + eveningTotal
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFF0FDF4),
+                            border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "TOTAL PRODUCED THIS DAY",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF64748B)
+                                    )
+                                    Text(
+                                        text = "%.1fL".format(dayGrandTotal),
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ForestGreenPrimary
+                                    )
+                                }
+
+                                if (usageDateKey == null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Enter a valid date to see the day's totals.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                } else if (dayMilkLogs.isEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "No milk logs recorded for this date yet.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Morning", fontSize = 10.sp, color = Color(0xFF64748B))
+                                            Text("%.1fL".format(morningTotal), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Afternoon", fontSize = 10.sp, color = Color(0xFF64748B))
+                                            Text("%.1fL".format(afternoonTotal), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Evening", fontSize = 10.sp, color = Color(0xFF64748B))
+                                            Text("%.1fL".format(eveningTotal), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -2026,6 +2108,14 @@ fun MilkLogScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
+                        val existingUsageForDate = remember(usageDateKey, milkUsageLogs) {
+                            if (usageDateKey == null) null
+                            else milkUsageLogs.firstOrNull {
+                                !it.isDeleted && MilkLogEntryRules.canonicalDateKey(it.date) == usageDateKey
+                            }
+                        }
+                        val alreadyRecorded = existingUsageForDate != null
+
                         Button(
                             onClick = {
                                 usageErrorMessage = null
@@ -2048,13 +2138,31 @@ fun MilkLogScreen(
                                     }
                                 }
                             },
+                            enabled = !alreadyRecorded,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("save_milk_usage_button"),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ForestGreenPrimary,
+                                disabledContainerColor = Color(0xFF94A3B8)
+                            )
                         ) {
-                            Text("Save Usage Record", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(
+                                text = if (alreadyRecorded) "Recorded" else "Save Usage Record",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        if (alreadyRecorded) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "A usage record already exists for this date. Delete it first to re-enter.",
+                                color = Color(0xFF64748B),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
 
                         usageErrorMessage?.let { message ->

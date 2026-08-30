@@ -54,6 +54,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -91,6 +92,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.EggLog
 import com.example.data.MilkLog
 import com.example.data.MilkLogEntryRules
+import com.example.data.MilkUsageLog
 import com.example.ui.components.AppDatePickerField
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.util.CattleLifecycleEngine
@@ -597,11 +599,13 @@ private fun MilkProductionCanvas(
 @Composable
 fun MilkLogScreen(
     milkLogs: List<MilkLog>,
+    milkUsageLogs: List<MilkUsageLog> = emptyList(),
     eggLogs: List<EggLog> = emptyList(),
     units: List<com.example.data.FarmUnit> = emptyList(),
     onAddMilkLogClick: () -> Unit,
     onAddEggLogClick: () -> Unit = {},
     onQuickSaveMilkLog: (cowName: String, litres: Double, session: String, date: String, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _ -> },
+    onSaveMilkUsageLog: (date: String, litresToCooperative: Double, litresHomeUse: Double, litresToCalves: Double, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _ -> },
     onQuickSaveEggLog: (flockName: String, totalEggs: Int, damagedEggs: Int, grade: String, date: String, notes: String?) -> Unit = { _, _, _, _, _, _ -> },
     onDeleteMilkLog: (Long) -> Unit,
     onDeleteEggLog: (Long) -> Unit,
@@ -1396,6 +1400,131 @@ fun MilkLogScreen(
                     }
                 }
             }
+
+            item {
+                var usageTimeframe by remember { mutableStateOf("TODAY") }
+                val todayKey = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) }
+                val monthKey = remember { SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(Date()) }
+                val yearKey = remember { SimpleDateFormat("yyyy", Locale.getDefault()).format(Date()) }
+
+                val filteredUsageLogs = remember(milkUsageLogs, usageTimeframe) {
+                    milkUsageLogs.filter { usage ->
+                        when (usageTimeframe) {
+                            "TODAY" -> usage.date == todayKey
+                            "MONTH" -> runCatching {
+                                val parsed = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).parse(usage.date)
+                                parsed != null && SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(parsed) == monthKey
+                            }.getOrDefault(false)
+                            else -> runCatching {
+                                val parsed = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).parse(usage.date)
+                                parsed != null && SimpleDateFormat("yyyy", Locale.getDefault()).format(parsed) == yearKey
+                            }.getOrDefault(false)
+                        }
+                    }.sortedByDescending {
+                        runCatching { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).parse(it.date)?.time }.getOrNull() ?: 0L
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Text(
+                            text = "🥛 Milk Sales & Consumption Log",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E293B)
+                        )
+                        Text(
+                            text = "Daily breakdown of where milk went",
+                            fontSize = 11.5.sp,
+                            color = Color(0xFF64748B)
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("TODAY" to "Today", "MONTH" to "This Month", "YEAR" to "This Year").forEach { (key, label) ->
+                                val isSelected = usageTimeframe == key
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    border = if (isSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { usageTimeframe = key }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 9.dp),
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Color.White else Color(0xFF334155)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        if (filteredUsageLogs.isEmpty()) {
+                            Text(
+                                text = "No milk usage records for this period yet.",
+                                fontSize = 12.5.sp,
+                                color = Color(0xFF94A3B8),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        } else {
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Text("DATE", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B), modifier = Modifier.weight(1.1f))
+                                Text("TOTAL", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                Text("CALVES", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                Text("HOME", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                Text("COOP", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 2.dp)
+
+                            filteredUsageLogs.forEach { usage ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 10.dp)
+                                ) {
+                                    Text(usage.date, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(1.1f))
+                                    Text("%.1fL".format(usage.totalAllocated), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                    Text("%.1fL".format(usage.litresToCalves), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                    Text("%.1fL".format(usage.litresHomeUse), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                    Text("%.1fL".format(usage.litresToCooperative), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                }
+                                HorizontalDivider(color = Color(0xFFF8FAFC), thickness = 1.dp)
+                            }
+
+                            val totalAll = filteredUsageLogs.sumOf { it.totalAllocated }
+                            val totalCalves = filteredUsageLogs.sumOf { it.litresToCalves }
+                            val totalHome = filteredUsageLogs.sumOf { it.litresHomeUse }
+                            val totalCoop = filteredUsageLogs.sumOf { it.litresToCooperative }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Text("TOTAL", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(1.1f))
+                                Text("%.1fL".format(totalAll), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                Text("%.1fL".format(totalCalves), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                Text("%.1fL".format(totalHome), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                Text("%.1fL".format(totalCoop), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // --- 3. SIMPLE QUICK ENTRY FORM CARD ---
@@ -1769,6 +1898,171 @@ fun MilkLogScreen(
                         }
 
                         saveSuccessMessage?.let { msg ->
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFDCFCE7),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = msg,
+                                    color = ForestGreenPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(10.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                var usageDateText by remember { mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())) }
+                var coopInput by remember { mutableStateOf("") }
+                var homeInput by remember { mutableStateOf("") }
+                var calvesInput by remember { mutableStateOf("") }
+                var usageErrorMessage by remember { mutableStateOf<String?>(null) }
+                var usageSuccessMessage by remember { mutableStateOf<String?>(null) }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.5.dp, ForestGreenPrimary.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(shape = CircleShape, color = Color(0xFFDCFCE7)) {
+                                Text(
+                                    text = "🥛",
+                                    fontSize = 16.sp,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Log Milk Usage",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1E293B)
+                            )
+                        }
+                        Text(
+                            text = "Record how much went to the cooperative, home use, and calves",
+                            fontSize = 11.5.sp,
+                            color = Color(0xFF64748B),
+                            modifier = Modifier.padding(start = 42.dp, top = 2.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text("DATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        AppDatePickerField(
+                            value = usageDateText,
+                            onValueChange = { usageDateText = it },
+                            label = "Usage Date",
+                            modifier = Modifier.fillMaxWidth(),
+                            testTag = "milk_usage_date_picker"
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = CircleShape, color = ForestGreenPrimary, modifier = Modifier.size(8.dp)) {}
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Coop (L)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = coopInput,
+                                    onValueChange = { coopInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = CircleShape, color = Color(0xFF0284C7), modifier = Modifier.size(8.dp)) {}
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Home (L)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = homeInput,
+                                    onValueChange = { homeInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = CircleShape, color = Color(0xFFD97706), modifier = Modifier.size(8.dp)) {}
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Calves (L)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = calvesInput,
+                                    onValueChange = { calvesInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                usageErrorMessage = null
+                                usageSuccessMessage = null
+                                val coop = coopInput.toDoubleOrNull() ?: 0.0
+                                val home = homeInput.toDoubleOrNull() ?: 0.0
+                                val calves = calvesInput.toDoubleOrNull() ?: 0.0
+                                if (coop == 0.0 && home == 0.0 && calves == 0.0) {
+                                    usageErrorMessage = "Enter at least one usage amount."
+                                } else {
+                                    onSaveMilkUsageLog(usageDateText, coop, home, calves) { success, message ->
+                                        if (success) {
+                                            usageSuccessMessage = "Milk usage saved for $usageDateText."
+                                            coopInput = ""
+                                            homeInput = ""
+                                            calvesInput = ""
+                                        } else {
+                                            usageErrorMessage = message ?: "Unable to save milk usage."
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("save_milk_usage_button"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                        ) {
+                            Text("Save Usage Record", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+
+                        usageErrorMessage?.let { message ->
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(message, color = Color(0xFFB91C1C), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+
+                        usageSuccessMessage?.let { msg ->
                             Spacer(modifier = Modifier.height(10.dp))
                             Surface(
                                 shape = RoundedCornerShape(8.dp),

@@ -195,11 +195,13 @@ class FarmRepository(
         if (MilkLogEntryRules.isFutureDate(log.date)) {
             throw IllegalArgumentException("Milk usage cannot be recorded for a future date.")
         }
-        val deterministicSyncId = "milk-usage-${log.farmId}-$dateKey"
+        val sessionKey = MilkLogEntryRules.normalizedSession(log.session).lowercase()
+        val deterministicSyncId = "milk-usage-${log.farmId}-$dateKey-$sessionKey"
         val existing = farmDao.getMilkUsageLogBySyncId(deterministicSyncId)
         val prepared = log.copy(
             id = existing?.id ?: 0L,
             syncId = deterministicSyncId,
+            session = MilkLogEntryRules.normalizedSession(log.session),
             updatedAt = System.currentTimeMillis(),
             isDeleted = false
         )

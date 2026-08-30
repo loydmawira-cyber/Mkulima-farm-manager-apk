@@ -775,6 +775,14 @@ fun MkulimaAppContent(
                                 onError = { message -> onResult(false, message) }
                             )
                         },
+                        onEditMilkUsageLog = { id, coop, home, calves, onResult ->
+                            viewModel.editMilkUsageLog(
+                                id, coop, home, calves,
+                                onSaved = { onResult(true, null) },
+                                onError = { message -> onResult(false, message) }
+                            )
+                        },
+                        onDeleteMilkUsageLog = { viewModel.deleteMilkUsageLog(it) },
                         onQuickSaveEggLog = { flockName, totalEggs, damagedEggs, grade, date, notes ->
                             viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, notes)
                         },

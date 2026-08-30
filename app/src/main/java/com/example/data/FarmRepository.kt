@@ -186,6 +186,36 @@ class FarmRepository(
         syncEngine?.triggerPush(log.farmId)
     }
 
+    val allMilkUsageLogs: Flow<List<MilkUsageLog>> = farmDao.getAllMilkUsageLogs()
+    fun getMilkUsageLogsForFarm(farmId: String): Flow<List<MilkUsageLog>> = farmDao.getMilkUsageLogsByFarm(farmId)
+
+    suspend fun saveMilkUsageLog(log: MilkUsageLog): MilkUsageLog {
+        val dateKey = MilkLogEntryRules.canonicalDateKey(log.date)
+            ?: throw IllegalArgumentException("Choose a valid date for the milk usage record.")
+        if (MilkLogEntryRules.isFutureDate(log.date)) {
+            throw IllegalArgumentException("Milk usage cannot be recorded for a future date.")
+        }
+        val deterministicSyncId = "milk-usage-${log.farmId}-$dateKey"
+        val existing = farmDao.getMilkUsageLogBySyncId(deterministicSyncId)
+        val prepared = log.copy(
+            id = existing?.id ?: 0L,
+            syncId = deterministicSyncId,
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        val id = farmDao.insertMilkUsageLog(prepared)
+        syncEngine?.triggerPush(log.farmId)
+        return prepared.copy(id = id)
+    }
+
+    suspend fun deleteMilkUsageLog(id: Long) {
+        val log = farmDao.getMilkUsageLogById(id)
+            ?: throw IllegalArgumentException("Milk usage record was not found.")
+        val now = System.currentTimeMillis()
+        farmDao.softDeleteMilkUsageLog(id, now)
+        syncEngine?.triggerPush(log.farmId)
+    }
+
     suspend fun insertEggLog(log: EggLog): Long {
         val prepared = log.copy(
             syncId = if (log.syncId.isBlank()) UUID.randomUUID().toString() else log.syncId,
@@ -623,6 +653,7 @@ class FarmRepository(
         farmDao.deleteUnitsForFarm(farmId)
         farmDao.deleteTasksForFarm(farmId)
         farmDao.deleteMilkLogsForFarm(farmId)
+        farmDao.deleteMilkUsageLogsForFarm(farmId)
         farmDao.deleteEggLogsForFarm(farmId)
         farmDao.deleteFinanceRecordsForFarm(farmId)
         farmDao.deleteEmployeeRequestsForFarm(farmId)
@@ -635,6 +666,7 @@ class FarmRepository(
         farmDao.deleteAllUnits()
         farmDao.deleteAllTasks()
         farmDao.deleteAllMilkLogs()
+        farmDao.deleteAllMilkUsageLogs()
         farmDao.deleteAllEggLogs()
         farmDao.deleteAllFinanceRecords()
         farmDao.deleteAllEmployeeRequests()

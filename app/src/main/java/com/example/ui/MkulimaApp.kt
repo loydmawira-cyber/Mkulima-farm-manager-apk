@@ -68,6 +68,7 @@ import com.example.data.EmployeeRequest
 import com.example.data.FarmTask
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
+import com.example.data.MilkUsageLog
 import com.example.data.RequestStatus
 import com.example.ui.components.AddEggLogDialog
 import com.example.ui.components.AddEmployeeRequestDialog

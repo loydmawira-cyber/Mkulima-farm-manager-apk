@@ -218,6 +218,25 @@ class FarmRepository(
         syncEngine?.triggerPush(log.farmId)
     }
 
+    suspend fun editMilkUsageLog(
+        id: Long,
+        litresToCooperative: Double,
+        litresHomeUse: Double,
+        litresToCalves: Double
+    ): MilkUsageLog {
+        val existing = farmDao.getMilkUsageLogById(id)
+            ?: throw IllegalArgumentException("Milk usage record was not found.")
+        val updated = existing.copy(
+            litresToCooperative = litresToCooperative,
+            litresHomeUse = litresHomeUse,
+            litresToCalves = litresToCalves,
+            updatedAt = System.currentTimeMillis()
+        )
+        farmDao.updateMilkUsageLog(updated)
+        syncEngine?.triggerPush(updated.farmId)
+        return updated
+    }
+
     suspend fun insertEggLog(log: EggLog): Long {
         val prepared = log.copy(
             syncId = if (log.syncId.isBlank()) UUID.randomUUID().toString() else log.syncId,

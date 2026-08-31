@@ -87,7 +87,7 @@ class FarmViewModel(
         repository.getUnitsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
@@ -96,7 +96,7 @@ class FarmViewModel(
         repository.getMilkLogsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
@@ -105,7 +105,7 @@ class FarmViewModel(
         repository.getMilkUsageLogsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
@@ -114,7 +114,7 @@ class FarmViewModel(
         repository.getEggLogsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
@@ -123,7 +123,7 @@ class FarmViewModel(
         repository.getAllPoultryLogs(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
@@ -156,7 +156,7 @@ class FarmViewModel(
         repository.getMonthlyReportsForFarm(session?.farmId ?: "FARM-DEFAULT")
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 

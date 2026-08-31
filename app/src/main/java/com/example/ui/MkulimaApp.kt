@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.EmployeeRequest
 import com.example.data.FarmTask
+import com.example.data.TaskCategory
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkUsageLog
@@ -258,10 +259,18 @@ fun MkulimaAppContent(
     if (showAddTaskDialog) {
         AddTaskDialog(
             availableUnits = allUnits,
-            onDismiss = { showAddTaskDialog = false },
+            initialCategory = addTaskInitialCategory,
+            initialTargetUnit = addTaskInitialTargetUnit,
+            onDismiss = {
+                showAddTaskDialog = false
+                addTaskInitialCategory = null
+                addTaskInitialTargetUnit = null
+            },
             onTaskCreated = { title, category, targetUnit, priority, scheduledTime, instructions, worker ->
                 viewModel.addNewTask(title, category, targetUnit, priority, scheduledTime, instructions, worker)
                 showAddTaskDialog = false
+                addTaskInitialCategory = null
+                addTaskInitialTargetUnit = null
             }
         )
     }

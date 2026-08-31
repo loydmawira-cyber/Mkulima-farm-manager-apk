@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbCloudy
@@ -105,6 +106,7 @@ fun WorkerDashboardScreen(
     onAddMilkLog: (cowName: String, unitName: String, litres: Double, session: String, fatContent: Double, date: String, notes: String) -> Unit,
     onAddEggLog: (flockName: String, totalEggs: Int, damagedEggs: Int, grade: String, notes: String) -> Unit,
     onAddRequestClick: () -> Unit,
+    onAddCropTask: ((title: String, targetUnit: String, instructions: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var activeWorkerTab by remember { mutableIntStateOf(0) } // 0: Quick Entry, 1: Log History, 2: Requests
@@ -241,7 +243,8 @@ fun WorkerDashboardScreen(
                 units = units,
                 todayDate = todayDate,
                 onAddMilkLog = onAddMilkLog,
-                onAddEggLog = onAddEggLog
+                onAddEggLog = onAddEggLog,
+                onAddCropTask = onAddCropTask
             )
             1 -> WorkerLogHistoryContent(
                 units = units,
@@ -266,10 +269,14 @@ private fun WorkerQuickEntryContent(
     units: List<FarmUnit>,
     todayDate: String,
     onAddMilkLog: (cowName: String, unitName: String, litres: Double, session: String, fatContent: Double, date: String, notes: String) -> Unit,
-    onAddEggLog: (flockName: String, totalEggs: Int, damagedEggs: Int, grade: String, notes: String) -> Unit
+    onAddEggLog: (flockName: String, totalEggs: Int, damagedEggs: Int, grade: String, notes: String) -> Unit,
+    onAddCropTask: ((title: String, targetUnit: String, instructions: String) -> Unit)? = null
 ) {
-    var selectedEntryType by remember { mutableIntStateOf(0) } // 0: Milk, 1: Eggs
+    var selectedEntryType by remember { mutableIntStateOf(0) } // 0: Milk, 1: Eggs, 2: Crops
     var successNotification by remember { mutableStateOf<String?>(null) }
+    var cropActivityType by remember { mutableStateOf("Planting") }
+    var cropTargetField by remember { mutableStateOf("") }
+    var cropNotes by remember { mutableStateOf("") }
 
     // Milk Entry State
     val cattleUnits = units.filter { it.type.equals("Cattle", ignoreCase = true) }
@@ -374,6 +381,25 @@ private fun WorkerQuickEntryContent(
                         fontSize = 14.sp,
                         color = if (selectedEntryType == 1) Color.White else Color(0xFF475569)
                     )
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { selectedEntryType = 2 }
+                    .testTag("worker_select_crop_form"),
+                color = if (selectedEntryType == 2) ForestGreenPrimary else Color.Transparent
+            ) {
+                Row(
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Spa, contentDescription = null, tint = if (selectedEntryType == 2) Color.White else Color(0xFF475569), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Crops", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (selectedEntryType == 2) Color.White else Color(0xFF475569))
                 }
             }
         }
@@ -556,7 +582,7 @@ private fun WorkerQuickEntryContent(
                     }
                 }
             }
-        } else {
+        } else if (selectedEntryType == 1) {
             // ================= EGG QUICK ENTRY FORM =================
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -766,6 +792,73 @@ private fun WorkerQuickEntryContent(
                         Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Save Egg Harvest", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        } else {
+            // CROP QUICK ENTRY FORM
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Spa, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(22.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Crop Activity Quick Entry", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                    }
+
+                    // Planting, Watering, Harvesting, Weeding selection chips
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Planting", "Watering", "Harvesting", "Weeding").forEach { actType ->
+                            val isSelected = cropActivityType == actType
+                            Surface(
+                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable { cropActivityType = actType },
+                                color = if (isSelected) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
+                                border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFCBD5E1))
+                            ) {
+                                Box(modifier = Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                                    Text(actType, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, color = if (isSelected) ForestGreenDark else Color(0xFF475569))
+                                }
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = cropTargetField,
+                        onValueChange = { cropTargetField = it },
+                        label = { Text("Target Field / Plot") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = cropNotes,
+                        onValueChange = { cropNotes = it },
+                        label = { Text("Notes / Method / Quantity") },
+                        placeholder = { Text("e.g. 500 seedlings planted / Drip irrigation 2 hrs / 3 bags collected") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            if (cropTargetField.isBlank()) return@Button
+                            val instructionsText = if (cropNotes.isNotBlank()) cropNotes else "Logged via Operator Portal on $todayDate"
+                            onAddCropTask?.invoke("$cropActivityType - $cropTargetField", cropTargetField, instructionsText)
+                            successNotification = "Successfully logged $cropActivityType for $cropTargetField!"
+                            cropNotes = ""
+                        },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                        enabled = cropTargetField.isNotBlank()
+                    ) {
+                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Log Crop Activity", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }

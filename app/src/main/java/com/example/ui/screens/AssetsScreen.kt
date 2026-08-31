@@ -7,7 +7,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Agriculture
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Spa
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -52,6 +55,7 @@ fun AssetsScreen(
     onSaveFeedPlan: (FeedPlan) -> Unit,
     onDeleteFeedPlan: (Long) -> Unit,
     onAutomaticFeedDeductionChanged: (Boolean) -> Unit,
+    onLogCropActivity: ((activityType: String, fieldName: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isOwner = userRole.equals("OWNER", ignoreCase = true)
@@ -152,7 +156,8 @@ fun AssetsScreen(
                 2 -> FieldsContent(
                     fields = fieldPlans,
                     onHarvest = { fieldToHarvest = it },
-                    onLongPress = if (isOwner) ({ fieldActionTarget = it }) else null
+                    onLongPress = if (isOwner) ({ fieldActionTarget = it }) else null,
+                    onLogCropActivity = onLogCropActivity
                 )
                 else -> FeedPlansScreen(
                     userRole,
@@ -234,7 +239,8 @@ private fun InventoryContent(items: List<InventoryItem>, onLongPress: ((Inventor
 private fun FieldsContent(
     fields: List<FieldPlan>,
     onHarvest: (FieldPlan) -> Unit,
-    onLongPress: ((FieldPlan) -> Unit)?
+    onLongPress: ((FieldPlan) -> Unit)?,
+    onLogCropActivity: ((activityType: String, fieldName: String) -> Unit)? = null
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -265,11 +271,49 @@ private fun FieldsContent(
                     if (field.status == "HARVESTED") {
                         Text("Harvested ${field.harvestedTonnes} tonnes → ${field.harvestOutcome}", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
                     } else {
-                        Button(
-                            onClick = { onHarvest(field) },
-                            modifier = Modifier.align(Alignment.End).padding(top = 10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                        ) { Text("Record Harvest") }
+                        // Crop Activity & Task Action Bar on Field Cards
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (onLogCropActivity != null) {
+                                OutlinedButton(
+                                    onClick = { onLogCropActivity("Watering", field.fieldName) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Filled.WaterDrop, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Water", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { onLogCropActivity("Planting", field.fieldName) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Filled.Spa, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Plant", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                }
+                            }
+
+                            Button(
+                                onClick = { onHarvest(field) },
+                                modifier = if (onLogCropActivity != null) Modifier.weight(1.3f) else Modifier,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                            ) {
+                                Icon(Icons.Filled.Agriculture, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Harvest", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }

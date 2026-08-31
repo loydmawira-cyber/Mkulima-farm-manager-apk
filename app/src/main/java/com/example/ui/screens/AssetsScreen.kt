@@ -8,9 +8,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Agriculture
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Spa
-import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -280,25 +279,14 @@ private fun FieldsContent(
                         ) {
                             if (onLogCropActivity != null) {
                                 OutlinedButton(
-                                    onClick = { onLogCropActivity("Watering", field.fieldName) },
+                                    onClick = { onLogCropActivity("", field.fieldName) },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                                 ) {
-                                    Icon(Icons.Filled.WaterDrop, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Filled.Assignment, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("Water", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
-                                }
-
-                                OutlinedButton(
-                                    onClick = { onLogCropActivity("Planting", field.fieldName) },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Filled.Spa, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Plant", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                    Text("Add Task", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
                                 }
                             }
 

@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -57,6 +60,8 @@ import java.util.Locale
 fun AddTaskDialog(
     availableUnits: List<FarmUnit>,
     onDismiss: () -> Unit,
+    initialCategory: TaskCategory? = null,
+    initialTargetUnit: String? = null,
     onTaskCreated: (
         title: String,
         category: TaskCategory,
@@ -68,8 +73,14 @@ fun AddTaskDialog(
     ) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf(TaskCategory.LIVESTOCK) }
-    var targetUnit by remember { mutableStateOf(availableUnits.firstOrNull()?.name ?: "Flock B - Layers") }
+    var selectedCategory by remember { mutableStateOf(initialCategory ?: TaskCategory.LIVESTOCK) }
+    var targetUnit by remember {
+        mutableStateOf(
+            initialTargetUnit?.ifBlank { null }
+                ?: availableUnits.firstOrNull()?.name
+                ?: "Flock B - Layers"
+        )
+    }
     var priority by remember { mutableStateOf(TaskPriority.HIGH) }
     var scheduledDate by remember {
         mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
@@ -124,6 +135,49 @@ fun AddTaskDialog(
                         modifier = Modifier.testTag("close_add_task_dialog")
                     ) {
                         Icon(Icons.Filled.Close, contentDescription = "Close")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Quick Activity Presets for Crops & Farm Management
+                Text(
+                    text = "Quick Task Templates",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF64748B)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val cropPresets = listOf(
+                        Triple("🌱 Planting", TaskCategory.CROPS, "Planting seeds / seedlings"),
+                        Triple("💧 Watering", TaskCategory.CROPS, "Irrigation / plot watering"),
+                        Triple("🌾 Harvesting", TaskCategory.CROPS, "Crop harvest & collection"),
+                        Triple("🌿 Weeding", TaskCategory.CROPS, "Field weeding & clearing"),
+                        Triple("🧪 Fertilizer", TaskCategory.CROPS, "Top dressing / fertilizer application")
+                    )
+                    items(cropPresets) { (presetTitle, presetCat, defaultNotes) ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selectedCategory == presetCat && title == presetTitle.substring(2).trim()) ForestGreenPrimary else Color(0xFFF1F5F9),
+                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            modifier = Modifier.clickable {
+                                title = presetTitle.substring(2).trim()
+                                selectedCategory = presetCat
+                                if (instructions.isBlank()) { instructions = defaultNotes }
+                            }
+                        ) {
+                            Text(
+                                text = presetTitle,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedCategory == presetCat && title == presetTitle.substring(2).trim()) Color.White else Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
 

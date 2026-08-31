@@ -187,6 +187,8 @@ fun MkulimaAppContent(
     var proofUploadTaskTarget by remember { mutableStateOf<FarmTask?>(null) }
     var proofModalTaskTarget by remember { mutableStateOf<FarmTask?>(null) }
     var showAddTaskDialog by remember { mutableStateOf(false) }
+    var addTaskInitialCategory by remember { mutableStateOf<TaskCategory?>(null) }
+    var addTaskInitialTargetUnit by remember { mutableStateOf<String?>(null) }
     var showAddUnitDialog by remember { mutableStateOf(false) }
     var showAddMilkLogDialog by remember { mutableStateOf(false) }
     var showAddEggLogDialog by remember { mutableStateOf(false) }
@@ -748,6 +750,11 @@ fun MkulimaAppContent(
                         onSaveFeedPlan = { viewModel.saveFeedPlan(it) },
                         onDeleteFeedPlan = { viewModel.deleteFeedPlan(it) },
                         onAutomaticFeedDeductionChanged = { viewModel.setAutomaticFeedDeductionEnabled(it) },
+                        onLogCropActivity = { activityType, fieldName ->
+                            addTaskInitialCategory = TaskCategory.CROPS
+                            addTaskInitialTargetUnit = fieldName
+                            showAddTaskDialog = true
+                        },
                         livestock = {
                             FlocksScreen(
                                 viewModel = viewModel,

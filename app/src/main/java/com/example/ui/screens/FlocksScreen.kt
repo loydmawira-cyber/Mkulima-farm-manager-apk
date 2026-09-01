@@ -1555,28 +1555,8 @@ fun FlocksScreen(
                     if (!matchesCategory) return@filter false
                     if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
 
-                    val eval = evaluatedCattleMap[animal.id] ?: run {
-                        val numericUnitId = animal.id.removePrefix("unit_").toLongOrNull()
-                        val dbEvs = if (numericUnitId != null) {
-                            allDbCattleEvents.filter { it.unitId == numericUnitId }.map {
-                                CattleEventItem(
-                                    id = it.id.toString(),
-                                    category = it.category,
-                                    title = it.title,
-                                    date = it.date,
-                                    details = it.details,
-                                    notes = it.notes ?: "",
-                                    metricValue = it.metricValue ?: ""
-                                )
-                            }
-                        } else emptyList()
-                        val rawId = animal.id.removePrefix("unit_")
-                        val mockEvs = allAnimalEventsMap[animal.id] ?: allAnimalEventsMap[rawId] ?: emptyList()
-                        val combinedEvs = (dbEvs + mockEvs).distinctBy { it.id }
-                        val cowMilkLogs = milkLogs.filter { it.cowName.equals(animal.name, ignoreCase = true) }
-                        CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, if (cowMilkLogs.isNotEmpty()) cowMilkLogs else milkLogs)
-                    }
-                    when (selectedCattleStage) {
+                    val eval = evaluatedCattleMap[animal.id]
+                        ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
                         "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
                         "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
                         "HEIFER" -> eval.stage == CattleStage.HEIFER
@@ -1591,26 +1571,9 @@ fun FlocksScreen(
 
                 items(filteredList, key = { it.id }) { animal ->
                     val isCattleItem = animal.category.equals("CATTLE", ignoreCase = true)
-                    val cattleEval = if (isCattleItem) evaluatedCattleMap[animal.id] ?: run {
-                        val numericUnitId = animal.id.removePrefix("unit_").toLongOrNull()
-                        val dbEvs = if (numericUnitId != null) {
-                            allDbCattleEvents.filter { it.unitId == numericUnitId }.map {
-                                CattleEventItem(
-                                    id = it.id.toString(),
-                                    category = it.category,
-                                    title = it.title,
-                                    date = it.date,
-                                    details = it.details,
-                                    notes = it.notes ?: "",
-                                    metricValue = it.metricValue ?: ""
-                                )
-                            }
-                        } else emptyList()
-                        val rawId = animal.id.removePrefix("unit_")
-                        val mockEvs = allAnimalEventsMap[animal.id] ?: allAnimalEventsMap[rawId] ?: emptyList()
-                        val combinedEvs = (dbEvs + mockEvs).distinctBy { it.id }
-                        val cowMilkLogs = milkLogs.filter { it.cowName.equals(animal.name, ignoreCase = true) }
-                        CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, if (cowMilkLogs.isNotEmpty()) cowMilkLogs else milkLogs)
+                    val cattleEval = if (isCattleItem) {
+                        evaluatedCattleMap[animal.id]
+                            ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
                     } else null
 
                     @OptIn(ExperimentalFoundationApi::class)

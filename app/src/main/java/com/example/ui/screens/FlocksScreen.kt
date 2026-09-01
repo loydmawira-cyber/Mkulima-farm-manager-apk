@@ -759,7 +759,7 @@ fun FlocksScreen(
         }
     }
 
-    val mutableAnimals = remember { mutableStateListOf<AnimalDetailData>() }
+    val mutableAnimals = remember { mutableStateListOf<AnimalDetailData>().apply { addAll(roomAnimals.distinctBy { it.id }) } }
 
     val allAnimalEventsMap = remember {
         mutableStateMapOf<String, SnapshotStateList<CattleEventItem>>()

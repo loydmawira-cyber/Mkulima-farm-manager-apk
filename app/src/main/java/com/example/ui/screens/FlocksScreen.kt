@@ -1005,31 +1005,19 @@ fun FlocksScreen(
         }
     }
 
-    // Cattle category stage breakdown calculations evaluated live from mutableAnimals
-    val cattleList = mutableAnimals.filter { it.category.equals("CATTLE", ignoreCase = true) }
-    val poultryList = mutableAnimals.filter { it.category.equals("POULTRY", ignoreCase = true) || it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true) }
+    // Cattle category stage breakdown calculations evaluated live from roomAnimals
+    val cattleList = remember(roomAnimals) { roomAnimals.filter { it.category.equals("CATTLE", ignoreCase = true) } }
+    val poultryList = remember(roomAnimals) { roomAnimals.filter { it.category.equals("POULTRY", ignoreCase = true) || it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true) } }
 
-    val evaluatedCattleMap = remember(cattleList, allDbCattleEvents, milkLogs, allAnimalEventsMap) {
+    val evaluatedCattleMap = remember(cattleList, cattleEventsByUnit, milkLogsByCow, allAnimalEventsMap) {
         cattleList.associate { animal ->
             val numericUnitId = animal.id.removePrefix("unit_").toLongOrNull()
-            val dbEvs = if (numericUnitId != null) {
-                allDbCattleEvents.filter { it.unitId == numericUnitId }.map {
-                    CattleEventItem(
-                        id = it.id.toString(),
-                        category = it.category,
-                        title = it.title,
-                        date = it.date,
-                        details = it.details,
-                        notes = it.notes ?: "",
-                        metricValue = it.metricValue ?: ""
-                    )
-                }
-            } else emptyList()
+            val dbEvs = if (numericUnitId != null) cattleEventsByUnit[numericUnitId].orEmpty() else emptyList()
             val rawId = animal.id.removePrefix("unit_")
             val mockEvs = allAnimalEventsMap[animal.id] ?: allAnimalEventsMap[rawId] ?: emptyList()
-            val combinedEvs = (dbEvs + mockEvs).distinctBy { it.id }
-            val cowMilkLogs = milkLogs.filter { it.cowName.equals(animal.name, ignoreCase = true) }
-            animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, if (cowMilkLogs.isNotEmpty()) cowMilkLogs else milkLogs)
+            val combinedEvs = if (mockEvs.isEmpty()) dbEvs else (dbEvs + mockEvs).distinctBy { it.id }
+            val cowMilkLogs = milkLogsByCow[animal.name.trim().lowercase()].orEmpty()
+            animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, cowMilkLogs)
         }
     }
 
@@ -1543,30 +1531,32 @@ fun FlocksScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                val filteredList = mutableAnimals.filter { animal ->
-                    val matchesMode = when {
-                        farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> animal.category.equals("CATTLE", ignoreCase = true)
-                        farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> animal.category.equals("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
-                        else -> true
-                    }
-                    if (!matchesMode) return@filter false
+                val filteredList = remember(roomAnimals, farmSettings.farmType, selectedFilterCategory, selectedCattleStage, evaluatedCattleMap) {
+                    roomAnimals.filter { animal ->
+                        val matchesMode = when {
+                            farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> animal.category.equals("CATTLE", ignoreCase = true)
+                            farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> animal.category.equals("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
+                            else -> true
+                        }
+                        if (!matchesMode) return@filter false
 
-                    val matchesCategory = animal.category.equals(selectedFilterCategory, ignoreCase = true)
-                    if (!matchesCategory) return@filter false
-                    if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
+                        val matchesCategory = animal.category.equals(selectedFilterCategory, ignoreCase = true)
+                        if (!matchesCategory) return@filter false
+                        if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
 
-                    val eval = evaluatedCattleMap[animal.id]
-                        ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
-                    when (selectedCattleStage) {
-                        "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
-                        "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
-                        "HEIFER" -> eval.stage == CattleStage.HEIFER
-                        "CALF" -> eval.stage == CattleStage.CALF
-                        "DRY" -> eval.stage == CattleStage.DRY || eval.isDriedOff
-                        "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED || (eval.lastInseminationDate != null && !eval.isInCalf)
-                        "BULL" -> eval.stage == CattleStage.BULL
-                        "DISPOSED" -> eval.stage == CattleStage.DISPOSED
-                        else -> true
+                        val eval = evaluatedCattleMap[animal.id]
+                            ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
+                        when (selectedCattleStage) {
+                            "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
+                            "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
+                            "HEIFER" -> eval.stage == CattleStage.HEIFER
+                            "CALF" -> eval.stage == CattleStage.CALF
+                            "DRY" -> eval.stage == CattleStage.DRY || eval.isDriedOff
+                            "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED || (eval.lastInseminationDate != null && !eval.isInCalf)
+                            "BULL" -> eval.stage == CattleStage.BULL
+                            "DISPOSED" -> eval.stage == CattleStage.DISPOSED
+                            else -> true
+                        }
                     }
                 }
 

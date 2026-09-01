@@ -8,6 +8,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 enum class CattleStage(
     val key: String,
@@ -110,27 +111,38 @@ object CattleLifecycleEngine {
 
     private val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
+    private val dateParseCache = ConcurrentHashMap<String, Date?>()
+
     fun parseDateOrNull(dateStr: String): Date? {
-        val patterns = listOf(
-            "dd MMM yyyy",
-            "dd MMM, yyyy",
-            "dd MMMM yyyy",
-            "yyyy-MM-dd",
-            "dd/MM/yyyy",
-            "dd MMM, hh:mm a",
-            "dd MMM ''yy",
-            "MMM dd, ''yy",
-            "MMM dd, yyyy"
-        )
-        for (pattern in patterns) {
-            try {
-                val parser = SimpleDateFormat(pattern, Locale.getDefault())
-                parser.isLenient = true
-                val d = parser.parse(dateStr.trim())
-                if (d != null) return d
-            } catch (_: Exception) {}
+        val trimmed = dateStr.trim()
+        if (trimmed.isEmpty()) return null
+
+        return dateParseCache.getOrPut(trimmed) {
+            val patterns = listOf(
+                "dd MMM yyyy",
+                "dd MMM, yyyy",
+                "dd MMMM yyyy",
+                "yyyy-MM-dd",
+                "dd/MM/yyyy",
+                "dd MMM, hh:mm a",
+                "dd MMM ''yy",
+                "MMM dd, ''yy",
+                "MMM dd, yyyy"
+            )
+            var parsed: Date? = null
+            for (pattern in patterns) {
+                try {
+                    val parser = SimpleDateFormat(pattern, Locale.getDefault())
+                    parser.isLenient = true
+                    val d = parser.parse(trimmed)
+                    if (d != null) {
+                        parsed = d
+                        break
+                    }
+                } catch (_: Exception) {}
+            }
+            parsed
         }
-        return null
     }
 
     fun calculateExpectedCalving(aiDateStr: String): String {
@@ -449,7 +461,7 @@ object CattleLifecycleEngine {
                     latestCurrentPd?.date?.let { parseDateOrNull(it) }?.let { time = it }
                     add(Calendar.DAY_OF_YEAR, 220)
                 }
-                calvingDateEst = dateFormat.format(pdCal.time)
+                calvingDateEst = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(pdCal.time)
                 dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             }
         } else if (!isNegativePd && !isAbortionMostRecent && latestCalving == null && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
@@ -469,7 +481,7 @@ object CattleLifecycleEngine {
             } else {
                 calvingDateEst = animal.expectedCalving.ifBlank {
                     val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 120) }
-                    dateFormat.format(c.time)
+                    SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(c.time)
                 }
                 dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             }

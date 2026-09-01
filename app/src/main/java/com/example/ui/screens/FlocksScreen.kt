@@ -62,6 +62,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -1543,30 +1544,53 @@ fun FlocksScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                val filteredList = mutableAnimals.filter { animal ->
-                    val matchesMode = when {
-                        farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> animal.category.equals("CATTLE", ignoreCase = true)
-                        farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> animal.category.equals("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
-                        else -> true
-                    }
-                    if (!matchesMode) return@filter false
+                // This used to run as a plain `.filter { }` directly in the composable
+                // body — meaning it re-filtered and re-evaluated cattle stages for
+                // EVERY animal on EVERY recomposition of this screen, including ones
+                // triggered by unrelated state a few lines up (selectedAnimal,
+                // animalForOptions, animalToEdit, animalToDelete, animalToDispose,
+                // showCategoryGuideDialog, etc. all live in this same composable
+                // scope). Opening a detail sheet or any dialog re-ran this full filter
+                // over the whole herd, including the CattleLifecycleEngine fallback
+                // evaluation for any animal missing from evaluatedCattleMap.
+                //
+                // derivedStateOf (not remember(keys)) is correct here specifically
+                // because mutableAnimals is a SnapshotStateList: its reference never
+                // changes when items are added/removed, so a remember() keyed on the
+                // list reference would never invalidate on content changes.
+                // derivedStateOf instead tracks the actual state reads inside the
+                // block — list contents, farmSettings.farmType,
+                // selectedFilterCategory, evaluatedCattleMap, selectedCattleStage —
+                // and only recomputes when one of those genuinely changes, regardless
+                // of what else in this composable causes a recomposition.
+                val filteredList by remember {
+                    derivedStateOf {
+                        mutableAnimals.filter { animal ->
+                            val matchesMode = when {
+                                farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> animal.category.equals("CATTLE", ignoreCase = true)
+                                farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> animal.category.equals("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
+                                else -> true
+                            }
+                            if (!matchesMode) return@filter false
 
-                    val matchesCategory = animal.category.equals(selectedFilterCategory, ignoreCase = true)
-                    if (!matchesCategory) return@filter false
-                    if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
+                            val matchesCategory = animal.category.equals(selectedFilterCategory, ignoreCase = true)
+                            if (!matchesCategory) return@filter false
+                            if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
 
-                    val eval = evaluatedCattleMap[animal.id]
-                        ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
-                    when (selectedCattleStage) {
-                        "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
-                        "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
-                        "HEIFER" -> eval.stage == CattleStage.HEIFER
-                        "CALF" -> eval.stage == CattleStage.CALF
-                        "DRY" -> eval.stage == CattleStage.DRY || eval.isDriedOff
-                        "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED || (eval.lastInseminationDate != null && !eval.isInCalf)
-                        "BULL" -> eval.stage == CattleStage.BULL
-                        "DISPOSED" -> eval.stage == CattleStage.DISPOSED
-                        else -> true
+                            val eval = evaluatedCattleMap[animal.id]
+                                ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
+                            when (selectedCattleStage) {
+                                "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
+                                "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
+                                "HEIFER" -> eval.stage == CattleStage.HEIFER
+                                "CALF" -> eval.stage == CattleStage.CALF
+                                "DRY" -> eval.stage == CattleStage.DRY || eval.isDriedOff
+                                "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED || (eval.lastInseminationDate != null && !eval.isInCalf)
+                                "BULL" -> eval.stage == CattleStage.BULL
+                                "DISPOSED" -> eval.stage == CattleStage.DISPOSED
+                                else -> true
+                            }
+                        }
                     }
                 }
 

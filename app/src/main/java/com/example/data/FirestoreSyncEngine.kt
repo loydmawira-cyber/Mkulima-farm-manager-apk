@@ -11,6 +11,7 @@ import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
@@ -120,6 +121,32 @@ class FirestoreSyncEngine(
             return Tasks.await(this)
         } catch (e: ExecutionException) {
             throw e.cause ?: e
+        }
+    }
+
+    // Firestore caps a single WriteBatch at 500 operations. Queuing writes here and
+    // flushing in chunks turns what used to be one network round trip PER ROW (up to
+    // hundreds of sequential `awaitTask()` calls across a full push) into roughly one
+    // round trip per 500 rows, across all 16 collections combined. This is the main
+    // sync-speed fix: pushDirtyRows below no longer calls `.set(...).awaitTask()`
+    // inside its loops — it calls `queueSet(...)` instead, and the accumulated batch
+    // is committed at the very end (plus one extra flush if a table alone exceeds 500
+    // dirty rows).
+    private inner class BatchWriter(private val db: FirebaseFirestore) {
+        private var batch = db.batch()
+        private var opsInBatch = 0
+
+        fun queueSet(ref: DocumentReference, data: Map<String, Any?>) {
+            batch.set(ref, data, SetOptions.merge())
+            opsInBatch++
+            if (opsInBatch >= 500) flush()
+        }
+
+        fun flush() {
+            if (opsInBatch == 0) return
+            batch.commit().awaitTask()
+            batch = db.batch()
+            opsInBatch = 0
         }
     }
 
@@ -306,10 +333,12 @@ class FirestoreSyncEngine(
         val db = getFirestore() ?: return@withContext
         try {
             val farmRef = db.collection("farms").document(farmId)
+            val writer = BatchWriter(db)
 
             // 1. Settings
             val lastSettingsPush = getWatermark(farmId, "push_settings")
             val dirtySettings = farmDao.getDirtySettings(farmId, lastSettingsPush)
+            var maxSettingsUpdatedAt = lastSettingsPush
             for (setting in dirtySettings) {
                 val data = hashMapOf<String, Any>(
                     "syncId" to setting.syncId,
@@ -326,8 +355,8 @@ class FirestoreSyncEngine(
                     "updatedAt" to setting.updatedAt,
                     "isDeleted" to setting.isDeleted
                 )
-                farmRef.collection("meta").document("settings").set(data, SetOptions.merge()).awaitTask()
-                setWatermark(farmId, "push_settings", setting.updatedAt)
+                writer.queueSet(farmRef.collection("meta").document("settings"), data)
+                if (setting.updatedAt > maxSettingsUpdatedAt) maxSettingsUpdatedAt = setting.updatedAt
             }
 
             // 2. Tasks
@@ -353,10 +382,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to task.updatedAt,
                     "isDeleted" to task.isDeleted
                 )
-                farmRef.collection("tasks").document(task.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("tasks").document(task.syncId), data)
                 if (task.updatedAt > maxTaskUpdatedAt) maxTaskUpdatedAt = task.updatedAt
             }
-            if (maxTaskUpdatedAt > lastTasksPush) setWatermark(farmId, "push_tasks", maxTaskUpdatedAt)
 
             // 3. Units
             val lastUnitsPush = getWatermark(farmId, "push_units")
@@ -385,10 +413,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to unit.updatedAt,
                     "isDeleted" to unit.isDeleted
                 )
-                farmRef.collection("units").document(unit.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("units").document(unit.syncId), data)
                 if (unit.updatedAt > maxUnitUpdatedAt) maxUnitUpdatedAt = unit.updatedAt
             }
-            if (maxUnitUpdatedAt > lastUnitsPush) setWatermark(farmId, "push_units", maxUnitUpdatedAt)
 
             // 4. Milk Logs
             val lastMilkPush = getWatermark(farmId, "push_milk_logs")
@@ -409,10 +436,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to log.updatedAt,
                     "isDeleted" to log.isDeleted
                 )
-                farmRef.collection("milk_logs").document(log.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("milk_logs").document(log.syncId), data)
                 if (log.updatedAt > maxMilkUpdatedAt) maxMilkUpdatedAt = log.updatedAt
             }
-            if (maxMilkUpdatedAt > lastMilkPush) setWatermark(farmId, "push_milk_logs", maxMilkUpdatedAt)
 
             // 4b. Milk Usage Logs (Coop / Home / Calves split)
             val lastMilkUsagePush = getWatermark(farmId, "push_milk_usage_logs")
@@ -431,10 +457,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to usage.updatedAt,
                     "isDeleted" to usage.isDeleted
                 )
-                farmRef.collection("milk_usage_logs").document(usage.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("milk_usage_logs").document(usage.syncId), data)
                 if (usage.updatedAt > maxMilkUsageUpdatedAt) maxMilkUsageUpdatedAt = usage.updatedAt
             }
-            if (maxMilkUsageUpdatedAt > lastMilkUsagePush) setWatermark(farmId, "push_milk_usage_logs", maxMilkUsageUpdatedAt)
 
             // 5. Egg Logs
             val lastEggPush = getWatermark(farmId, "push_egg_logs")
@@ -453,10 +478,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to log.updatedAt,
                     "isDeleted" to log.isDeleted
                 )
-                farmRef.collection("egg_logs").document(log.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("egg_logs").document(log.syncId), data)
                 if (log.updatedAt > maxEggUpdatedAt) maxEggUpdatedAt = log.updatedAt
             }
-            if (maxEggUpdatedAt > lastEggPush) setWatermark(farmId, "push_egg_logs", maxEggUpdatedAt)
 
             // 6. Finance Records
             val lastFinancePush = getWatermark(farmId, "push_finance_records")
@@ -474,10 +498,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to rec.updatedAt,
                     "isDeleted" to rec.isDeleted
                 )
-                farmRef.collection("finance_records").document(rec.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("finance_records").document(rec.syncId), data)
                 if (rec.updatedAt > maxFinanceUpdatedAt) maxFinanceUpdatedAt = rec.updatedAt
             }
-            if (maxFinanceUpdatedAt > lastFinancePush) setWatermark(farmId, "push_finance_records", maxFinanceUpdatedAt)
 
             // 7. Employee Requests
             val lastReqPush = getWatermark(farmId, "push_employee_requests")
@@ -501,10 +524,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to req.updatedAt,
                     "isDeleted" to req.isDeleted
                 )
-                farmRef.collection("employee_requests").document(req.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("employee_requests").document(req.syncId), data)
                 if (req.updatedAt > maxReqUpdatedAt) maxReqUpdatedAt = req.updatedAt
             }
-            if (maxReqUpdatedAt > lastReqPush) setWatermark(farmId, "push_employee_requests", maxReqUpdatedAt)
 
             // 8. Cattle Events
             val lastEventPush = getWatermark(farmId, "push_cattle_events")
@@ -530,11 +552,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to event.updatedAt,
                     "isDeleted" to event.isDeleted
                 )
-                farmRef.collection("cattle_events").document(event.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("cattle_events").document(event.syncId), data)
                 if (event.updatedAt > maxEventUpdatedAt) maxEventUpdatedAt = event.updatedAt
             }
-            if (maxEventUpdatedAt > lastEventPush) setWatermark(farmId, "push_cattle_events", maxEventUpdatedAt)
-
 
             // 9. Poultry Logs
             val lastPoultryPush = getWatermark(farmId, "push_poultry_logs")
@@ -571,10 +591,9 @@ class FirestoreSyncEngine(
                     "updatedAt" to log.updatedAt,
                     "isDeleted" to log.isDeleted
                 )
-                farmRef.collection("poultry_logs").document(log.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("poultry_logs").document(log.syncId), data)
                 if (log.updatedAt > maxPoultryUpdatedAt) maxPoultryUpdatedAt = log.updatedAt
             }
-            if (maxPoultryUpdatedAt > lastPoultryPush) setWatermark(farmId, "push_poultry_logs", maxPoultryUpdatedAt)
 
             // 10. Worker Accounts
             val lastWorkerPush = getWatermark(farmId, "push_worker_accounts")
@@ -602,11 +621,9 @@ class FirestoreSyncEngine(
                     "canCompleteTasks" to worker.canCompleteTasks,
                     "canViewRequests" to worker.canViewRequests
                 )
-                farmRef.collection("worker_accounts").document(worker.workerId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("worker_accounts").document(worker.workerId), data)
                 if (worker.updatedAt > maxWorkerUpdatedAt) maxWorkerUpdatedAt = worker.updatedAt
             }
-            if (maxWorkerUpdatedAt > lastWorkerPush) setWatermark(farmId, "push_worker_accounts", maxWorkerUpdatedAt)
-
 
             // 11. Reminder completions (persisted computed-reminder state)
             val lastReminderPush = getWatermark(farmId, "push_reminder_completions")
@@ -614,10 +631,9 @@ class FirestoreSyncEngine(
             var maxReminderUpdatedAt = lastReminderPush
             for (item in dirtyReminders) {
                 val data = hashMapOf<String, Any>("syncId" to item.syncId, "farmId" to farmId, "ruleKey" to item.ruleKey, "unitId" to item.unitId, "completedAt" to item.completedAt, "updatedAt" to item.updatedAt, "isDeleted" to item.isDeleted)
-                farmRef.collection("reminder_completions").document(item.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("reminder_completions").document(item.syncId), data)
                 if (item.updatedAt > maxReminderUpdatedAt) maxReminderUpdatedAt = item.updatedAt
             }
-            if (maxReminderUpdatedAt > lastReminderPush) setWatermark(farmId, "push_reminder_completions", maxReminderUpdatedAt)
 
             // 12. Inventory items
             val lastInventoryPush = getWatermark(farmId, "push_inventory_items")
@@ -625,10 +641,9 @@ class FirestoreSyncEngine(
             var maxInventoryUpdatedAt = lastInventoryPush
             for (item in dirtyInventory) {
                 val data = hashMapOf<String, Any>("syncId" to item.syncId, "farmId" to farmId, "itemName" to item.itemName, "category" to item.category, "skuOrBarcode" to item.skuOrBarcode, "description" to item.description, "quantityAvailable" to item.quantityAvailable, "unitOfMeasurement" to item.unitOfMeasurement, "minimumThreshold" to item.minimumThreshold, "storageLocation" to item.storageLocation, "batchOrLotNumber" to item.batchOrLotNumber, "purchaseDate" to item.purchaseDate, "expirationDate" to item.expirationDate, "unitCost" to item.unitCost, "isSilage" to item.isSilage, "updatedAt" to item.updatedAt, "isDeleted" to item.isDeleted)
-                farmRef.collection("inventory_items").document(item.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("inventory_items").document(item.syncId), data)
                 if (item.updatedAt > maxInventoryUpdatedAt) maxInventoryUpdatedAt = item.updatedAt
             }
-            if (maxInventoryUpdatedAt > lastInventoryPush) setWatermark(farmId, "push_inventory_items", maxInventoryUpdatedAt)
 
             // 13. Field plans and harvest outcomes
             val lastFieldPush = getWatermark(farmId, "push_field_plans")
@@ -636,11 +651,9 @@ class FirestoreSyncEngine(
             var maxFieldUpdatedAt = lastFieldPush
             for (field in dirtyFields) {
                 val data = hashMapOf<String, Any>("syncId" to field.syncId, "farmId" to farmId, "fieldName" to field.fieldName, "location" to field.location, "sizeAcres" to field.sizeAcres, "cropName" to field.cropName, "variety" to field.variety, "plantedDate" to field.plantedDate, "daysToHarvest" to field.daysToHarvest, "estimatedHarvestDate" to field.estimatedHarvestDate, "plantingNotes" to field.plantingNotes, "status" to field.status, "harvestedDate" to field.harvestedDate, "harvestOutcome" to field.harvestOutcome, "harvestedTonnes" to field.harvestedTonnes, "saleAmount" to field.saleAmount, "updatedAt" to field.updatedAt, "isDeleted" to field.isDeleted)
-                farmRef.collection("field_plans").document(field.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("field_plans").document(field.syncId), data)
                 if (field.updatedAt > maxFieldUpdatedAt) maxFieldUpdatedAt = field.updatedAt
             }
-            if (maxFieldUpdatedAt > lastFieldPush) setWatermark(farmId, "push_field_plans", maxFieldUpdatedAt)
-
 
             // 14. Feed plans
             val lastFeedPlanPush = getWatermark(farmId, "push_feed_plans")
@@ -648,10 +661,9 @@ class FirestoreSyncEngine(
             var maxFeedPlanUpdatedAt = lastFeedPlanPush
             for (plan in dirtyFeedPlans) {
                 val data = hashMapOf<String, Any>("syncId" to plan.syncId, "farmId" to farmId, "targetUnitId" to plan.targetUnitId, "targetUnitSyncId" to plan.targetUnitSyncId, "targetUnitName" to plan.targetUnitName, "livestockType" to plan.livestockType, "inventoryItemId" to plan.inventoryItemId, "inventoryItemSyncId" to plan.inventoryItemSyncId, "inventoryItemName" to plan.inventoryItemName, "consumptionKind" to plan.consumptionKind, "dailyQuantityKg" to plan.dailyQuantityKg, "isEnabled" to plan.isEnabled, "lastProcessedDate" to plan.lastProcessedDate, "updatedAt" to plan.updatedAt, "isDeleted" to plan.isDeleted)
-                farmRef.collection("feed_plans").document(plan.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("feed_plans").document(plan.syncId), data)
                 if (plan.updatedAt > maxFeedPlanUpdatedAt) maxFeedPlanUpdatedAt = plan.updatedAt
             }
-            if (maxFeedPlanUpdatedAt > lastFeedPlanPush) setWatermark(farmId, "push_feed_plans", maxFeedPlanUpdatedAt)
 
             // 15. Immutable inventory movement ledger
             val lastMovementPush = getWatermark(farmId, "push_inventory_movements")
@@ -659,10 +671,9 @@ class FirestoreSyncEngine(
             var maxMovementUpdatedAt = lastMovementPush
             for (movement in dirtyMovements) {
                 val data = hashMapOf<String, Any>("syncId" to movement.syncId, "farmId" to farmId, "inventoryItemId" to movement.inventoryItemId, "inventoryItemName" to movement.inventoryItemName, "targetUnitId" to movement.targetUnitId, "targetUnitName" to movement.targetUnitName, "movementType" to movement.movementType, "quantityDeltaKg" to movement.quantityDeltaKg, "balanceAfterKg" to movement.balanceAfterKg, "occurredOn" to movement.occurredOn, "sourceKey" to movement.sourceKey, "notes" to movement.notes, "updatedAt" to movement.updatedAt, "isDeleted" to movement.isDeleted)
-                farmRef.collection("inventory_movements").document(movement.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("inventory_movements").document(movement.syncId), data)
                 if (movement.updatedAt > maxMovementUpdatedAt) maxMovementUpdatedAt = movement.updatedAt
             }
-            if (maxMovementUpdatedAt > lastMovementPush) setWatermark(farmId, "push_inventory_movements", maxMovementUpdatedAt)
 
             // 16. Generated monthly report metadata. File bytes remain in secure storage.
             val lastReportsPush = getWatermark(farmId, "push_monthly_reports")
@@ -687,9 +698,36 @@ class FirestoreSyncEngine(
                     "updatedAt" to report.updatedAt,
                     "isDeleted" to report.isDeleted
                 )
-                farmRef.collection("monthly_reports").document(report.syncId).set(data, SetOptions.merge()).awaitTask()
+                writer.queueSet(farmRef.collection("monthly_reports").document(report.syncId), data)
                 if (report.updatedAt > maxReportUpdatedAt) maxReportUpdatedAt = report.updatedAt
             }
+
+            // Single commit for everything queued above (or a handful of commits, only
+            // if some table's dirty-row count alone exceeded 500). Previously this was
+            // one network round trip per row, per table — now it's ~1 round trip total
+            // for a typical sync.
+            writer.flush()
+
+            // Watermarks are only advanced now, after the batch commit above has
+            // actually succeeded — if commit() throws, we fall into the catch block
+            // below and none of these run, so nothing is marked "pushed" that wasn't
+            // really confirmed written.
+            if (maxSettingsUpdatedAt > lastSettingsPush) setWatermark(farmId, "push_settings", maxSettingsUpdatedAt)
+            if (maxTaskUpdatedAt > lastTasksPush) setWatermark(farmId, "push_tasks", maxTaskUpdatedAt)
+            if (maxUnitUpdatedAt > lastUnitsPush) setWatermark(farmId, "push_units", maxUnitUpdatedAt)
+            if (maxMilkUpdatedAt > lastMilkPush) setWatermark(farmId, "push_milk_logs", maxMilkUpdatedAt)
+            if (maxMilkUsageUpdatedAt > lastMilkUsagePush) setWatermark(farmId, "push_milk_usage_logs", maxMilkUsageUpdatedAt)
+            if (maxEggUpdatedAt > lastEggPush) setWatermark(farmId, "push_egg_logs", maxEggUpdatedAt)
+            if (maxFinanceUpdatedAt > lastFinancePush) setWatermark(farmId, "push_finance_records", maxFinanceUpdatedAt)
+            if (maxReqUpdatedAt > lastReqPush) setWatermark(farmId, "push_employee_requests", maxReqUpdatedAt)
+            if (maxEventUpdatedAt > lastEventPush) setWatermark(farmId, "push_cattle_events", maxEventUpdatedAt)
+            if (maxPoultryUpdatedAt > lastPoultryPush) setWatermark(farmId, "push_poultry_logs", maxPoultryUpdatedAt)
+            if (maxWorkerUpdatedAt > lastWorkerPush) setWatermark(farmId, "push_worker_accounts", maxWorkerUpdatedAt)
+            if (maxReminderUpdatedAt > lastReminderPush) setWatermark(farmId, "push_reminder_completions", maxReminderUpdatedAt)
+            if (maxInventoryUpdatedAt > lastInventoryPush) setWatermark(farmId, "push_inventory_items", maxInventoryUpdatedAt)
+            if (maxFieldUpdatedAt > lastFieldPush) setWatermark(farmId, "push_field_plans", maxFieldUpdatedAt)
+            if (maxFeedPlanUpdatedAt > lastFeedPlanPush) setWatermark(farmId, "push_feed_plans", maxFeedPlanUpdatedAt)
+            if (maxMovementUpdatedAt > lastMovementPush) setWatermark(farmId, "push_inventory_movements", maxMovementUpdatedAt)
             if (maxReportUpdatedAt > lastReportsPush) setWatermark(farmId, "push_monthly_reports", maxReportUpdatedAt)
 
             Log.d(TAG, "Successfully pushed dirty rows for farm: $farmId")

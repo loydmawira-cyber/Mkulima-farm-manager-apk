@@ -1557,6 +1557,7 @@ fun FlocksScreen(
 
                     val eval = evaluatedCattleMap[animal.id]
                         ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
+                    when (selectedCattleStage) {
                         "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
                         "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
                         "HEIFER" -> eval.stage == CattleStage.HEIFER

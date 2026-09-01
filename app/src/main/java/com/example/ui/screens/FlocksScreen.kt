@@ -1313,392 +1313,60 @@ fun FlocksScreen(
             )
         }
     } else {
+        // 1. Calculate filteredList OUTSIDE and BEFORE the LazyColumn starts:
+        val filteredList = remember(roomAnimals, farmSettings.farmType, selectedFilterCategory, selectedCattleStage, evaluatedCattleMap) {
+            roomAnimals.filter { animal ->
+                val matchesMode = when {
+                    farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> animal.category.equals("CATTLE", ignoreCase = true)
+                    farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> animal.category.equals("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
+                    else -> true
+                }
+                if (!matchesMode) return@filter false
+
+                val matchesCategory = animal.category.equals(selectedFilterCategory, ignoreCase = true)
+                if (!matchesCategory) return@filter false
+                if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
+
+                val eval = evaluatedCattleMap[animal.id]
+                    ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
+                when (selectedCattleStage) {
+                    "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
+                    "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
+                    "HEIFER" -> eval.stage == CattleStage.HEIFER
+                    "CALF" -> eval.stage == CattleStage.CALF
+                    "DRY" -> eval.stage == CattleStage.DRY || eval.isDriedOff
+                    "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED || (eval.lastInseminationDate != null && !eval.isInCalf)
+                    "BULL" -> eval.stage == CattleStage.BULL
+                    "DISPOSED" -> eval.stage == CattleStage.DISPOSED
+                    else -> true
+                }
+            }
+        }
+
         Box(modifier = modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .testTag("flocks_list"),
+                contentPadding = PaddingValues(bottom = 96.dp)
             ) {
-                item {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Livestock",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1C1D1F)
-                    )
+                // Header items, Category filter tabs, Stage chips...
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Category Filter Chips [ CATTLE ] [ POULTRY ]
-                    val availableCategories = when {
-                        farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> listOf("CATTLE")
-                        farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> listOf("POULTRY")
-                        else -> listOf("CATTLE", "POULTRY")
-                    }
-
-                    if (availableCategories.size > 1) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            availableCategories.forEach { cat ->
-                                val isSelected = selectedFilterCategory == cat
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        selectedFilterCategory = cat
-                                        if (cat == "POULTRY") selectedCattleStage = "ALL"
-                                    },
-                                    label = { Text(cat, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = ForestGreenPrimary,
-                                        selectedLabelColor = Color.White,
-                                        containerColor = Color.White
-                                    ),
-                                    border = FilterChipDefaults.filterChipBorder(
-                                        enabled = true,
-                                        selected = isSelected,
-                                        borderColor = Color(0xFFE2E8F0)
-                                    )
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-
-                    // Cattle Herd Breakdown Panel (Visible for CATTLE filter)
-                    if (selectedFilterCategory == "CATTLE") {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Filled.Pets, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Cattle Stage Breakdown", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = Color(0xFFEFF6FF),
-                                        modifier = Modifier.clickable { showCategoryGuideDialog = true }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Filled.Info, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Category Guide", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                val stageItems = listOf(
-                                    Triple("ALL", "All Herd", "${cattleList.size}"),
-                                    Triple("MILKING", "🥛 Milking", "$milkingCount"),
-                                    Triple("INCALF", "🤰 In-Calf", "$totalInCalfCount"),
-                                    Triple("HEIFER", "🌾 Heifers", "$heiferCount"),
-                                    Triple("CALF", "🍼 Calves", "$calfCount"),
-                                    Triple("BULL", "🐂 Bulls", "$bullCount"),
-                                    Triple("DRY", "🍂 Dry", "$dryCount"),
-                                    Triple("INSEMINATED", "💉 Inseminated", "$inseminatedCount")
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    stageItems.take(4).forEach { (stageKey, label, count) ->
-                                        val isSelected = selectedCattleStage == stageKey
-                                        Surface(
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = if (isSelected) ForestGreenPrimary else Color.White,
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFCBD5E1)),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clickable { selectedCattleStage = stageKey }
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (isSelected) Color.White else Color(0xFF0F172A))
-                                                Text(label, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color(0xFF64748B), maxLines = 1)
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    stageItems.drop(4).forEach { (stageKey, label, count) ->
-                                        val isSelected = selectedCattleStage == stageKey
-                                        Surface(
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = if (isSelected) ForestGreenPrimary else Color.White,
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFCBD5E1)),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clickable { selectedCattleStage = stageKey }
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (isSelected) Color.White else Color(0xFF0F172A))
-                                                Text(label, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color(0xFF64748B), maxLines = 1)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else if (selectedFilterCategory == "POULTRY") {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Egg, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Poultry Flock Summary", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = Color.White,
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("$poultryFlocksCount", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                                            Text("Total Flocks", fontSize = 11.sp, color = Color(0xFF64748B))
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFFFEF3C7),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("$poultryLayingCount", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
-                                            Text("Currently Laying", fontSize = 11.sp, color = Color(0xFF92400E))
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFFDCFCE7),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("$poultryTotalBirds", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
-                                            Text("Total Birds", fontSize = 11.sp, color = ForestGreenPrimary)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-
-                val filteredList = remember(roomAnimals, farmSettings.farmType, selectedFilterCategory, selectedCattleStage, evaluatedCattleMap) {
-                    roomAnimals.filter { animal ->
-                        val matchesMode = when {
-                            farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> animal.category.equals("CATTLE", ignoreCase = true)
-                            farmSettings.farmType.equals("Poultry Only", ignoreCase = true) -> animal.category.equals("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
-                            else -> true
-                        }
-                        if (!matchesMode) return@filter false
-
-                        val matchesCategory = animal.category.equals(selectedFilterCategory, ignoreCase = true)
-                        if (!matchesCategory) return@filter false
-                        if (!animal.category.equals("CATTLE", ignoreCase = true)) return@filter true
-
-                        val eval = evaluatedCattleMap[animal.id]
-                            ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
-                        when (selectedCattleStage) {
-                            "MILKING" -> eval.isMilking || eval.stage == CattleStage.MILKING || eval.stage == CattleStage.INCALF_MILKING
-                            "INCALF" -> eval.isInCalf || eval.stage == CattleStage.INCALF || eval.stage == CattleStage.INCALF_MILKING
-                            "HEIFER" -> eval.stage == CattleStage.HEIFER
-                            "CALF" -> eval.stage == CattleStage.CALF
-                            "DRY" -> eval.stage == CattleStage.DRY || eval.isDriedOff
-                            "INSEMINATED" -> eval.stage == CattleStage.INSEMINATED || (eval.lastInseminationDate != null && !eval.isInCalf)
-                            "BULL" -> eval.stage == CattleStage.BULL
-                            "DISPOSED" -> eval.stage == CattleStage.DISPOSED
-                            else -> true
-                        }
-                    }
-                }
-
+                // 2. Inside the LazyColumn, simply pass filteredList into items():
                 items(filteredList, key = { it.id }) { animal ->
                     val isCattleItem = animal.category.equals("CATTLE", ignoreCase = true)
                     val cattleEval = if (isCattleItem) {
                         evaluatedCattleMap[animal.id]
-                            ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
                     } else null
 
-                    @OptIn(ExperimentalFoundationApi::class)
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .combinedClickable(
-                                onClick = { selectedAnimal = animal },
-                                onLongClick = { animalForOptions = animal }
-                            )
-                            .testTag("animal_card_${animal.id}"),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(14.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (animal.category == "POULTRY") Color(0xFFFEF3C7) else Color(0xFFE8F5E9),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, if (animal.category == "POULTRY") Color(0xFFFDE68A) else Color(0xFFC8E6C9)),
-                                    modifier = Modifier.size(50.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        if (!animal.photoUri.isNullOrBlank()) {
-                                            AsyncImage(
-                                                model = ImageRequest.Builder(LocalContext.current)
-                                                    .data(animal.photoUri)
-                                                    .memoryCacheKey("animal-thumb-${animal.id}-${animal.photoUri}")
-                                                    .diskCacheKey("animal-thumb-${animal.id}-${animal.photoUri}")
-                                                    .size(100)
-                                                    .precision(Precision.INEXACT)
-                                                    .crossfade(false)
-                                                    .placeholder(R.drawable.ic_livestock_placeholder)
-                                                    .error(R.drawable.ic_livestock_placeholder)
-                                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                                    .networkCachePolicy(CachePolicy.ENABLED)
-                                                    .build(),
-                                                contentDescription = "${animal.name} Photo",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = if (animal.category == "POULTRY") Icons.Filled.Egg else Icons.Filled.Pets,
-                                                contentDescription = if (animal.category == "POULTRY") "Poultry Icon" else "Cattle Icon",
-                                                tint = if (animal.category == "POULTRY") Color(0xFFD97706) else ForestGreenPrimary,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = animal.name,
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1E293B)
-                                    )
-                                    Text(
-                                        text = if (cattleEval != null) "${cattleEval.stage.emoji} ${animal.breed}   ${animal.tagNumber}" else "Breed: ${animal.breed}   ${animal.tagNumber}",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF64748B)
-                                    )
-                                    if (cattleEval != null) {
-                                        Text(
-                                            text = cattleEval.breedingStatusText,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = cattleEval.badgeTextColor
-                                        )
-                                    } else {
-                                        Text(
-                                            text = if (userRole == "OWNER") "💡 Long press to Edit / Delete" else "💡 Tap to view full details",
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF94A3B8)
-                                        )
-                                    }
-                                }
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = cattleEval?.badgeBgColor ?: if (animal.status == "MILKING" || animal.status == "ACTIVE" || animal.status == "Active Laying") TagLivestockBg else TagYieldBg
-                                ) {
-                                    Text(
-                                        text = cattleEval?.stage?.displayName ?: animal.status,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = cattleEval?.badgeTextColor ?: if (animal.status == "MILKING" || animal.status == "ACTIVE" || animal.status == "Active Laying") TagLivestockText else TagYieldText
-                                    )
-                                }
-
-                                if (userRole == "OWNER") {
-                                    IconButton(
-                                        onClick = { animalForOptions = animal },
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .testTag("more_options_${animal.id}")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.MoreVert,
-                                            contentDescription = "Animal options",
-                                            tint = Color(0xFF64748B),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(80.dp))
+                    AnimalCard(
+                        animal = animal,
+                        isCattle = isCattleItem,
+                        cattleEvaluation = cattleEval,
+                        onClick = { selectedAnimal = animal },
+                        onDelete = { handleDeleteAnimalCompletely(animal) },
+                        onDisposal = { animalToDispose = animal }
+                    )
                 }
             }
 

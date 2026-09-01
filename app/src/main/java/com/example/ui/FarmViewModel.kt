@@ -28,6 +28,7 @@ import com.example.data.MonthlyReport
 import com.example.data.PoultryLog
 import com.example.data.ReminderCompletion
 import com.example.data.RequestStatus
+import com.example.data.SyncStatus
 import com.example.data.FarmSubscriptionAccess
 import com.example.data.SubscriptionPolicy
 import com.example.data.TaskCategory

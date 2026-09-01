@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -1404,23 +1405,42 @@ class FarmViewModel(
         var latestDeworming = latestDewormingEvent(resolvedEvents.filter { it.unitId == cow.id })
 
         if (latestDeworming == null && existingTask != null && existingTask.isCompleted) {
-            val completedDateStr = existingTask.completedAt?.let { parseFarmDate(it.substringBefore(",")) }?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
-                ?: parseFarmDate(existingTask.scheduledTime)?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
-                ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-            val healEvent = CattleEvent(
-                farmId = cow.farmId,
-                unitId = cow.id,
-                category = "DEWORMING",
-                title = "Deworming Administered",
-                date = completedDateStr,
-                details = existingTask.instructions ?: "Routine deworming completed",
-                notes = existingTask.proofNotes ?: "Recorded from completed deworming task"
-            )
-            repository.insertCattleEvent(healEvent)
-            repository.markReminderComplete(cow.farmId, "cattle_deworm_${cow.id}", cow.id)
-            repository.markReminderComplete(cow.farmId, "cattle_deworm_routine_${cow.id}", cow.id)
-            resolvedEvents = sourceEvents.filterNot { it.id == healEvent.id } + healEvent
-            latestDeworming = healEvent
+            // `sourceEvents` can legitimately be an empty/stale snapshot right after
+            // app launch — feeding StateFlows here use `initialValue = emptyList()`
+            // (and now `SharingStarted.Eagerly`, which starts them immediately on
+            // ViewModel creation, before Room/Firestore have necessarily emitted real
+            // data). Treating an empty snapshot as "no event exists" caused a brand
+            // new "Deworming Administered" event to be inserted on every cold start
+            // for any cow with a previously-completed task. Re-check the DB directly —
+            // bypassing the possibly-stale flow snapshot — before backfilling.
+            val dbEventsForCow = repository.getCattleEventsForUnit(cow.id).first()
+            val confirmedLatestDeworming = latestDewormingEvent(dbEventsForCow)
+
+            if (confirmedLatestDeworming == null) {
+                val completedDateStr = existingTask.completedAt?.let { parseFarmDate(it.substringBefore(",")) }?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
+                    ?: parseFarmDate(existingTask.scheduledTime)?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
+                    ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+                val healEvent = CattleEvent(
+                    farmId = cow.farmId,
+                    unitId = cow.id,
+                    category = "DEWORMING",
+                    title = "Deworming Administered",
+                    date = completedDateStr,
+                    details = existingTask.instructions ?: "Routine deworming completed",
+                    notes = existingTask.proofNotes ?: "Recorded from completed deworming task"
+                )
+                repository.insertCattleEvent(healEvent)
+                repository.markReminderComplete(cow.farmId, "cattle_deworm_${cow.id}", cow.id)
+                repository.markReminderComplete(cow.farmId, "cattle_deworm_routine_${cow.id}", cow.id)
+                resolvedEvents = sourceEvents.filterNot { it.id == healEvent.id } + healEvent
+                latestDeworming = healEvent
+            } else {
+                // A real event already exists in the DB; the in-memory sourceEvents
+                // snapshot was just stale. Use the confirmed data instead of
+                // fabricating a duplicate.
+                resolvedEvents = sourceEvents.filterNot { it.unitId == cow.id } + dbEventsForCow
+                latestDeworming = confirmedLatestDeworming
+            }
         }
 
         val dueDate = calculateNextDewormingDate(cow, latestDeworming)

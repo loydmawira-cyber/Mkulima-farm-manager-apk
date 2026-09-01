@@ -35,7 +35,6 @@ import com.example.data.TaskPriority
 import com.example.data.UserSession
 import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
-import com.example.data.SyncStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +42,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -88,7 +86,7 @@ class FarmViewModel(
         repository.getUnitsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -97,7 +95,7 @@ class FarmViewModel(
         repository.getMilkLogsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -106,7 +104,7 @@ class FarmViewModel(
         repository.getMilkUsageLogsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -115,7 +113,7 @@ class FarmViewModel(
         repository.getEggLogsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -124,32 +122,32 @@ class FarmViewModel(
         repository.getAllPoultryLogs(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
     val allInventoryItems: StateFlow<List<InventoryItem>> = currentSession.flatMapLatest { session ->
         repository.getInventoryItemsForFarm(session?.farmId ?: "FARM-DEFAULT")
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allFieldPlans: StateFlow<List<FieldPlan>> = currentSession.flatMapLatest { session ->
         repository.getFieldPlansForFarm(session?.farmId ?: "FARM-DEFAULT")
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allFeedPlans: StateFlow<List<FeedPlan>> = currentSession.flatMapLatest { session ->
         repository.getFeedPlansForFarm(session?.farmId ?: "FARM-DEFAULT")
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allInventoryMovements: StateFlow<List<InventoryMovement>> = currentSession.flatMapLatest { session ->
         repository.getInventoryMovementsForFarm(session?.farmId ?: "FARM-DEFAULT")
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allFinanceRecords: StateFlow<List<FinanceRecord>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getFinanceRecordsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -157,7 +155,7 @@ class FarmViewModel(
         repository.getMonthlyReportsForFarm(session?.farmId ?: "FARM-DEFAULT")
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -175,7 +173,7 @@ class FarmViewModel(
         }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -209,7 +207,7 @@ class FarmViewModel(
         repository.getWorkersForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -242,7 +240,7 @@ class FarmViewModel(
         repository.getTasksForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -273,7 +271,7 @@ class FarmViewModel(
         }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -1069,7 +1067,7 @@ class FarmViewModel(
         repository.getAllCattleEvents(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -1078,21 +1076,16 @@ class FarmViewModel(
         repository.getReminderCompletionsForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
-    // Per-cow bootstrap keys, keyed by cow id, instead of one whole-farm key.
-    // This lets us detect exactly which cows actually changed instead of
-    // resyncing every cow on the farm whenever any one cow or event changes.
-    private val lastDewormingBootstrapKeys = mutableMapOf<Long, String>()
-    private var lastDewormingFarmId: String? = null
+    private var lastDewormingBootstrapKey: String = ""
 
     init {
         // Existing cattle pre-date this feature, so build their first task after
-        // Room emits livestock and event data. Per-cow keys prevent duplicate
-        // task rewrites when unrelated recompositions occur, and let us skip
-        // cows whose own data/events haven't changed.
+        // Room emits livestock and event data. The input key prevents duplicate
+        // task rewrites when unrelated recompositions occur.
         viewModelScope.launch {
             combine(allUnits, allCattleEvents) { units, events -> units to events }
                 .collect { (units, events) ->
@@ -1100,42 +1093,22 @@ class FarmViewModel(
                     val cattle = units.filter(::isCattleUnit)
                     if (cattle.isEmpty()) return@collect
 
-                    // Farm changed (e.g. switched sessions) — start tracking fresh
-                    // so we don't compare against a different farm's keys.
-                    if (lastDewormingFarmId != session.farmId) {
-                        lastDewormingBootstrapKeys.clear()
-                        lastDewormingFarmId = session.farmId
-                    }
-
-                    val dewormingEventsByCow = events
-                        .filter { isDewormingEvent(it.category, it.title, it.details) }
-                        .groupBy { it.unitId }
-
-                    // Only resync cows whose own dob/updatedAt or own deworming
-                    // events actually changed since the last pass.
-                    val changedCattle = cattle.filter { cow ->
-                        val cowEvents = dewormingEventsByCow[cow.id].orEmpty()
-                        val cowKey = buildString {
-                            append("${cow.dob}:${cow.updatedAt}")
-                            cowEvents.sortedBy { it.id }.forEach { event ->
+                    val sourceKey = buildString {
+                        append(session.farmId)
+                        cattle.sortedBy { it.id }.forEach { cow ->
+                            append("|${cow.id}:${cow.dob}:${cow.updatedAt}")
+                        }
+                        events.filter { isDewormingEvent(it.category, it.title, it.details) }
+                            .sortedBy { it.id }
+                            .forEach { event ->
                                 append("|${event.id}:${event.date}:${event.updatedAt}:${event.isDeleted}")
                             }
-                        }
-                        val changed = lastDewormingBootstrapKeys[cow.id] != cowKey
-                        if (changed) lastDewormingBootstrapKeys[cow.id] = cowKey
-                        changed
                     }
-                    if (changedCattle.isEmpty()) return@collect
+                    if (sourceKey == lastDewormingBootstrapKey) return@collect
+                    lastDewormingBootstrapKey = sourceKey
 
-                    // Drop keys for cows that no longer exist on the farm so the
-                    // map doesn't grow unbounded across deletions over time.
-                    val liveIds = cattle.map { it.id }.toSet()
-                    lastDewormingBootstrapKeys.keys.retainAll(liveIds)
-
-                    withContext(Dispatchers.IO) {
-                        changedCattle.forEach { cow ->
-                            synchronizeDewormingTask(cow, sourceEvents = events)
-                        }
+                    cattle.forEach { cow ->
+                        synchronizeDewormingTask(cow, sourceEvents = events)
                     }
                 }
         }
@@ -1240,7 +1213,7 @@ class FarmViewModel(
         }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -1430,41 +1403,23 @@ class FarmViewModel(
         var latestDeworming = latestDewormingEvent(resolvedEvents.filter { it.unitId == cow.id })
 
         if (latestDeworming == null && existingTask != null && existingTask.isCompleted) {
-            // `sourceEvents` (allCattleEvents.value) can legitimately be an empty/stale
-            // snapshot right after app launch — its StateFlow starts at initialValue =
-            // emptyList() and Room/Firestore may not have emitted real data yet on the
-            // first collection in init{}. Treating that as "no event exists" caused a
-            // brand-new "Deworming Administered" event to be inserted on every cold
-            // start for any cow with a previously-completed task. Re-check the DB
-            // directly — bypassing the possibly-stale flow snapshot — before backfilling.
-            val dbEventsForCow = repository.getCattleEventsForUnit(cow.id).first()
-            val confirmedLatestDeworming = latestDewormingEvent(dbEventsForCow)
-
-            if (confirmedLatestDeworming == null) {
-                val completedDateStr = existingTask.completedAt?.let { parseFarmDate(it.substringBefore(",")) }?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
-                    ?: parseFarmDate(existingTask.scheduledTime)?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
-                    ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-                val healEvent = CattleEvent(
-                    farmId = cow.farmId,
-                    unitId = cow.id,
-                    category = "DEWORMING",
-                    title = "Deworming Administered",
-                    date = completedDateStr,
-                    details = existingTask.instructions ?: "Routine deworming completed",
-                    notes = existingTask.proofNotes ?: "Recorded from completed deworming task"
-                )
-                repository.insertCattleEvent(healEvent)
-                repository.markReminderComplete(cow.farmId, "cattle_deworm_${cow.id}", cow.id)
-                repository.markReminderComplete(cow.farmId, "cattle_deworm_routine_${cow.id}", cow.id)
-                resolvedEvents = sourceEvents.filterNot { it.id == healEvent.id } + healEvent
-                latestDeworming = healEvent
-            } else {
-                // A real event already exists in the DB; the in-memory sourceEvents
-                // snapshot was just stale. Use the confirmed data instead of fabricating
-                // a duplicate.
-                resolvedEvents = sourceEvents.filterNot { it.unitId == cow.id } + dbEventsForCow
-                latestDeworming = confirmedLatestDeworming
-            }
+            val completedDateStr = existingTask.completedAt?.let { parseFarmDate(it.substringBefore(",")) }?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
+                ?: parseFarmDate(existingTask.scheduledTime)?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
+                ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+            val healEvent = CattleEvent(
+                farmId = cow.farmId,
+                unitId = cow.id,
+                category = "DEWORMING",
+                title = "Deworming Administered",
+                date = completedDateStr,
+                details = existingTask.instructions ?: "Routine deworming completed",
+                notes = existingTask.proofNotes ?: "Recorded from completed deworming task"
+            )
+            repository.insertCattleEvent(healEvent)
+            repository.markReminderComplete(cow.farmId, "cattle_deworm_${cow.id}", cow.id)
+            repository.markReminderComplete(cow.farmId, "cattle_deworm_routine_${cow.id}", cow.id)
+            resolvedEvents = sourceEvents.filterNot { it.id == healEvent.id } + healEvent
+            latestDeworming = healEvent
         }
 
         val dueDate = calculateNextDewormingDate(cow, latestDeworming)

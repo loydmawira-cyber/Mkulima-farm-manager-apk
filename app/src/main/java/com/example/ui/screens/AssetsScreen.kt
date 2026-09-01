@@ -409,7 +409,7 @@ private fun InventoryEntryDialog(existing: InventoryItem?, onDismiss: () -> Unit
                                     skuOrBarcode = "",
                                     description = description.trim(),
                                     quantityAvailable = parsedQuantity,
-                                    unitOfMeasurement = if (silage) "tonnes" else unit.ifBlank { "kg" },
+                                    unitOfMeasurement = if (silage) "kg" else unit.ifBlank { "kg" },
                                     minimumThreshold = minimum.toDoubleOrNull() ?: 0.0,
                                     storageLocation = "",
                                     batchOrLotNumber = batch.trim(),

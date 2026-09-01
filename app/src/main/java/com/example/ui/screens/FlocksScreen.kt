@@ -1357,16 +1357,79 @@ fun FlocksScreen(
                     val isCattleItem = animal.category.equals("CATTLE", ignoreCase = true)
                     val cattleEval = if (isCattleItem) {
                         evaluatedCattleMap[animal.id]
+                            ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
                     } else null
 
-                    AnimalCard(
-                        animal = animal,
-                        isCattle = isCattleItem,
-                        cattleEvaluation = cattleEval,
-                        onClick = { selectedAnimal = animal },
-                        onDelete = { handleDeleteAnimalCompletely(animal) },
-                        onDisposal = { animalToDispose = animal }
-                    )
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .clickable { selectedAnimal = animal }
+                            .testTag("animal_card_${animal.id}"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(
+                                        if (isCattleItem) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                        CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (isCattleItem) "🐄" else "🐔",
+                                    fontSize = 24.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(16.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = animal.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Tag: ${animal.tagNumber} • Breed: ${animal.breed}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (isCattleItem && cattleEval != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Stage: ${cattleEval.stage.name.replace('_', ' ')}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { animalToDispose = animal },
+                                modifier = Modifier.testTag("dispose_button_${animal.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Dispose animal",
+                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

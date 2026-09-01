@@ -2,12 +2,14 @@ package com.example.util
 
 import androidx.compose.ui.graphics.Color
 import com.example.data.MilkLog
+import com.example.data.CattleEvent
 import com.example.ui.screens.AnimalDetailData
 import com.example.ui.screens.CattleEventItem
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 enum class CattleStage(
     val key: String,
@@ -122,16 +124,16 @@ object CattleLifecycleEngine {
         "MMM dd, yyyy"
     )
 
-    private val dateParseCache = java.util.concurrent.ConcurrentHashMap<String, java.util.Date?>()
+    private val dateParseCache = ConcurrentHashMap<String, Date?>()
 
-    fun parseDateOrNull(dateStr: String): java.util.Date? {
+    fun parseDateOrNull(dateStr: String): Date? {
         val trimmed = dateStr.trim()
         if (trimmed.isEmpty() || trimmed.equals("N/A", ignoreCase = true)) return null
 
         return dateParseCache.getOrPut(trimmed) {
             for (pattern in patterns) {
                 try {
-                    val parser = java.text.SimpleDateFormat(pattern, java.util.Locale.US).apply { isLenient = true }
+                    val parser = SimpleDateFormat(pattern, Locale.US).apply { isLenient = true }
                     val d = parser.parse(trimmed)
                     if (d != null) return@getOrPut d
                 } catch (_: Exception) {}
@@ -456,7 +458,7 @@ object CattleLifecycleEngine {
                     latestCurrentPd?.date?.let { parseDateOrNull(it) }?.let { time = it }
                     add(Calendar.DAY_OF_YEAR, 220)
                 }
-                calvingDateEst = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(pdCal.time)
+                calvingDateEst = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(pdCal.time)
                 dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             }
         } else if (!isNegativePd && !isAbortionMostRecent && latestCalving == null && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
@@ -475,8 +477,8 @@ object CattleLifecycleEngine {
                 dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             } else {
                 calvingDateEst = animal.expectedCalving.ifBlank {
-                    val c = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, 120) }
-                    java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(c.time)
+                    val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 120) }
+                    SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(c.time)
                 }
                 dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             }

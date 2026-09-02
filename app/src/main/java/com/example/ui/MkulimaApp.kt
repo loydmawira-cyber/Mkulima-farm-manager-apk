@@ -447,7 +447,10 @@ fun MkulimaAppContent(
         SubscriptionBillingScreen(
             userSession = activeSession,
             subscriptionAccess = subscriptionAccess,
-            onClose = { showSubscriptionBillingScreen = false }
+            onClose = { showSubscriptionBillingScreen = false },
+            onPurchaseSuccess = { tier ->
+                viewModel.activateSubscription(tier)
+            }
         )
     } else if (showWorkerManagementScreen) {
         WorkerManagementScreen(

@@ -229,17 +229,17 @@ class FarmViewModel(
         repository.getWorkersForFarm(farmId)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
     fun updateSettings(settings: FarmSettings) {
-    authManager.cacheThemeMode(settings.themeMode)
-    viewModelScope.launch {
-        val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-        repository.updateSettings(settings.copy(farmId = farmId))
+        authManager.cacheThemeMode(settings.themeMode)
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            repository.updateSettings(settings.copy(farmId = farmId))
+        }
     }
-}
 
     fun updateFarmName(farmName: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
@@ -293,7 +293,7 @@ class FarmViewModel(
         }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.Eagerly,
+        started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 

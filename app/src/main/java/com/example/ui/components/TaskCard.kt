@@ -102,7 +102,7 @@ fun TaskCard(
     val priorityColor = when (task.priority) {
         TaskPriority.HIGH -> StatusUrgent
         TaskPriority.MEDIUM -> HarvestAmber
-        TaskPriority.LOW -> Color(0xFF4CAF50)
+        TaskPriority.LOW -> ForestGreenPrimary
     }
 
     Card(
@@ -191,7 +191,7 @@ fun TaskCard(
                     ) {
                         if (!task.isCompleted) {
                             DropdownMenuItem(
-                                text = { Text("Complete Task", fontWeight = FontWeight.Bold, color = Color(0xFF15803D)) },
+                                text = { Text("Complete Task", fontWeight = FontWeight.Bold, color = ForestGreenPrimary) },
                                 onClick = {
                                     taskMenuExpanded = false
                                     onCompleteClick(task)
@@ -200,7 +200,7 @@ fun TaskCard(
                                     Icon(
                                         imageVector = Icons.Filled.CheckCircle,
                                         contentDescription = null,
-                                        tint = Color(0xFF15803D),
+                                        tint = ForestGreenPrimary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -272,7 +272,7 @@ fun TaskCard(
                         text = task.title,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (task.isCompleted) Color.Gray else MaterialTheme.colorScheme.onSurface,
+                        color = if (task.isCompleted) Color(0xFF64748B) else Color(0xFF1E293B),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -280,8 +280,8 @@ fun TaskCard(
                     Text(
                         text = "Unit: ${task.targetUnit}",
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary
+                        fontWeight = FontWeight.SemiBold,
+                        color = ForestGreenPrimary
                     )
                 }
 
@@ -350,22 +350,23 @@ fun TaskCard(
                     Icon(
                         imageVector = Icons.Filled.Schedule,
                         contentDescription = null,
-                        tint = Color.Gray,
+                        tint = Color(0xFF64748B),
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = if (task.isCompleted) "Done: ${task.completedAt ?: "Recorded"}" else "Due: ${task.scheduledTime}",
                         fontSize = 12.sp,
-                        color = Color.Gray
+                        color = Color(0xFF64748B),
+                        fontWeight = FontWeight.Medium
                     )
                 }
 
                 Text(
                     text = "Assigned: ${task.assignedWorker ?: "Farm Hand"}",
                     fontSize = 12.sp,
-                    color = Color.Gray,
-                    fontWeight = FontWeight.Normal
+                    color = Color(0xFF64748B),
+                    fontWeight = FontWeight.Medium
                 )
             }
 
@@ -402,12 +403,12 @@ fun TaskCard(
                             text = "Proof Attached",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = FarmGreenPrimary
+                            color = ForestGreenPrimary
                         )
                         Text(
                             text = task.proofNotes ?: "Click to view full photo proof",
                             fontSize = 11.sp,
-                            color = Color.DarkGray,
+                            color = Color(0xFF475569),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -415,7 +416,7 @@ fun TaskCard(
                     Icon(
                         imageVector = Icons.Filled.ChevronRight,
                         contentDescription = "View",
-                        tint = FarmGreenPrimary
+                        tint = ForestGreenPrimary
                     )
                 }
             }
@@ -427,18 +428,19 @@ fun TaskCard(
                         .fillMaxWidth()
                         .padding(top = 12.dp)
                         .background(Color(0xFFF8FAFC), shape = RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(10.dp))
                         .padding(12.dp)
                 ) {
                     Text(
                         text = "Instructions:",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = Color(0xFF1E293B)
                     )
                     Text(
                         text = task.instructions ?: "No detailed instructions provided.",
                         fontSize = 12.sp,
-                        color = Color.DarkGray
+                        color = Color(0xFF475569)
                     )
 
                     if (task.isCompleted) {

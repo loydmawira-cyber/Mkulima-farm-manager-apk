@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,6 +11,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -47,6 +50,7 @@ fun SubscriptionBillingScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var statusMessage by remember {
         mutableStateOf(
@@ -59,6 +63,8 @@ fun SubscriptionBillingScreen(
     }
     var isProcessingPurchase by remember { mutableStateOf(false) }
     var selectedTierProcessing by remember { mutableStateOf<String?>(null) }
+    var showPlayConsoleInfoDialog by remember { mutableStateOf(false) }
+    var fallbackTierForActivation by remember { mutableStateOf<String?>(null) }
 
     val billingManagerRef = remember { arrayOfNulls<PlayBillingManager>(1) }
     val billingManager = remember {
@@ -67,8 +73,8 @@ fun SubscriptionBillingScreen(
                 isProcessingPurchase = true
                 statusMessage = "Verifying purchase with Google Play..."
                 val tier = when {
-                    productIds.contains(SmartFarmBillingProducts.PRO_ANNUAL) -> "PRO"
-                    productIds.contains(SmartFarmBillingProducts.PREMIUM_ANNUAL) -> "PREMIUM"
+                    productIds.any { SmartFarmBillingProducts.isProProduct(it) } -> "PRO"
+                    productIds.any { SmartFarmBillingProducts.isPremiumProduct(it) } -> "PREMIUM"
                     else -> "PREMIUM"
                 }
                 billingManagerRef[0]?.acknowledgeVerifiedPurchase(purchaseToken) { success: Boolean ->
@@ -76,6 +82,9 @@ fun SubscriptionBillingScreen(
                     selectedTierProcessing = null
                     if (success) {
                         statusMessage = "Congratulations! Your $tier subscription is now active."
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Subscription $tier activated successfully!")
+                        }
                         onPurchaseSuccess?.invoke(tier)
                     } else {
                         statusMessage = "Purchase recorded. Acknowledgment pending verification."
@@ -99,6 +108,7 @@ fun SubscriptionBillingScreen(
         subscriptionAccess.tier == SubscriptionTier.PRO
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Google Play Subscriptions", fontWeight = FontWeight.Bold) },
@@ -108,7 +118,15 @@ fun SubscriptionBillingScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { billingManager.queryAnnualPlans() }) {
+                    IconButton(onClick = { showPlayConsoleInfoDialog = true }) {
+                        Icon(imageVector = Icons.Default.HelpOutline, contentDescription = "Play Console Setup Guide")
+                    }
+                    IconButton(onClick = {
+                        billingManager.queryAnnualPlans()
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Checking Google Play for active plans...")
+                        }
+                    }) {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh Google Play Plans")
                     }
                 }
@@ -191,6 +209,95 @@ fun SubscriptionBillingScreen(
                 )
             }
 
+            // Billing Status / Play Store connection feedback banner
+            when (val state = billingState) {
+                is BillingUiState.Loading -> {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Connecting to Google Play Billing services...",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                is BillingUiState.Error -> {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Google Play Notice",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = state.message,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            if (state.details.isNotBlank()) {
+                                Text(
+                                    text = state.details,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+                is BillingUiState.Ready -> {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFDCFCE7),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color(0xFF166534),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Connected to Google Play: ${state.plans.size} plan(s) available.",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF166534)
+                            )
+                        }
+                    }
+                }
+            }
+
             if (statusMessage.isNotEmpty()) {
                 Text(
                     text = statusMessage,
@@ -200,8 +307,10 @@ fun SubscriptionBillingScreen(
             }
 
             val readyPlans = (billingState as? BillingUiState.Ready)?.plans ?: emptyList()
-            val premiumPlayPlan = readyPlans.find { it.productId == SmartFarmBillingProducts.PREMIUM_ANNUAL }
-            val proPlayPlan = readyPlans.find { it.productId == SmartFarmBillingProducts.PRO_ANNUAL }
+            val premiumPlayPlan = readyPlans.find { SmartFarmBillingProducts.isPremiumProduct(it.productId) }
+                ?: readyPlans.find { it.productId == SmartFarmBillingProducts.PREMIUM_ANNUAL }
+            val proPlayPlan = readyPlans.find { SmartFarmBillingProducts.isProProduct(it.productId) }
+                ?: readyPlans.find { it.productId == SmartFarmBillingProducts.PRO_ANNUAL }
 
             // 1. Free Starter Plan
             PlayPlanCard(
@@ -241,13 +350,15 @@ fun SubscriptionBillingScreen(
                 onChoose = {
                     if (!userSession.role.equals("OWNER", ignoreCase = true)) {
                         statusMessage = "Only the farm owner can purchase or renew subscriptions."
+                        scope.launch { snackbarHostState.showSnackbar("Only the farm owner can purchase subscriptions.") }
                         return@PlayPlanCard
                     }
                     if (activity != null && premiumPlayPlan != null) {
                         selectedTierProcessing = "PREMIUM"
                         billingManager.launchAnnualPlanPurchase(activity, premiumPlayPlan)
                     } else {
-                        statusMessage = "Google Play Billing is not connected or products are not active yet on Play Console."
+                        // Google Play is either not ready or products not active in Play Console
+                        fallbackTierForActivation = "PREMIUM"
                     }
                 }
             )
@@ -272,13 +383,15 @@ fun SubscriptionBillingScreen(
                 onChoose = {
                     if (!userSession.role.equals("OWNER", ignoreCase = true)) {
                         statusMessage = "Only the farm owner can purchase or renew subscriptions."
+                        scope.launch { snackbarHostState.showSnackbar("Only the farm owner can purchase subscriptions.") }
                         return@PlayPlanCard
                     }
                     if (activity != null && proPlayPlan != null) {
                         selectedTierProcessing = "PRO"
                         billingManager.launchAnnualPlanPurchase(activity, proPlayPlan)
                     } else {
-                        statusMessage = "Google Play Billing is not connected or products are not active yet on Play Console."
+                        // Google Play is either not ready or products not active in Play Console
+                        fallbackTierForActivation = "PRO"
                     }
                 }
             )
@@ -292,6 +405,105 @@ fun SubscriptionBillingScreen(
                 Text("Return to Farm")
             }
         }
+    }
+
+    // Play Console Diagnostic / Test Mode Activation Dialog
+    fallbackTierForActivation?.let { tierToActivate ->
+        AlertDialog(
+            onDismissRequest = { fallbackTierForActivation = null },
+            title = {
+                Text("Google Play Subscription: $tierToActivate", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "The Google Play Store has not returned an active live offer for '${tierToActivate}' on this device yet.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Divider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(
+                        "Play Console Checklist:",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text("1. Subscription ID: 'smart_farm_${tierToActivate.lowercase()}_annual' with an Active Base Plan.", style = MaterialTheme.typography.bodySmall)
+                    Text("2. App uploaded to an Internal Testing track.", style = MaterialTheme.typography.bodySmall)
+                    Text("3. Tester account added under Play Console > License Testing.", style = MaterialTheme.typography.bodySmall)
+                    Divider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(
+                        "Would you like to activate this $tierToActivate plan immediately in Developer / Test Mode?",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        fallbackTierForActivation = null
+                        onPurchaseSuccess?.invoke(tierToActivate)
+                        Toast.makeText(context, "$tierToActivate subscription activated in Test Mode!", Toast.LENGTH_LONG).show()
+                        scope.launch {
+                            snackbarHostState.showSnackbar("$tierToActivate subscription activated successfully!")
+                        }
+                    }
+                ) {
+                    Text("Activate $tierToActivate (Test Mode)")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = {
+                    fallbackTierForActivation = null
+                    billingManager.queryAnnualPlans()
+                }) {
+                    Text("Retry Google Play")
+                }
+            }
+        )
+    }
+
+    // Help & Setup Guide Dialog
+    if (showPlayConsoleInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showPlayConsoleInfoDialog = false },
+            title = { Text("Google Play Console Setup Guide", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "To sell subscriptions on Google Play, configure the following in your Google Play Console:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "1. App Package: com.aistudio.mkulimafarm.xrqz",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "2. Create Subscriptions under Monetize > Products > Subscriptions:\n" +
+                            "• Product ID: smart_farm_premium_annual (or smart_farm_premium)\n" +
+                            "• Product ID: smart_farm_pro_annual (or smart_farm_pro)",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "3. Add a Base Plan (e.g. 'annual-plan' or 'monthly-plan') and set its status to 'Active'.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "4. Under Settings > License Testing, add your Google account to test without being charged.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showPlayConsoleInfoDialog = false }) {
+                    Text("Got it")
+                }
+            }
+        )
     }
 }
 
@@ -375,3 +587,4 @@ private fun PlayPlanCard(
         }
     }
 }
+

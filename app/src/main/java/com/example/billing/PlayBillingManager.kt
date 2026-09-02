@@ -42,6 +42,7 @@ class PlayBillingManager(
                 .setListener(this)
                 .enablePendingPurchases(
                     PendingPurchasesParams.newBuilder()
+                        .enableOneTimeProducts()
                         .enablePrepaidPlans()
                         .build()
                 )
@@ -82,76 +83,120 @@ class PlayBillingManager(
     fun queryAnnualPlans() {
         val client = billingClient
         if (client == null || !client.isReady) {
-            _uiState.value = BillingUiState.Error("Google Play Billing client is not ready. Using test pricing.")
+            _uiState.value = BillingUiState.Error("Google Play Billing client is not ready. Using test pricing.", "Billing client is not connected.")
             return
         }
 
         try {
-            val products = SmartFarmBillingProducts.subscriptionProductIds.map { productId ->
+            val subProducts = SmartFarmBillingProducts.subscriptionProductIds.map { productId ->
                 QueryProductDetailsParams.Product.newBuilder()
                     .setProductId(productId)
                     .setProductType(BillingClient.ProductType.SUBS)
                     .build()
             }
-            val params = QueryProductDetailsParams.newBuilder()
-                .setProductList(products)
+            val subParams = QueryProductDetailsParams.newBuilder()
+                .setProductList(subProducts)
                 .build()
 
-            client.queryProductDetailsAsync(params) { billingResult, result ->
-                if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                    Log.w(TAG, "Query product details failed: ${billingResult.debugMessage}")
-                    _uiState.value = BillingUiState.Error(
-                        "Subscriptions not found on Play Console (${billingResult.debugMessage.ifBlank { "Code: " + billingResult.responseCode }})."
-                    )
-                    return@queryProductDetailsAsync
-                }
-
+            client.queryProductDetailsAsync(subParams) { billingResult, subResult ->
+                val allPlans = mutableListOf<BillingPlan>()
                 productDetailsById.clear()
-                val detailsList = result?.productDetailsList.orEmpty()
-                val plans = detailsList.mapNotNull { details ->
-                    val offer = details.subscriptionOfferDetails?.firstOrNull() ?: return@mapNotNull null
-                    productDetailsById[details.productId] = details
-                    BillingPlan(
-                        productId = details.productId,
-                        title = details.name,
-                        description = details.description,
-                        price = offer.pricingPhases.pricingPhaseList.firstOrNull()?.formattedPrice ?: "",
-                        offerToken = offer.offerToken
-                    )
+
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                    val detailsList = subResult?.productDetailsList.orEmpty()
+                    for (details in detailsList) {
+                        val offer = details.subscriptionOfferDetails?.firstOrNull()
+                        val offerToken = offer?.offerToken ?: ""
+                        val formattedPrice = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice
+                            ?: details.oneTimePurchaseOfferDetails?.formattedPrice
+                            ?: ""
+                        productDetailsById[details.productId] = details
+                        allPlans.add(
+                            BillingPlan(
+                                productId = details.productId,
+                                title = details.name,
+                                description = details.description,
+                                price = formattedPrice,
+                                offerToken = offerToken,
+                                productType = "subs"
+                            )
+                        )
+                    }
                 }
 
-                _uiState.value = if (plans.isEmpty()) {
-                    BillingUiState.Error(
-                        "Google Play Console products not published yet. Test mode active."
-                    )
-                } else {
-                    BillingUiState.Ready(plans)
+                // Also query one-time/in-app products in case configured as INAPP on Play Console
+                val inAppProducts = SmartFarmBillingProducts.subscriptionProductIds.map { productId ->
+                    QueryProductDetailsParams.Product.newBuilder()
+                        .setProductId(productId)
+                        .setProductType(BillingClient.ProductType.INAPP)
+                        .build()
+                }
+                val inAppParams = QueryProductDetailsParams.newBuilder()
+                    .setProductList(inAppProducts)
+                    .build()
+
+                client.queryProductDetailsAsync(inAppParams) { inAppResult, inAppDetailsList ->
+                    if (inAppResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                        for (details in inAppDetailsList?.productDetailsList.orEmpty()) {
+                            if (!productDetailsById.containsKey(details.productId)) {
+                                val price = details.oneTimePurchaseOfferDetails?.formattedPrice.orEmpty()
+                                productDetailsById[details.productId] = details
+                                allPlans.add(
+                                    BillingPlan(
+                                        productId = details.productId,
+                                        title = details.name,
+                                        description = details.description,
+                                        price = price,
+                                        offerToken = "",
+                                        productType = "inapp"
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    if (allPlans.isNotEmpty()) {
+                        _uiState.value = BillingUiState.Ready(allPlans)
+                    } else {
+                        val debugMsg = if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                            "Play Store response code: ${billingResult.responseCode} (${billingResult.debugMessage})"
+                        } else {
+                            "Products verified with Google Play, but no active subscription base plans were returned. Ensure the subscription base plan is set to 'Active' on Google Play Console."
+                        }
+                        _uiState.value = BillingUiState.Error(
+                            "Google Play products not active yet.",
+                            debugMsg
+                        )
+                    }
                 }
             }
         } catch (e: Throwable) {
             Log.e(TAG, "Exception in queryAnnualPlans", e)
-            _uiState.value = BillingUiState.Error("Failed to query Google Play products: ${e.message}")
+            _uiState.value = BillingUiState.Error("Failed to query Google Play products: ${e.message}", e.localizedMessage ?: "")
         }
     }
 
     fun launchAnnualPlanPurchase(activity: Activity, plan: BillingPlan) {
         val client = billingClient
         if (client == null || !client.isReady) {
-            _uiState.value = BillingUiState.Error("Google Play client is not ready.")
+            _uiState.value = BillingUiState.Error("Google Play client is not connected.", "BillingClient.isReady is false.")
             return
         }
 
         val details = productDetailsById[plan.productId]
         if (details == null) {
-            _uiState.value = BillingUiState.Error("Plan details not cached. Refresh and try again.")
+            _uiState.value = BillingUiState.Error("Plan details not cached for '${plan.productId}'. Refresh and try again.")
             return
         }
 
         try {
-            val productDetailsParams = BillingFlowParams.ProductDetailsParams.newBuilder()
+            val productDetailsBuilder = BillingFlowParams.ProductDetailsParams.newBuilder()
                 .setProductDetails(details)
-                .setOfferToken(plan.offerToken)
-                .build()
+            if (plan.offerToken.isNotBlank()) {
+                productDetailsBuilder.setOfferToken(plan.offerToken)
+            }
+            val productDetailsParams = productDetailsBuilder.build()
+
             val result = client.launchBillingFlow(
                 activity,
                 BillingFlowParams.newBuilder()
@@ -159,11 +204,14 @@ class PlayBillingManager(
                     .build()
             )
             if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-                _uiState.value = BillingUiState.Error("Could not open Google Play checkout: ${result.debugMessage}")
+                _uiState.value = BillingUiState.Error(
+                    "Could not open Google Play checkout (${result.debugMessage.ifBlank { "Code " + result.responseCode }}).",
+                    result.debugMessage
+                )
             }
         } catch (e: Throwable) {
             Log.e(TAG, "Exception during launchBillingFlow", e)
-            _uiState.value = BillingUiState.Error("Could not open checkout: ${e.message}")
+            _uiState.value = BillingUiState.Error("Could not open checkout: ${e.message}", e.localizedMessage ?: "")
         }
     }
 

@@ -78,7 +78,7 @@ fun AddTaskDialog(
         mutableStateOf(
             initialTargetUnit?.ifBlank { null }
                 ?: availableUnits.firstOrNull()?.name
-                ?: "Flock B - Layers"
+                ?: ""
         )
     }
     var priority by remember { mutableStateOf(TaskPriority.HIGH) }
@@ -90,7 +90,6 @@ fun AddTaskDialog(
     var assignedWorker by remember { mutableStateOf("Lead Farm Hand") }
 
     var categoryDropdownExpanded by remember { mutableStateOf(false) }
-    var unitDropdownExpanded by remember { mutableStateOf(false) }
     var priorityDropdownExpanded by remember { mutableStateOf(false) }
 
     Dialog(
@@ -153,11 +152,11 @@ fun AddTaskDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     val cropPresets = listOf(
-                        Triple("🌱 Planting", TaskCategory.CROPS, "Planting seeds / seedlings"),
-                        Triple("💧 Watering", TaskCategory.CROPS, "Irrigation / plot watering"),
+                        Triple("➕ Add Task", TaskCategory.GENERAL, "General farm operation task"),
                         Triple("🌾 Harvesting", TaskCategory.CROPS, "Crop harvest & collection"),
                         Triple("🌿 Weeding", TaskCategory.CROPS, "Field weeding & clearing"),
-                        Triple("🧪 Fertilizer", TaskCategory.CROPS, "Top dressing / fertilizer application")
+                        Triple("🧪 Fertilizer", TaskCategory.CROPS, "Top dressing / fertilizer application"),
+                        Triple("🐄 Health Check", TaskCategory.LIVESTOCK, "Livestock health inspection & treatment")
                     )
                     items(cropPresets) { (presetTitle, presetCat, defaultNotes) ->
                         Surface(
@@ -276,40 +275,18 @@ fun AddTaskDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Target Unit Dropdown
-                ExposedDropdownMenuBox(
-                    expanded = unitDropdownExpanded,
-                    onExpandedChange = { unitDropdownExpanded = !unitDropdownExpanded },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    OutlinedTextField(
-                        value = targetUnit,
-                        onValueChange = { targetUnit = it },
-                        label = { Text("Target Flock / Crop Unit") },
-                        placeholder = { Text("Select or type unit name") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitDropdownExpanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth()
-                            .testTag("target_unit_input"),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = unitDropdownExpanded,
-                        onDismissRequest = { unitDropdownExpanded = false }
-                    ) {
-                        availableUnits.forEach { unit ->
-                            DropdownMenuItem(
-                                text = { Text("${unit.name} (${unit.type})") },
-                                onClick = {
-                                    targetUnit = unit.name
-                                    unitDropdownExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
+                // Target Unit Manual Input (Direct typing, no forced unit filter dropdown)
+                OutlinedTextField(
+                    value = targetUnit,
+                    onValueChange = { targetUnit = it },
+                    label = { Text("Target Unit / Location") },
+                    placeholder = { Text("e.g. Flock B, Plot 1, Pen 3, Barn A") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("target_unit_input"),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
 
                 Spacer(modifier = Modifier.height(12.dp))
 

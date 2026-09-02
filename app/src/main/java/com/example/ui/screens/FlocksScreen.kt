@@ -36,12 +36,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Egg
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.SentimentSatisfied
@@ -273,7 +276,7 @@ fun DisposeAnimalDialog(
                 ) {
                     Column {
                         Text(
-                            text = "ðŸš« Dispose Animal",
+                            text = "Dispose Animal",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
@@ -311,7 +314,7 @@ fun DisposeAnimalDialog(
                         ) {
                             Box(modifier = Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = if (r == "Sold") "ðŸ’° Sold" else if (r == "Dead") "â˜ ï¸ Dead" else "ðŸ“¦ Other",
+                                    text = if (r == "Sold") "Sold" else if (r == "Dead") " ï¸ Dead" else "Other",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSel) Color.White else Color(0xFF475569)
@@ -449,7 +452,7 @@ fun DisposeFlockDialog(
                 ) {
                     Column {
                         Text(
-                            text = "ðŸ·ï¸ Dispose Birds from Flock",
+                            text = " Dispose Birds from Flock",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
@@ -488,7 +491,7 @@ fun DisposeFlockDialog(
                             ) {
                                 Box(modifier = Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = if (r == "Sold") "ðŸ’° Sold" else "â˜ ï¸ Death / Loss",
+                                        text = if (r == "Sold") "Sold" else " ï¸ Death / Loss",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isSel) Color.White else Color(0xFF475569)
@@ -514,7 +517,7 @@ fun DisposeFlockDialog(
                             ) {
                                 Box(modifier = Modifier.padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = if (r == "Home Consumption") "ðŸ² Home Consumption" else "ðŸ“¦ Other",
+                                        text = if (r == "Home Consumption") " Home Consumption" else "Other",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isSel) Color.White else Color(0xFF475569)
@@ -1092,14 +1095,14 @@ fun FlocksScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     listOf(
-                        Triple("ðŸ¼ CALF", "Young Stock (< 12 Months)", "Newborn to weaning young stock. Automatically determined by birth date or young age (< 12 months)."),
-                        Triple("ðŸŒ¾ HEIFER", "Mature Maiden (> 12 Months)", "Young female (> 12 months) that has not yet given birth to her first calf. Automatically transitions upon aging."),
-                        Triple("ðŸ¤° IN-CALF", "Confirmed Pregnant (Dry / Heifer)", "Confirmed pregnant through a positive Pregnancy Diagnosis (PD) log event, resting or not actively producing milk."),
-                        Triple("ðŸ¥›ðŸ¤° IN-CALF / MILKING", "Pregnant & Active Lactation", "Confirmed pregnant via positive PD log event and concurrently active in daily milk production."),
-                        Triple("ðŸ¥› MILKING", "Active Lactating Cow (Open)", "Adult cow in daily milk production following calving, awaiting or between inseminations."),
-                        Triple("ðŸ‚ DRY", "Dry Period (Resting)", "Mature cow that has completed lactation and ceased milking (via Dry Off log event or 0 milk logs)."),
-                        Triple("ðŸ‚ BULL", "Breeding Male / Stud", "Mature male kept for herd breeding or artificial insemination semen production."),
-                        Triple("ðŸš« DISPOSED", "Culled / Sold / Removed", "Cattle disposed from active herd. All historical milk and breeding records remain safely stored.")
+                        Triple(" CALF", "Young Stock (< 12 Months)", "Newborn to weaning young stock. Automatically determined by birth date or young age (< 12 months)."),
+                        Triple("HEIFER", "Mature Maiden (> 12 Months)", "Young female (> 12 months) that has not yet given birth to her first calf. Automatically transitions upon aging."),
+                        Triple("IN-CALF", "Confirmed Pregnant (Dry / Heifer)", "Confirmed pregnant through a positive Pregnancy Diagnosis (PD) log event, resting or not actively producing milk."),
+                        Triple(" / MILKING", "Pregnant & Active Lactation", "Confirmed pregnant via positive PD log event and concurrently active in daily milk production."),
+                        Triple("MILKING", "Active Lactating Cow (Open)", "Adult cow in daily milk production following calving, awaiting or between inseminations."),
+                        Triple(" DRY", "Dry Period (Resting)", "Mature cow that has completed lactation and ceased milking (via Dry Off log event or 0 milk logs)."),
+                        Triple(" BULL", "Breeding Male / Stud", "Mature male kept for herd breeding or artificial insemination semen production."),
+                        Triple("DISPOSED", "Culled / Sold / Removed", "Cattle disposed from active herd. All historical milk and breeding records remain safely stored.")
                     ).forEach { (title, subtitle, desc) ->
                         Card(
                             modifier = Modifier
@@ -1469,13 +1472,13 @@ fun FlocksScreen(
 
                                 val stageItems = listOf(
                                     Triple("ALL", "All Herd", "${cattleList.size}"),
-                                    Triple("MILKING", "ðŸ¥› Milking", "$milkingCount"),
-                                    Triple("INCALF", "ðŸ¤° In-Calf", "$totalInCalfCount"),
-                                    Triple("HEIFER", "ðŸŒ¾ Heifers", "$heiferCount"),
-                                    Triple("CALF", "ðŸ¼ Calves", "$calfCount"),
-                                    Triple("BULL", "ðŸ‚ Bulls", "$bullCount"),
-                                    Triple("DRY", "ðŸ‚ Dry", "$dryCount"),
-                                    Triple("INSEMINATED", "ðŸ’‰ Inseminated", "$inseminatedCount")
+                                    Triple("MILKING", "Milking", "$milkingCount"),
+                                    Triple("INCALF", "In-Calf", "$totalInCalfCount"),
+                                    Triple("HEIFER", "Heifers", "$heiferCount"),
+                                    Triple("CALF", " Calves", "$calfCount"),
+                                    Triple("BULL", " Bulls", "$bullCount"),
+                                    Triple("DRY", " Dry", "$dryCount"),
+                                    Triple("INSEMINATED", "Inseminated", "$inseminatedCount")
                                 )
 
                                 Row(
@@ -1686,7 +1689,7 @@ fun FlocksScreen(
                                         )
                                     } else {
                                         Text(
-                                            text = if (userRole == "OWNER") "ðŸ’¡ Long press to Edit / Delete" else "ðŸ’¡ Tap to view full details",
+                                            text = if (userRole == "OWNER") "Long press to Edit / Delete" else "Tap to view full details",
                                             fontSize = 10.sp,
                                             color = Color(0xFF94A3B8)
                                         )
@@ -1932,13 +1935,13 @@ fun AnimalDetailsView(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "â€¢ CALF: Cattle under 6 months old.\n" +
-                        "â€¢ HEIFER: Female >= 6 months old with no calves born yet.\n" +
-                        "â€¢ INCALF: Confirmed pregnant through positive Pregnancy Diagnosis (PD) check.\n" +
-                        "â€¢ INCALF / MILKING: Confirmed pregnant while currently actively milking.\n" +
-                        "â€¢ DRY: Non-lactating cow (rest period ~60 days before calving).\n" +
-                        "â€¢ MILKING: Actively lactating cow.\n" +
-                        "â€¢ BULL: Male breeding stock.",
+                        "• CALF: Cattle under 6 months old.\n" +
+                        "• HEIFER: Female >= 6 months old with no calves born yet.\n" +
+                        "• INCALF: Confirmed pregnant through positive Pregnancy Diagnosis (PD) check.\n" +
+                        "• INCALF / MILKING: Confirmed pregnant while currently actively milking.\n" +
+                        "• DRY: Non-lactating cow (rest period ~60 days before calving).\n" +
+                        "• MILKING: Actively lactating cow.\n" +
+                        "• BULL: Male breeding stock.",
                         fontSize = 12.sp,
                         color = Color(0xFF334155),
                         lineHeight = 18.sp
@@ -2011,14 +2014,14 @@ fun AnimalDetailsView(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     val stages = listOf(
-                        "MILKING" to "ðŸ„ MILKING (Active Lactation)",
-                        "INCALF_MILKING" to "ðŸ¤° INCALF / MILKING (Pregnant + Lactating)",
-                        "INCALF" to "ðŸ¤° INCALF (Confirmed Pregnant)",
-                        "DRY" to "ðŸŒ¾ DRY (Non-Lactating Gestation)",
-                        "CALF" to "ðŸ¼ CALF (Young Stock)",
-                        "HEIFER" to "ðŸŒ¿ HEIFER (Pre-calving Female)",
-                        "BULL" to "ðŸ‚ BULL (Breeding Male)",
-                        "DISPOSED" to "ðŸš« DISPOSED (Culled / Sold)"
+                        "MILKING" to " MILKING (Active Lactation)",
+                        "INCALF_MILKING" to "INCALF / MILKING (Pregnant + Lactating)",
+                        "INCALF" to "INCALF (Confirmed Pregnant)",
+                        "DRY" to "DRY (Non-Lactating Gestation)",
+                        "CALF" to " CALF (Young Stock)",
+                        "HEIFER" to "HEIFER (Pre-calving Female)",
+                        "BULL" to " BULL (Breeding Male)",
+                        "DISPOSED" to "DISPOSED (Culled / Sold)"
                     )
 
                     stages.forEach { (stageKey, stageLabel) ->
@@ -2284,21 +2287,21 @@ fun AnimalDetailsView(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "â€¢ Disposal Reason: ${animal.disposalReason.ifBlank { currentStatus }}",
+                            text = "• Disposal Reason: ${animal.disposalReason.ifBlank { currentStatus }}",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF7F1D1D)
                         )
                         if (animal.disposalDate.isNotBlank()) {
                             Text(
-                                text = "â€¢ Date Disposed: ${animal.disposalDate}",
+                                text = "• Date Disposed: ${animal.disposalDate}",
                                 fontSize = 12.sp,
                                 color = Color(0xFF991B1B)
                             )
                         }
                         if (animal.disposalAmount > 0) {
                             Text(
-                                text = "â€¢ Sale Income Recorded: KSh ${animal.disposalAmount} (Added to Finance Income)",
+                                text = "• Sale Income Recorded: KSh ${animal.disposalAmount} (Added to Finance Income)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ForestGreenPrimary
@@ -2306,7 +2309,7 @@ fun AnimalDetailsView(
                         }
                         if (animal.disposalNotes.isNotBlank()) {
                             Text(
-                                text = "â€¢ Buyer / Details: ${animal.disposalNotes}",
+                                text = "• Buyer / Details: ${animal.disposalNotes}",
                                 fontSize = 12.sp,
                                 color = Color(0xFF7F1D1D)
                             )
@@ -2411,7 +2414,7 @@ fun AnimalDetailsView(
                                 color = Color(0xFF0F172A)
                             )
                             Text(
-                                text = "Tag: ${animal.tagNumber}  â€¢  ${animal.breed}",
+                                text = "Tag: ${animal.tagNumber}  •  ${animal.breed}",
                                 fontSize = 12.sp,
                                 color = Color(0xFF64748B)
                             )
@@ -2581,7 +2584,7 @@ fun AnimalDetailsView(
                                 }
                             }
                             Text(
-                                text = "Tag: ${animal.tagNumber}  â€¢  ${animal.breed}",
+                                text = "Tag: ${animal.tagNumber}  •  ${animal.breed}",
                                 fontSize = 14.sp,
                                 color = Color(0xFF64748B),
                                 modifier = Modifier.padding(top = 2.dp)
@@ -2755,7 +2758,7 @@ fun AnimalDetailsView(
                             ) {
                                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("ðŸ¼ Log Calving Date", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Log Calving Date", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
 
                             Button(
@@ -2772,7 +2775,7 @@ fun AnimalDetailsView(
                             ) {
                                 Icon(Icons.Filled.MedicalServices, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("ðŸ©º Log Health / Meds", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Log Health / Meds", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }
 
@@ -2792,7 +2795,7 @@ fun AnimalDetailsView(
                                 shape = RoundedCornerShape(10.dp),
                                 border = BorderStroke(1.dp, ForestGreenPrimary)
                             ) {
-                                Text("ðŸ¤° Pregnancy Check (PD)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                Text("Pregnancy Check (PD)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
                             }
 
                             OutlinedButton(
@@ -2807,7 +2810,7 @@ fun AnimalDetailsView(
                                 shape = RoundedCornerShape(10.dp),
                                 border = BorderStroke(1.dp, Color(0xFF64748B))
                             ) {
-                                Text("ðŸ§¬ AI / Insemination", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                Text("AI / Insemination", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
                             }
                         }
                     }
@@ -3775,7 +3778,7 @@ fun AnimalDetailsView(
                                 color = Color(0xFF991B1B)
                             )
                             Text(
-                                text = "Date: ${ev.date}  â€¢  Category: ${ev.category}",
+                                text = "Date: ${ev.date}  •  Category: ${ev.category}",
                                 fontSize = 11.sp,
                                 color = Color(0xFFB91C1C)
                             )
@@ -4126,7 +4129,7 @@ fun FlockDetailsView(
                 modifier = Modifier.fillMaxWidth().padding(8.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("ðŸ“… Edit Flock Date Added", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                    Text("Edit Flock Date Added", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                     Text("The flock age, feed stage recommendations, and vaccination due dates will recalculate automatically.", fontSize = 12.sp, color = Color(0xFF64748B))
                     Spacer(modifier = Modifier.height(16.dp))
                     AppDatePickerField(
@@ -4284,7 +4287,7 @@ fun FlockDetailsView(
                                 color = Color(0xFF0F172A)
                             )
                             Text(
-                                text = "ðŸ” Poultry Flock â€¢ ${flock.breed}",
+                                text = " Poultry Flock  ${flock.breed}",
                                 fontSize = 12.sp,
                                 color = Color(0xFF64748B)
                             )
@@ -4473,7 +4476,7 @@ fun FlockDetailsView(
                                     color = Color(0xFF0F172A)
                                 )
                                 Text(
-                                    text = "Tag: ${flock.tagNumber}  â€¢  ${flock.breed}",
+                                    text = "Tag: ${flock.tagNumber}  •  ${flock.breed}",
                                     fontSize = 12.sp,
                                     color = Color(0xFF64748B)
                                 )
@@ -4615,7 +4618,7 @@ fun FlockDetailsView(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (isUrgent) "ðŸš¨ VACCINATION ATTENTION REQUIRED" else "âš ï¸ UPCOMING VACCINATIONS",
+                                    text = if (isUrgent) "VACCINATION ATTENTION REQUIRED" else " ï¸ UPCOMING VACCINATIONS",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = bannerText
@@ -4647,7 +4650,12 @@ fun FlockDetailsView(
                             modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ðŸ¥£", fontSize = 20.sp)
+                            Icon(
+                                imageVector = Icons.Filled.Notifications,
+                                contentDescription = null,
+                                tint = Color(0xFF1E40AF),
+                                modifier = Modifier.size(22.dp)
+                            )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
@@ -4747,7 +4755,12 @@ fun FlockDetailsView(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("ðŸ“…", fontSize = 16.sp)
+                                    Icon(
+                                        imageVector = Icons.Filled.DateRange,
+                                        contentDescription = null,
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text("DATE ADDED / ARRIVAL", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
@@ -4760,7 +4773,7 @@ fun FlockDetailsView(
                                     color = Color(0xFFE2E8F0)
                                 ) {
                                     Text(
-                                        text = "Change Date â–¾",
+                                        text = "Change Date ▾",
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
@@ -4859,7 +4872,7 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ðŸ¥£ Feed Stage Formulation", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text("Feed Stage Formulation", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
 
                             Button(
                                 onClick = { showFeedDialog = true },
@@ -4890,8 +4903,8 @@ fun FlockDetailsView(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(stageFeedInfo.feedType, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F))
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text("â€¢ Purpose: ${stageFeedInfo.purpose}", fontSize = 12.sp, color = Color(0xFF92400E))
-                                Text("â€¢ Daily Ration: ${stageFeedInfo.dailyRationPerBird}", fontSize = 12.sp, color = Color(0xFF92400E))
+                                Text("• Purpose: ${stageFeedInfo.purpose}", fontSize = 12.sp, color = Color(0xFF92400E))
+                                Text("• Daily Ration: ${stageFeedInfo.dailyRationPerBird}", fontSize = 12.sp, color = Color(0xFF92400E))
                             }
                         }
 
@@ -4922,7 +4935,7 @@ fun FlockDetailsView(
                                 ) {
                                     Column {
                                         Text(feed.feedType, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1E293B))
-                                        Text("Date: ${feed.date} â€¢ ${feed.notes}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        Text("Date: ${feed.date} • ${feed.notes}", fontSize = 12.sp, color = Color(0xFF64748B))
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text("${feed.quantityKg} kg", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ForestGreenPrimary)
@@ -4950,7 +4963,7 @@ fun FlockDetailsView(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("ðŸ’‰ Age Vaccination Schedule", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                Text("Age Vaccination Schedule", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                                 Text("Standard protocol keyed from arrival date", fontSize = 12.sp, color = Color(0xFF64748B))
                             }
                             Button(
@@ -4972,7 +4985,7 @@ fun FlockDetailsView(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                             ) {
                                 Text(
-                                    text = "ðŸŽ‰ All poultry vaccination tasks completed or cleared!",
+                                    text = "All poultry vaccination tasks completed or cleared!",
                                     fontSize = 13.sp,
                                     color = Color(0xFF64748B),
                                     fontWeight = FontWeight.Medium,
@@ -5013,13 +5026,13 @@ fun FlockDetailsView(
                                             )
                                         }
                                         Text(
-                                            text = "Stage: ${vac.targetStageLabel} â€¢ Due: ${vac.scheduledDueDateStr}",
+                                            text = "Stage: ${vac.targetStageLabel} • Due: ${vac.scheduledDueDateStr}",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = Color(0xFF475569)
                                         )
                                         Text(
-                                            text = "Method: ${vac.administrationMethod} â€¢ ${vac.notes}",
+                                            text = "Method: ${vac.administrationMethod} • ${vac.notes}",
                                             fontSize = 11.sp,
                                             color = Color(0xFF64748B)
                                         )
@@ -5153,7 +5166,7 @@ fun FlockDetailsView(
                                 ) {
                                     Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                         Text(customVac.vaccineName, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF1E293B))
-                                        Text("Target: ${customVac.targetStage} â€¢ Due: ${customVac.dueDate}", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        Text("Target: ${customVac.targetStage} • Due: ${customVac.dueDate}", fontSize = 12.sp, color = Color(0xFF64748B))
                                         if (customVac.notes.isNotBlank()) {
                                             Text(customVac.notes, fontSize = 11.sp, color = Color(0xFF64748B))
                                         }
@@ -5280,7 +5293,7 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("â˜ ï¸ Mortality & Health Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text(" ï¸ Mortality & Health Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                             Button(
                                 onClick = { showMortalityDialog = true },
                                 shape = RoundedCornerShape(10.dp),
@@ -5315,8 +5328,8 @@ fun FlockDetailsView(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column {
-                                        Text("${log.count} Birds Lost â€¢ Cause: ${log.cause}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF991B1B))
-                                        Text("Date: ${log.date} â€¢ ${log.notes}", fontSize = 12.sp, color = Color(0xFFB91C1C))
+                                        Text("${log.count} Birds Lost • Cause: ${log.cause}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF991B1B))
+                                        Text("Date: ${log.date} • ${log.notes}", fontSize = 12.sp, color = Color(0xFFB91C1C))
                                     }
                                     Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFFCA5A5)) {
                                         Text("-${log.count}", modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7F1D1D))
@@ -5342,7 +5355,7 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ðŸ¥š Egg Sales Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text("Egg Sales Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                             if (canEdit) {
                                 Button(
                                     onClick = { showEggSaleDialog = true },
@@ -5383,13 +5396,13 @@ fun FlockDetailsView(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "${sale.traysSold} trays â€¢ ${sale.buyer.ifBlank { "No buyer recorded" }}",
+                                                text = "${sale.traysSold} trays • ${sale.buyer.ifBlank { "No buyer recorded" }}",
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF166534)
                                             )
                                             Text(
-                                                text = "Date: ${sale.date} â€¢ KSh ${"%.2f".format(sale.pricePerTray)} per tray",
+                                                text = "Date: ${sale.date} • KSh ${"%.2f".format(sale.pricePerTray)} per tray",
                                                 fontSize = 12.sp,
                                                 color = Color(0xFF15803D)
                                             )
@@ -5422,7 +5435,7 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ðŸ·ï¸ Flock Sales & Disposals Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text(" Flock Sales & Disposals Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                             Button(
                                 onClick = { showDisposeFlockDialog = true },
                                 shape = RoundedCornerShape(10.dp),
@@ -5461,13 +5474,13 @@ fun FlockDetailsView(
                                     ) {
                                         Column {
                                             Text(
-                                                text = "${dLog.quantity} Birds â€¢ Reason: ${dLog.reason}",
+                                                text = "${dLog.quantity} Birds • Reason: ${dLog.reason}",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 14.sp,
                                                 color = Color(0xFF9A3412)
                                             )
                                             Text(
-                                                text = "Date: ${dLog.date} ${if (dLog.notes.isNotBlank()) "â€¢ ${dLog.notes}" else ""}",
+                                                text = "Date: ${dLog.date} ${if (dLog.notes.isNotBlank()) "• ${dLog.notes}" else ""}",
                                                 fontSize = 12.sp,
                                                 color = Color(0xFFC2410C)
                                             )
@@ -5520,7 +5533,7 @@ fun FlockDetailsView(
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("ðŸ¥£ Log Feed Consumption", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Log Feed Consumption", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(value = feedType, onValueChange = { feedType = it }, label = { Text("Feed Type") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
@@ -5571,7 +5584,7 @@ fun FlockDetailsView(
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("â˜ ï¸ Record Bird Mortality", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                    Text(" ï¸ Record Bird Mortality", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
                     Text("Deducts death count automatically from live flock head count.", fontSize = 12.sp, color = Color(0xFF64748B))
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(value = deathCountText, onValueChange = { deathCountText = it }, label = { Text("Number of Bird Deaths") }, modifier = Modifier.fillMaxWidth())
@@ -5624,7 +5637,7 @@ fun FlockDetailsView(
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("ðŸ¥š Log Egg Sales Revenue", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                    Text("Log Egg Sales Revenue", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(value = traysText, onValueChange = { traysText = it }, label = { Text("Number of Trays Sold") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
@@ -5677,7 +5690,7 @@ fun FlockDetailsView(
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("ðŸ’‰ Add Custom Vaccine Schedule", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Add Custom Vaccine Schedule", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(value = nameText, onValueChange = { nameText = it }, label = { Text("Vaccine Name") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
@@ -5833,7 +5846,7 @@ private fun EditFeedLogDialog(
             colors = CardDefaults.cardColors(containerColor = Color.White)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("âœï¸ Edit Feed Log", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(" Edit Feed Log", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
                 AppDatePickerField(value = dateText, onValueChange = { dateText = it }, label = "Date")
                 Spacer(modifier = Modifier.height(8.dp))
@@ -5886,7 +5899,7 @@ private fun EditMortalityLogDialog(
             colors = CardDefaults.cardColors(containerColor = Color.White)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("âœï¸ Edit Mortality Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                Text(" Edit Mortality Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
                 Spacer(modifier = Modifier.height(12.dp))
                 AppDatePickerField(value = dateText, onValueChange = { dateText = it }, label = "Date")
                 Spacer(modifier = Modifier.height(8.dp))
@@ -5936,7 +5949,7 @@ private fun EditEggSaleLogDialog(
             colors = CardDefaults.cardColors(containerColor = Color.White)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("âœï¸ Edit Egg Sale", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                Text(" Edit Egg Sale", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
                 Spacer(modifier = Modifier.height(12.dp))
                 AppDatePickerField(value = dateText, onValueChange = { dateText = it }, label = "Sale Date")
                 Spacer(modifier = Modifier.height(8.dp))
@@ -5990,7 +6003,7 @@ private fun EditDisposalLogDialog(
             colors = CardDefaults.cardColors(containerColor = Color.White)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("âœï¸ Edit Disposal Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
+                Text(" Edit Disposal Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
                 Spacer(modifier = Modifier.height(12.dp))
                 AppDatePickerField(value = dateText, onValueChange = { dateText = it }, label = "Disposal Date")
                 Spacer(modifier = Modifier.height(8.dp))

@@ -1,17 +1,27 @@
 package com.example.notifications
 
 import android.content.Context
+import android.util.Log
 import com.example.data.UserSession
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.FirebaseMessaging
 
 object FarmDeviceTokenRegistry {
+    private const val TAG = "FarmDeviceToken"
     private const val PREFS = "mkulima_auth_prefs"
 
     fun registerOwnerDevice(context: Context, session: UserSession) {
         if (!session.isOwner) return
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-            writeToken(context, token, session.farmId, session.userId, session.role)
+        try {
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    writeToken(context, token, session.farmId, session.userId, session.role)
+                }
+                .addOnFailureListener { e ->
+                    Log.d(TAG, "FCM token registration skipped on this device: ${e.message}")
+                }
+        } catch (e: Throwable) {
+            Log.d(TAG, "FirebaseMessaging is not available: ${e.message}")
         }
     }
 
@@ -25,8 +35,16 @@ object FarmDeviceTokenRegistry {
     }
 
     fun refreshRegisteredToken(context: Context) {
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-            registerSavedOwnerDevice(context, token)
+        try {
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    registerSavedOwnerDevice(context, token)
+                }
+                .addOnFailureListener { e ->
+                    Log.d(TAG, "FCM token refresh skipped on this device: ${e.message}")
+                }
+        } catch (e: Throwable) {
+            Log.d(TAG, "FirebaseMessaging is not available: ${e.message}")
         }
     }
 

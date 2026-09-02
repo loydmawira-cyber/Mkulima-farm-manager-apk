@@ -500,8 +500,9 @@ fun ApprovalRequestsScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = if (isOwner) "No requests in this category." else "No requests submitted yet.",
-                            color = Color.Gray,
-                            fontSize = 14.sp
+                            color = Color(0xFF64748B),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
                         )
                         if (onAddRequestClick != null && !isOwner) {
                             Spacer(modifier = Modifier.height(12.dp))

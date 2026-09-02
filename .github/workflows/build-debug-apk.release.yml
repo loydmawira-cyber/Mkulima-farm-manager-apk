@@ -61,8 +61,8 @@ jobs:
       - name: Build Debug APK
         shell: bash
         env:
-          JAVA_TOOL_OPTIONS: '-Djava.awt.headless=true'
-          GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.configuration-cache=false -Dkotlin.incremental=false -Dksp.incremental=false'
+          JAVA_TOOL_OPTIONS: '-Djava.awt.headless=true -Dfile.encoding=UTF-8'
+          GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.configuration-cache=false -Dkotlin.incremental=false -Dksp.incremental=false -Dfile.encoding=UTF-8'
         run: ./gradlew --no-daemon --no-build-cache --no-configuration-cache -Pksp.incremental=false -Pksp.useKSP2=true clean assembleDebug --stacktrace
 
       - name: Publish APK as GitHub Release asset

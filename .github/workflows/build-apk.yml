@@ -46,6 +46,9 @@ jobs:
         run: chmod +x gradlew || true
 
       - name: Build Debug APK
+        env:
+          JAVA_TOOL_OPTIONS: '-Dfile.encoding=UTF-8'
+          GRADLE_OPTS: '-Dfile.encoding=UTF-8'
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Upload Debug APK Artifact

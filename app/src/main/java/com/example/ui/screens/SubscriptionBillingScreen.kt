@@ -60,7 +60,7 @@ fun SubscriptionBillingScreen(
     var isProcessingPurchase by remember { mutableStateOf(false) }
     var selectedTierProcessing by remember { mutableStateOf<String?>(null) }
 
-    lateinit var manager: PlayBillingManager
+    val billingManagerRef = remember { arrayOfNulls<PlayBillingManager>(1) }
     val billingManager = remember {
         PlayBillingManager(context) { purchaseToken, productIds ->
             scope.launch {
@@ -71,7 +71,7 @@ fun SubscriptionBillingScreen(
                     productIds.contains(SmartFarmBillingProducts.PREMIUM_ANNUAL) -> "PREMIUM"
                     else -> "PREMIUM"
                 }
-                manager.acknowledgeVerifiedPurchase(purchaseToken) { success: Boolean ->
+                billingManagerRef[0]?.acknowledgeVerifiedPurchase(purchaseToken) { success: Boolean ->
                     isProcessingPurchase = false
                     selectedTierProcessing = null
                     if (success) {
@@ -83,7 +83,7 @@ fun SubscriptionBillingScreen(
                     }
                 }
             }
-        }.also { manager = it }
+        }.also { billingManagerRef[0] = it }
     }
 
     DisposableEffect(billingManager) {

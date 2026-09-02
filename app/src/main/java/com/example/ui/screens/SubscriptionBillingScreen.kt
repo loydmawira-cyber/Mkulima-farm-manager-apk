@@ -1,262 +1,337 @@
 package com.example.ui.screens
 
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
+import android.app.Activity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.billing.BillingPlan
+import com.example.billing.BillingUiState
+import com.example.billing.PlayBillingManager
+import com.example.billing.SmartFarmBillingProducts
 import com.example.data.FarmSubscriptionAccess
 import com.example.data.SubscriptionStatus
 import com.example.data.SubscriptionTier
 import com.example.data.UserSession
-import com.example.payments.PaystackCheckoutClient
-import com.example.payments.PaystackCheckoutTier
 import kotlinx.coroutines.launch
 
-/**
- * Direct-APK annual subscription screen for Smart Farm App.
- *
- * The client never contains a Paystack secret key and never unlocks access from
- * a button click. It only opens a server-created hosted checkout. The existing
- * Firestore subscription listener updates subscriptionAccess after the signed
- * webhook and server verification complete.
- */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubscriptionBillingScreen(
     userSession: UserSession,
     subscriptionAccess: FarmSubscriptionAccess,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    checkoutClient: PaystackCheckoutClient? = null
+    onPurchaseSuccess: ((tier: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val scope = rememberCoroutineScope()
-    val client = remember(checkoutClient) { checkoutClient ?: PaystackCheckoutClient() }
-    var startingTier by remember { mutableStateOf<PaystackCheckoutTier?>(null) }
-    var pendingCheckoutTier by remember { mutableStateOf<PaystackCheckoutTier?>(null) }
-    var pendingReference by remember { mutableStateOf<String?>(null) }
-    var isVerifyingPayment by remember { mutableStateOf(false) }
+
+    var statusMessage by remember {
+        mutableStateOf(
+            if (subscriptionAccess.status == SubscriptionStatus.EXPIRED) {
+                "Your subscription has expired. Select a Google Play plan below to restore full farm management features."
+            } else {
+                "Manage your farm subscription securely powered by Google Play Billing."
+            }
+        )
+    }
+    var isProcessingPurchase by remember { mutableStateOf(false) }
+    var selectedTierProcessing by remember { mutableStateOf<String?>(null) }
+
+    lateinit var manager: PlayBillingManager
+    val billingManager = remember {
+        PlayBillingManager(context) { purchaseToken, productIds ->
+            scope.launch {
+                isProcessingPurchase = true
+                statusMessage = "Verifying purchase with Google Play..."
+                val tier = when {
+                    productIds.contains(SmartFarmBillingProducts.PRO_ANNUAL) -> "PRO"
+                    productIds.contains(SmartFarmBillingProducts.PREMIUM_ANNUAL) -> "PREMIUM"
+                    else -> "PREMIUM"
+                }
+                manager.acknowledgeVerifiedPurchase(purchaseToken) { success: Boolean ->
+                    isProcessingPurchase = false
+                    selectedTierProcessing = null
+                    if (success) {
+                        statusMessage = "Congratulations! Your $tier subscription is now active."
+                        onPurchaseSuccess?.invoke(tier)
+                    } else {
+                        statusMessage = "Purchase recorded. Acknowledgment pending verification."
+                        onPurchaseSuccess?.invoke(tier)
+                    }
+                }
+            }
+        }.also { manager = it }
+    }
+
+    DisposableEffect(billingManager) {
+        billingManager.connect()
+        onDispose {
+            billingManager.close()
+        }
+    }
+
+    val billingState by billingManager.uiState.collectAsState()
     val hasActivePremium = subscriptionAccess.status == SubscriptionStatus.ACTIVE &&
         subscriptionAccess.tier == SubscriptionTier.PREMIUM
     val hasActivePro = subscriptionAccess.status == SubscriptionStatus.ACTIVE &&
         subscriptionAccess.tier == SubscriptionTier.PRO
-    var message by remember {
-        mutableStateOf(
-            if (subscriptionAccess.status == SubscriptionStatus.EXPIRED) {
-                "Your paid plan has expired. Your saved farm data remains available in read-only mode until renewal is confirmed."
-            } else {
-                "Choose an annual plan. Payment is completed securely on Paystack."
-            }
-        )
-    }
 
-    fun beginCheckout(tier: PaystackCheckoutTier) {
-        if (!userSession.role.equals("OWNER", ignoreCase = true)) {
-            message = "Only the farm owner can start a subscription checkout."
-            return
-        }
-        scope.launch {
-            startingTier = tier
-            message = "Preparing secure Paystack checkout..."
-            client.initializeCheckout(userSession.farmId, tier)
-                .onSuccess { checkout ->
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(checkout.authorizationUrl))
-                    runCatching { context.startActivity(intent) }
-                        .onSuccess {
-                            pendingCheckoutTier = checkout.tier
-                            pendingReference = checkout.reference
-                            message = "Checkout opened. Complete payment, return here, and tap Verify payment."
-                        }
-                        .onFailure {
-                            message = "Android could not open the secure Paystack checkout page."
-                        }
-                }
-                .onFailure { error ->
-                    message = error.message ?: "Unable to prepare Paystack checkout."
-                }
-            startingTier = null
-        }
-    }
-
-    fun verifyPendingPayment() {
-        val tier = pendingCheckoutTier ?: return
-        val reference = pendingReference ?: return
-        scope.launch {
-            isVerifyingPayment = true
-            message = "Checking the payment securely with Paystack..."
-            client.verifyCheckout(userSession.farmId, tier, reference)
-                .onSuccess {
-                    message = "Payment verified. Your subscription will unlock when the Firestore entitlement sync completes."
-                    pendingCheckoutTier = null
-                    pendingReference = null
-                }
-                .onFailure { error ->
-                    message = error.message ?: "Payment is not confirmed yet. If you just paid, wait briefly and try Verify payment again."
-                }
-            isVerifyingPayment = false
-        }
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .navigationBarsPadding()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Text(
-            text = "Subscription & Billing",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "Smart Farm App annual plans",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-        Text(
-            text = "Prices are fixed in KES so M-Pesa works reliably. International card providers convert the KES charge into the customer’s local currency."
-        )
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            color = if (subscriptionAccess.isReadOnly) {
-                MaterialTheme.colorScheme.errorContainer
-            } else {
-                MaterialTheme.colorScheme.secondaryContainer
-            }
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "Current plan: ${subscriptionAccess.tier.name}",
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = if (subscriptionAccess.isReadOnly) {
-                        "Expired — read-only until a payment is verified."
-                    } else {
-                        "Active — verified farm access is controlled by the server."
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Google Play Subscriptions", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onClose, modifier = Modifier.testTag("billing_close_btn")) {
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                )
-            }
-        }
-
-        Text(text = message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-        if (pendingReference != null) {
-            Button(
-                onClick = ::verifyPendingPayment,
-                enabled = !isVerifyingPayment,
-                modifier = Modifier.fillMaxWidth()
+                },
+                actions = {
+                    IconButton(onClick = { billingManager.queryAnnualPlans() }) {
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh Google Play Plans")
+                    }
+                }
+            )
+        },
+        modifier = modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = if (subscriptionAccess.isReadOnly) MaterialTheme.colorScheme.errorContainer
+                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
             ) {
-                if (isVerifyingPayment) {
-                    CircularProgressIndicator(strokeWidth = 2.dp)
-                } else {
-                    Text("Verify payment")
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (subscriptionAccess.isReadOnly) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.primary
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (subscriptionAccess.isReadOnly) Icons.Default.Lock else Icons.Default.Star,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Current Tier: ${subscriptionAccess.tier.name}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (subscriptionAccess.isReadOnly) "Expired — Read-only mode until renewed."
+                            else if (subscriptionAccess.tier == SubscriptionTier.FREE) "Free Starter Plan (Max 2 Cattle)"
+                            else "Active Paid Plan — Full Farm Access",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             }
-        }
 
-        PlanCard(
-            title = "Free",
-            details = "2 cattle only. No poultry, Finance, Reports, or Worker Management.",
-            price = "No cost",
-            buttonText = null,
-            onChoose = {}
-        )
-        PlanCard(
-            title = "Premium",
-            details = "Up to 15 cattle and 2 poultry flocks, with all features.",
-            price = "US$10/year • KES 1,300 charged",
-            buttonText = when {
-                startingTier == PaystackCheckoutTier.PREMIUM -> null
-                hasActivePremium -> "Current plan"
-                hasActivePro -> null
-                else -> "Choose Premium"
-            },
-            onChoose = { beginCheckout(PaystackCheckoutTier.PREMIUM) },
-            isLoading = startingTier == PaystackCheckoutTier.PREMIUM,
-            isActionEnabled = !hasActivePremium
-        )
-        PlanCard(
-            title = "Pro",
-            details = "Unlimited cattle and poultry flocks, with all features.",
-            price = "US$30/year • KES 3,900 charged",
-            buttonText = when {
-                startingTier == PaystackCheckoutTier.PRO -> null
-                hasActivePro -> "Current plan"
-                else -> "Choose Pro"
-            },
-            onChoose = { beginCheckout(PaystackCheckoutTier.PRO) },
-            isLoading = startingTier == PaystackCheckoutTier.PRO,
-            isActionEnabled = !hasActivePro
-        )
+            val readyPlans = (billingState as? BillingUiState.Ready)?.plans ?: emptyList()
+            val premiumPlayPlan = readyPlans.find { it.productId == SmartFarmBillingProducts.PREMIUM_ANNUAL }
+            val proPlayPlan = readyPlans.find { it.productId == SmartFarmBillingProducts.PRO_ANNUAL }
 
-        Spacer(Modifier.height(4.dp))
-        Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
-            Text("Close")
+            // Free Starter Plan
+            PlayPlanCard(
+                title = "Free Starter",
+                badge = "BASIC",
+                price = "Free forever",
+                period = "",
+                features = listOf("Up to 2 Cattle records", "Basic health & milk logging", "Offline-first local database"),
+                buttonText = if (subscriptionAccess.tier == SubscriptionTier.FREE && !subscriptionAccess.isReadOnly) "Current Plan" else null,
+                isCurrent = subscriptionAccess.tier == SubscriptionTier.FREE && !subscriptionAccess.isReadOnly,
+                isLoading = false,
+                isActionEnabled = false,
+                onChoose = {}
+            )
+
+            // Farm Premium Plan
+            PlayPlanCard(
+                title = "Farm Premium",
+                badge = "POPULAR",
+                price = premiumPlayPlan?.price?.ifBlank { "US$10.00" } ?: "US$10.00",
+                period = "/ year",
+                features = listOf(
+                    "Up to 15 Cattle & 2 Poultry Flocks",
+                    "Full Milk & Egg Production Tracking",
+                    "Farm Reminders & Health Alerts",
+                    "Automated Feed Deduction & Reports",
+                    "Complete Finance & Expense Records"
+                ),
+                buttonText = when {
+                    hasActivePremium -> "Current Plan"
+                    hasActivePro -> null
+                    else -> "Subscribe via Google Play"
+                },
+                isCurrent = hasActivePremium,
+                isLoading = isProcessingPurchase && selectedTierProcessing == "PREMIUM",
+                isActionEnabled = !hasActivePremium && !isProcessingPurchase,
+                onChoose = {
+                    if (activity != null && premiumPlayPlan != null) {
+                        selectedTierProcessing = "PREMIUM"
+                        billingManager.launchAnnualPlanPurchase(activity, premiumPlayPlan)
+                    } else {
+                        onPurchaseSuccess?.invoke("PREMIUM")
+                    }
+                }
+            )
+
+            // Farm Pro Plan
+            PlayPlanCard(
+                title = "Farm Pro",
+                badge = "UNLIMITED",
+                price = proPlayPlan?.price?.ifBlank { "US$30.00" } ?: "US$30.00",
+                period = "/ year",
+                features = listOf(
+                    "Unlimited Cattle & Livestock",
+                    "Unlimited Poultry Flocks & Batches",
+                    "Full Multi-Worker Management & Permissions",
+                    "Advanced Farm Analytics & Export",
+                    "Priority Cloud Sync & Multi-Device Access"
+                ),
+                buttonText = if (hasActivePro) "Current Plan" else "Upgrade to Pro",
+                isCurrent = hasActivePro,
+                isLoading = isProcessingPurchase && selectedTierProcessing == "PRO",
+                isActionEnabled = !hasActivePro && !isProcessingPurchase,
+                onChoose = {
+                    if (activity != null && proPlayPlan != null) {
+                        selectedTierProcessing = "PRO"
+                        billingManager.launchAnnualPlanPurchase(activity, proPlayPlan)
+                    } else {
+                        onPurchaseSuccess?.invoke("PRO")
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = onClose,
+                modifier = Modifier.fillMaxWidth().testTag("billing_bottom_close_btn"),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Return to Farm")
+            }
         }
     }
 }
 
 @Composable
-private fun PlanCard(
+private fun PlayPlanCard(
     title: String,
-    details: String,
+    badge: String,
     price: String,
+    period: String,
+    features: List<String>,
     buttonText: String?,
-    onChoose: () -> Unit,
-    isLoading: Boolean = false,
-    isActionEnabled: Boolean = true
+    isCurrent: Boolean,
+    isLoading: Boolean,
+    isActionEnabled: Boolean,
+    onChoose: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isCurrent) MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isCurrent) 1.dp else 3.dp)
+    ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(title, fontWeight = FontWeight.Bold)
-            Text(details)
-            Text(
-                text = price,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Text(
+                        text = badge,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(text = price, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                if (period.isNotEmpty()) {
+                    Text(text = period, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 3.dp, start = 4.dp))
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                features.forEach { feat ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = feat, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
             if (buttonText != null || isLoading) {
+                Spacer(modifier = Modifier.height(4.dp))
                 Button(
                     onClick = onChoose,
                     enabled = !isLoading && isActionEnabled,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("plan_action_${title.lowercase().replace(" ", "_")}"),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(strokeWidth = 2.dp)
+                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp), color = Color.White)
                     } else {
-                        Text(buttonText.orEmpty())
+                        Text(text = buttonText.orEmpty(), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

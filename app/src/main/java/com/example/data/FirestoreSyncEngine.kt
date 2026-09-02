@@ -330,8 +330,12 @@ class FirestoreSyncEngine(
     }
 
     suspend fun pushDirtyRows(farmId: String) = withContext(Dispatchers.IO) {
-        val db = getFirestore() ?: return@withContext
         try {
+            val db = getFirestore() ?: run {
+                Log.e(TAG, "Firestore instance unavailable — skipping push for farm: $farmId")
+                _syncStatus.value = if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
+                return@withContext
+            }
             val farmRef = db.collection("farms").document(farmId)
             val writer = BatchWriter(db)
 

@@ -79,7 +79,6 @@ fun SubscriptionBillingScreen(
                         onPurchaseSuccess?.invoke(tier)
                     } else {
                         statusMessage = "Purchase recorded. Acknowledgment pending verification."
-                        onPurchaseSuccess?.invoke(tier)
                     }
                 }
             }
@@ -170,11 +169,41 @@ fun SubscriptionBillingScreen(
                 }
             }
 
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .padding(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VerifiedUser,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Billed securely via Google Play. Cancel or manage anytime in Play Store.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (statusMessage.isNotEmpty()) {
+                Text(
+                    text = statusMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             val readyPlans = (billingState as? BillingUiState.Ready)?.plans ?: emptyList()
             val premiumPlayPlan = readyPlans.find { it.productId == SmartFarmBillingProducts.PREMIUM_ANNUAL }
             val proPlayPlan = readyPlans.find { it.productId == SmartFarmBillingProducts.PRO_ANNUAL }
 
-            // Free Starter Plan
+            // 1. Free Starter Plan
             PlayPlanCard(
                 title = "Free Starter",
                 badge = "BASIC",
@@ -188,7 +217,7 @@ fun SubscriptionBillingScreen(
                 onChoose = {}
             )
 
-            // Farm Premium Plan
+            // 2. Farm Premium Plan
             PlayPlanCard(
                 title = "Farm Premium",
                 badge = "POPULAR",
@@ -210,16 +239,20 @@ fun SubscriptionBillingScreen(
                 isLoading = isProcessingPurchase && selectedTierProcessing == "PREMIUM",
                 isActionEnabled = !hasActivePremium && !isProcessingPurchase,
                 onChoose = {
+                    if (!userSession.role.equals("OWNER", ignoreCase = true)) {
+                        statusMessage = "Only the farm owner can purchase or renew subscriptions."
+                        return@PlayPlanCard
+                    }
                     if (activity != null && premiumPlayPlan != null) {
                         selectedTierProcessing = "PREMIUM"
                         billingManager.launchAnnualPlanPurchase(activity, premiumPlayPlan)
                     } else {
-                        onPurchaseSuccess?.invoke("PREMIUM")
+                        statusMessage = "Google Play Billing is not connected or products are not active yet on Play Console."
                     }
                 }
             )
 
-            // Farm Pro Plan
+            // 3. Farm Pro Plan
             PlayPlanCard(
                 title = "Farm Pro",
                 badge = "UNLIMITED",
@@ -237,11 +270,15 @@ fun SubscriptionBillingScreen(
                 isLoading = isProcessingPurchase && selectedTierProcessing == "PRO",
                 isActionEnabled = !hasActivePro && !isProcessingPurchase,
                 onChoose = {
+                    if (!userSession.role.equals("OWNER", ignoreCase = true)) {
+                        statusMessage = "Only the farm owner can purchase or renew subscriptions."
+                        return@PlayPlanCard
+                    }
                     if (activity != null && proPlayPlan != null) {
                         selectedTierProcessing = "PRO"
                         billingManager.launchAnnualPlanPurchase(activity, proPlayPlan)
                     } else {
-                        onPurchaseSuccess?.invoke("PRO")
+                        statusMessage = "Google Play Billing is not connected or products are not active yet on Play Console."
                     }
                 }
             )

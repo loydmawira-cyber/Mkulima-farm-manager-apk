@@ -204,6 +204,26 @@ class FarmViewModel(
 
     fun canWriteFarmData(): Boolean = !subscriptionAccess.value.isReadOnly
 
+    fun activateSubscription(
+        tier: String,
+        expiresAt: Long = System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000L,
+        onComplete: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val current = farmSettings.value
+            val updated = current.copy(
+                farmId = farmId,
+                subscriptionTier = tier.uppercase(),
+                subscriptionStatus = "ACTIVE",
+                subscriptionExpiresAt = expiresAt,
+                updatedAt = System.currentTimeMillis()
+            )
+            repository.updateSettings(updated)
+            onComplete?.invoke()
+        }
+    }
+
     val farmWorkers: StateFlow<List<WorkerAccount>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getWorkersForFarm(farmId)

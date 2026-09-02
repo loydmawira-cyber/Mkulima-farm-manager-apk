@@ -53,6 +53,8 @@ jobs:
           # The phone key used Enter for its key password, so the key alias
           # deliberately shares the keystore password saved above.
           KEY_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          JAVA_TOOL_OPTIONS: '-Dfile.encoding=UTF-8'
+          GRADLE_OPTS: '-Dfile.encoding=UTF-8'
         run: |
           test -n "$STORE_PASSWORD" || { echo "Missing STORE_PASSWORD GitHub secret"; exit 1; }
           gradle bundleRelease --stacktrace

@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeoutException
 
 class FirestoreSyncEngine(
     private val context: Context,
@@ -135,6 +136,10 @@ class FirestoreSyncEngine(
     // Firestore caps a single WriteBatch at 500 operations. Queuing writes here and
     // flushing in chunks turns what used to be one network round trip PER ROW into
     // high-speed batched writes.
+    //
+    // Threshold kept well under Firestore's 500-op cap (rather than close to it) so
+    // each individual commit is smaller and faster to land on slow/rural connections,
+    // reducing how often a single commit times out.
     private inner class BatchWriter(private val db: FirebaseFirestore) {
         private var batch = db.batch()
         private var opsInBatch = 0
@@ -145,7 +150,7 @@ class FirestoreSyncEngine(
             val nonNull = data.filterValues { it != null }
             batch.set(ref, nonNull, SetOptions.merge())
             opsInBatch++
-            if (opsInBatch >= 400) flush()
+            if (opsInBatch >= 150) flush()
         }
 
         fun flush() {
@@ -153,14 +158,30 @@ class FirestoreSyncEngine(
             val toCommit = batch
             batch = db.batch()
             opsInBatch = 0
-            try {
-                // Do not advance push watermarks unless the server acknowledges the batch.
-                // Firestore may update its local cache before the upload completes.
-                Tasks.await(toCommit.commit(), 15000L, java.util.concurrent.TimeUnit.MILLISECONDS)
-            } catch (e: Throwable) {
-                failed = true
-                Log.e(TAG, "Firestore batch commit failed", e)
-                throw e
+            // A commit timing out is often just a slow connection, not a real failure —
+            // retry with backoff before giving up. Non-timeout errors (permission denied,
+            // invalid data, etc.) are not transient, so those still fail immediately.
+            var attempt = 0
+            val maxAttempts = 3
+            while (true) {
+                attempt++
+                try {
+                    // Do not advance push watermarks unless the server acknowledges the batch.
+                    // Firestore may update its local cache before the upload completes.
+                    Tasks.await(toCommit.commit(), 30000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    return
+                } catch (e: Throwable) {
+                    val cause = (e as? ExecutionException)?.cause ?: e
+                    val isTimeout = cause is TimeoutException
+                    if (isTimeout && attempt < maxAttempts) {
+                        Log.e(TAG, "Firestore batch commit timed out (attempt $attempt/$maxAttempts), retrying", e)
+                        Thread.sleep(2000L * attempt) // simple backoff: 2s, then 4s
+                        continue
+                    }
+                    failed = true
+                    Log.e(TAG, "Firestore batch commit failed after $attempt attempt(s)", e)
+                    throw e
+                }
             }
         }
     }

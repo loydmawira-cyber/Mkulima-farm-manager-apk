@@ -448,6 +448,8 @@ interface FarmDao {
     suspend fun getEnabledFeedPlans(farmId: String): List<FeedPlan>
     @Query("SELECT * FROM feed_plans WHERE syncId = :syncId LIMIT 1")
     suspend fun getFeedPlanBySyncId(syncId: String): FeedPlan?
+    @Query("SELECT * FROM feed_plans WHERE id = :id LIMIT 1")
+    suspend fun getFeedPlanById(id: Long): FeedPlan?
     @Query("SELECT * FROM feed_plans WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyFeedPlans(farmId: String, since: Long): List<FeedPlan>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertFeedPlan(plan: FeedPlan): Long

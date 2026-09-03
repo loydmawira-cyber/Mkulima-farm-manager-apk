@@ -1065,7 +1065,7 @@ class FarmViewModel(
     ) {
         viewModelScope.launch {
             val session = currentSession.value
-            if (session == null || !session.isOwner) {
+            if (session == null || !session.role.equals("OWNER", ignoreCase = true)) {
                 onResult(WorkerAccountCreationResult.Error("Only the farm owner can create a worker account."))
                 return@launch
             }

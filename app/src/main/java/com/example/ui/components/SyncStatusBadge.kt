@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -34,10 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.SyncStatus
 
-/**
- * Visual badge indicating whether the app is in Offline mode, actively Syncing with Firestore,
- * or Fully Synced.
- */
 @Composable
 fun SyncStatusBadge(
     status: SyncStatus,
@@ -57,33 +54,10 @@ fun SyncStatusBadge(
     )
 
     val (backgroundColor, contentColor, borderColor, text, icon) = when (status) {
-        SyncStatus.Offline -> {
-            Tuple5(
-                Color(0xFFFEF2F2), // Light warm red
-                Color(0xFFDC2626), // Vivid red
-                Color(0xFFFCA5A5), // Red border
-                "Offline Mode",
-                Icons.Filled.CloudOff
-            )
-        }
-        SyncStatus.Syncing -> {
-            Tuple5(
-                Color(0xFFEFF6FF), // Soft blue
-                Color(0xFF2563EB), // Vibrant blue
-                Color(0xFF93C5FD), // Blue border
-                "Syncing...",
-                Icons.Filled.Sync
-            )
-        }
-        SyncStatus.Synced -> {
-            Tuple5(
-                Color(0xFFF0FDF4), // Soft emerald
-                Color(0xFF16A34A), // Emerald green
-                Color(0xFF86EFAC), // Green border
-                "Synced",
-                Icons.Filled.CloudDone
-            )
-        }
+        SyncStatus.Offline -> Tuple5(Color(0xFFFEF2F2), Color(0xFFDC2626), Color(0xFFFCA5A5), "Offline Mode", Icons.Filled.CloudOff)
+        SyncStatus.Syncing -> Tuple5(Color(0xFFEFF6FF), Color(0xFF2563EB), Color(0xFF93C5FD), "Syncing...", Icons.Filled.Sync)
+        SyncStatus.Synced -> Tuple5(Color(0xFFF0FDF4), Color(0xFF16A34A), Color(0xFF86EFAC), "Synced", Icons.Filled.CloudDone)
+        is SyncStatus.Error -> Tuple5(Color(0xFFFFF7ED), Color(0xFFC2410C), Color(0xFFFDBA74), status.message, Icons.Filled.ErrorOutline)
     }
 
     Surface(
@@ -113,7 +87,8 @@ fun SyncStatusBadge(
                     text = text,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = contentColor
+                    color = contentColor,
+                    maxLines = 1
                 )
             }
         }

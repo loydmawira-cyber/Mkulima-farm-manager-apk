@@ -180,6 +180,10 @@ fun MkulimaAppContent(
     // Capture the non-null session once for screens that require an owner session.
     val activeSession = userSession ?: return
 
+    // Resolve permissions at the top of the composable so dialogs and screens can use them.
+    val permissions = activeSession.permissions ?: WorkerPermissions()
+    val isOwner = userRole.equals("OWNER", ignoreCase = true)
+
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
     val selectedStatusFilter by viewModel.selectedStatusFilter.collectAsState()

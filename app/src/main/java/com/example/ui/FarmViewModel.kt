@@ -1102,12 +1102,17 @@ class FarmViewModel(
         initialValue = emptyList()
     )
 
-    private var lastDewormingBootstrapKey: String = ""
+    // Per-cow bootstrap keys, keyed by cow id, instead of one whole-farm key.
+    // This lets us detect exactly which cows actually changed instead of
+    // resyncing every cow on the farm whenever any one cow or event changes.
+    private val lastDewormingBootstrapKeys = mutableMapOf<Long, String>()
+    private var lastDewormingFarmId: String? = null
 
     init {
         // Existing cattle pre-date this feature, so build their first task after
-        // Room emits livestock and event data. The input key prevents duplicate
-        // task rewrites when unrelated recompositions occur.
+        // Room emits livestock and event data. Per-cow keys prevent duplicate
+        // task rewrites when unrelated recompositions occur, and let us skip
+        // cows whose own data/events haven't changed.
         viewModelScope.launch {
             combine(allUnits, allCattleEvents) { units, events -> units to events }
                 .collect { (units, events) ->
@@ -1115,22 +1120,42 @@ class FarmViewModel(
                     val cattle = units.filter(::isCattleUnit)
                     if (cattle.isEmpty()) return@collect
 
-                    val sourceKey = buildString {
-                        append(session.farmId)
-                        cattle.sortedBy { it.id }.forEach { cow ->
-                            append("|${cow.id}:${cow.dob}:${cow.updatedAt}")
-                        }
-                        events.filter { isDewormingEvent(it.category, it.title, it.details) }
-                            .sortedBy { it.id }
-                            .forEach { event ->
+                    // Farm changed (e.g. switched sessions) — start tracking fresh
+                    // so we don't compare against a different farm's keys.
+                    if (lastDewormingFarmId != session.farmId) {
+                        lastDewormingBootstrapKeys.clear()
+                        lastDewormingFarmId = session.farmId
+                    }
+
+                    val dewormingEventsByCow = events
+                        .filter { isDewormingEvent(it.category, it.title, it.details) }
+                        .groupBy { it.unitId }
+
+                    // Only resync cows whose own dob/updatedAt or own deworming
+                    // events actually changed since the last pass.
+                    val changedCattle = cattle.filter { cow ->
+                        val cowEvents = dewormingEventsByCow[cow.id].orEmpty()
+                        val cowKey = buildString {
+                            append("${cow.dob}:${cow.updatedAt}")
+                            cowEvents.sortedBy { it.id }.forEach { event ->
                                 append("|${event.id}:${event.date}:${event.updatedAt}:${event.isDeleted}")
                             }
+                        }
+                        val changed = lastDewormingBootstrapKeys[cow.id] != cowKey
+                        if (changed) lastDewormingBootstrapKeys[cow.id] = cowKey
+                        changed
                     }
-                    if (sourceKey == lastDewormingBootstrapKey) return@collect
-                    lastDewormingBootstrapKey = sourceKey
+                    if (changedCattle.isEmpty()) return@collect
 
-                    cattle.forEach { cow ->
-                        synchronizeDewormingTask(cow, sourceEvents = events)
+                    // Drop keys for cows that no longer exist on the farm so the
+                    // map doesn't grow unbounded across deletions over time.
+                    val liveIds = cattle.map { it.id }.toSet()
+                    lastDewormingBootstrapKeys.keys.retainAll(liveIds)
+
+                    withContext(Dispatchers.IO) {
+                        changedCattle.forEach { cow ->
+                            synchronizeDewormingTask(cow, sourceEvents = events)
+                        }
                     }
                 }
         }

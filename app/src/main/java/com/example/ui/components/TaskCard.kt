@@ -71,6 +71,52 @@ import com.example.ui.theme.HarvestAmber
 import com.example.ui.theme.HarvestAmberLight
 import com.example.ui.theme.StatusCompleted
 import com.example.ui.theme.StatusUrgent
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+
+// task.scheduledTime is stored as free-form text depending on how the task was created
+// (FarmViewModel's own parser accepts several formats), so this mirrors that same
+// format list. This file is in a different package from FarmViewModel and can't reach
+// its private parseFarmDate, hence a local copy here.
+private fun parseTaskScheduledDate(rawValue: String): java.util.Date? {
+    val raw = rawValue.trim()
+    if (raw.isBlank()) return null
+    return listOf("dd MMM yyyy", "dd MMM, yyyy", "yyyy-MM-dd", "dd/MM/yyyy")
+        .firstNotNullOfOrNull { pattern ->
+            runCatching {
+                SimpleDateFormat(pattern, Locale.getDefault()).apply { isLenient = false }.parse(raw)
+            }.getOrNull()
+        }
+}
+
+// True only for tasks due strictly after tomorrow — today's and tomorrow's tasks stay
+// actionable. Compared at day granularity (time-of-day on scheduledTime is ignored).
+// If scheduledTime can't be parsed at all, this fails open (returns false / stays
+// actionable) rather than silently locking a task whose date just didn't match one of
+// the known formats.
+private fun isTaskLockedForFutureDueDate(task: FarmTask): Boolean {
+    val scheduled = parseTaskScheduledDate(task.scheduledTime) ?: return false
+
+    fun startOfDay(date: java.util.Date): java.util.Date =
+        Calendar.getInstance().apply {
+            time = date
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.time
+
+    val tomorrowStart = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        add(Calendar.DAY_OF_YEAR, 1)
+    }.time
+
+    return startOfDay(scheduled).after(tomorrowStart)
+}
 
 @Composable
 fun TaskCard(
@@ -84,6 +130,10 @@ fun TaskCard(
     var expanded by remember { mutableStateOf(false) }
 
     var taskMenuExpanded by remember { mutableStateOf(false) }
+
+    // Tasks due after tomorrow can't be completed or deleted — only viewed. Today's
+    // and tomorrow's tasks remain fully actionable.
+    val isLockedForFutureDueDate = remember(task.scheduledTime) { isTaskLockedForFutureDueDate(task) }
 
     val categoryColor = when (task.category) {
         TaskCategory.LIVESTOCK -> Color(0xFF0284C7)
@@ -191,7 +241,14 @@ fun TaskCard(
                     ) {
                         if (!task.isCompleted) {
                             DropdownMenuItem(
-                                text = { Text("Complete Task", fontWeight = FontWeight.Bold, color = ForestGreenPrimary) },
+                                text = {
+                                    Text(
+                                        "Complete Task",
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else ForestGreenPrimary
+                                    )
+                                },
+                                enabled = !isLockedForFutureDueDate,
                                 onClick = {
                                     taskMenuExpanded = false
                                     onCompleteClick(task)
@@ -200,7 +257,7 @@ fun TaskCard(
                                     Icon(
                                         imageVector = Icons.Filled.CheckCircle,
                                         contentDescription = null,
-                                        tint = ForestGreenPrimary,
+                                        tint = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else ForestGreenPrimary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -242,7 +299,14 @@ fun TaskCard(
                         }
 
                         DropdownMenuItem(
-                            text = { Text("Delete Task", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626)) },
+                            text = {
+                                Text(
+                                    "Delete Task",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else Color(0xFFDC2626)
+                                )
+                            },
+                            enabled = !isLockedForFutureDueDate,
                             onClick = {
                                 taskMenuExpanded = false
                                 onDeleteClick(task)
@@ -251,7 +315,7 @@ fun TaskCard(
                                 Icon(
                                     imageVector = Icons.Filled.Delete,
                                     contentDescription = null,
-                                    tint = Color(0xFFDC2626),
+                                    tint = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else Color(0xFFDC2626),
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -316,11 +380,14 @@ fun TaskCard(
                 } else {
                     Button(
                         onClick = { onCompleteClick(task) },
+                        enabled = !isLockedForFutureDueDate,
                         modifier = Modifier.testTag("complete_button_${task.id}"),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ForestGreenPrimary,
-                            contentColor = Color.White
+                            contentColor = Color.White,
+                            disabledContainerColor = Color(0xFFE2E8F0),
+                            disabledContentColor = Color(0xFF94A3B8)
                         )
                     ) {
                         Icon(
@@ -330,7 +397,7 @@ fun TaskCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Complete",
+                            text = if (isLockedForFutureDueDate) "Not yet due" else "Complete",
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         )

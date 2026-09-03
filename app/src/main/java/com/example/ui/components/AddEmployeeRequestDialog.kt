@@ -36,9 +36,16 @@ import androidx.compose.ui.window.Dialog
 @Composable
 fun AddEmployeeRequestDialog(
     onDismiss: () -> Unit,
-    onSaveRequest: (employeeName: String, requestType: String, amount: Double, startDate: String, endDate: String, reason: String) -> Unit
+    onSaveRequest: (employeeName: String, requestType: String, amount: Double, startDate: String, endDate: String, reason: String) -> Unit,
+    loggedInUserName: String,
+    isOwner: Boolean
 ) {
-    var employeeName by remember { mutableStateOf("") }
+    // Pre-filled with whoever is logged in, so a worker submitting their own request
+    // never has to type their name. Owners can still open this same dialog to submit a
+    // request on behalf of a different worker ("Add Request" vs "Apply" — see
+    // ApprovalRequestsScreen), so the field stays editable for owners; for workers it's
+    // locked, since it should always be their own name.
+    var employeeName by remember { mutableStateOf(loggedInUserName) }
     var selectedType by remember { mutableStateOf("Salary Advance") }
     var amountText by remember { mutableStateOf("3000") }
     var startDateText by remember { mutableStateOf("15 Aug 2026") }
@@ -78,8 +85,9 @@ fun AddEmployeeRequestDialog(
 
                 OutlinedTextField(
                     value = employeeName,
-                    onValueChange = { employeeName = it },
-                    label = { Text("Employee Name") },
+                    onValueChange = { if (isOwner) employeeName = it },
+                    readOnly = !isOwner,
+                    label = { Text(if (isOwner) "Employee Name" else "Your Name") },
                     placeholder = { Text("e.g. John Kiprono") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)

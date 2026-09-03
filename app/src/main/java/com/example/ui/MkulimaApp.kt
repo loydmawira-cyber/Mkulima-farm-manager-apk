@@ -749,8 +749,8 @@ fun MkulimaAppContent(
                         onAddField = { viewModel.addFieldPlan(it) },
                         onUpdateField = { viewModel.updateFieldPlan(it) },
                         onDeleteField = { viewModel.deleteFieldPlan(it) },
-                        onHarvest = { field, outcome, tonnes, saleAmount, harvestDate ->
-                            viewModel.recordFieldHarvest(field, outcome, tonnes, saleAmount, harvestDate)
+                        onHarvest = { field, outcome, quantityKg, saleAmount, harvestDate ->
+                            viewModel.recordFieldHarvest(field, outcome, quantityKg, saleAmount, harvestDate)
                         },
                         onSaveFeedPlan = { viewModel.saveFeedPlan(it) },
                         onDeleteFeedPlan = { viewModel.deleteFeedPlan(it) },

@@ -98,8 +98,8 @@ fun AssetsScreen(
         )
     }
     fieldToHarvest?.let { field ->
-        HarvestDialog(field, { fieldToHarvest = null }) { outcome, tonnes, sale, date ->
-            onHarvest(field, outcome, tonnes, sale, date)
+        HarvestDialog(field, { fieldToHarvest = null }) { outcome, quantityKg, sale, date ->
+            onHarvest(field, outcome, quantityKg, sale, date)
             fieldToHarvest = null
         }
     }
@@ -268,7 +268,7 @@ private fun FieldsContent(
                     Text("Planted ${field.plantedDate} • Expected harvest ${field.estimatedHarvestDate}", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
                     Text("${field.sizeAcres} acres${if (field.location.isBlank()) "" else " • ${field.location}"}", fontSize = 12.sp, color = Color.Gray)
                     if (field.status == "HARVESTED") {
-                        Text("Harvested ${field.harvestedTonnes} tonnes → ${field.harvestOutcome}", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                        Text("Harvested ${field.harvestedTonnes} kgs → ${field.harvestOutcome}", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
                     } else {
                         // Crop Activity & Task Action Bar on Field Cards
                         Spacer(Modifier.height(10.dp))
@@ -374,13 +374,19 @@ private fun InventoryEntryDialog(existing: InventoryItem?, onDismiss: () -> Unit
         Surface(shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(18.dp).fillMaxWidth()) {
                 Text(if (isEdit) "Edit Inventory Item" else "Inventory Entry", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("SKU/barcode and storage location are not required. Silage is received in tonnes without a cost or finance entry.", fontSize = 12.sp, color = Color.Gray)
+                Text("SKU/barcode and storage location are not required. Silage is recorded in kilograms (kgs) without a cost or finance entry.", fontSize = 12.sp, color = Color.Gray)
                 Input(itemName, { itemName = it }, "Item Name *")
                 Box {
                     OutlinedButton(onClick = { categoryMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Category: $category") }
                     DropdownMenu(expanded = categoryMenu, onDismissRequest = { categoryMenu = false }) {
                         listOf("Seeds", "Fertilizers", "Pesticides", "Tools", "Feed", "Harvested Crops", "Silage", "Other").forEach { choice ->
-                            DropdownMenuItem(text = { Text(choice) }, onClick = { category = choice; categoryMenu = false })
+                            DropdownMenuItem(text = { Text(choice) }, onClick = {
+                                category = choice
+                                if (choice.equals("Silage", ignoreCase = true)) {
+                                    unit = "kgs"
+                                }
+                                categoryMenu = false
+                            })
                         }
                     }
                 }
@@ -409,7 +415,7 @@ private fun InventoryEntryDialog(existing: InventoryItem?, onDismiss: () -> Unit
                                     skuOrBarcode = "",
                                     description = description.trim(),
                                     quantityAvailable = parsedQuantity,
-                                    unitOfMeasurement = if (silage) "kg" else unit.ifBlank { "kg" },
+                                    unitOfMeasurement = if (silage) "kgs" else unit.ifBlank { "kg" },
                                     minimumThreshold = minimum.toDoubleOrNull() ?: 0.0,
                                     storageLocation = "",
                                     batchOrLotNumber = batch.trim(),
@@ -485,27 +491,27 @@ private fun FieldEntryDialog(existing: FieldPlan?, onDismiss: () -> Unit, onSave
 @Composable
 private fun HarvestDialog(field: FieldPlan, onDismiss: () -> Unit, onSave: (String, Double, Double, String) -> Unit) {
     var outcome by remember { mutableStateOf("SILAGE") }
-    var tonnes by remember { mutableStateOf("") }
+    var quantityKg by remember { mutableStateOf("") }
     var sale by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(today()) }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(18.dp).fillMaxWidth()) {
                 Text("Harvest ${field.fieldName}", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("Choose Silage to receive tonnes into inventory with no finance record, or Sold to record crop-sale income.", fontSize = 12.sp, color = Color.Gray)
+                Text("Choose Silage to receive kilograms (kgs) into inventory with no finance record, or Sold to record crop-sale income.", fontSize = 12.sp, color = Color.Gray)
                 Row {
-                    FilterChip(selected = outcome == "SILAGE", onClick = { outcome = "SILAGE" }, label = { Text("Chop as Silage") })
+                    FilterChip(selected = outcome == "SILAGE", onClick = { outcome = "SILAGE" }, label = { Text("Chop as Silage (kgs)") })
                     Spacer(Modifier.width(8.dp))
                     FilterChip(selected = outcome == "SOLD", onClick = { outcome = "SOLD" }, label = { Text("Sold") })
                 }
-                Input(tonnes, { tonnes = it }, "Harvested Tonnage *", keyboard = KeyboardType.Decimal)
+                Input(quantityKg, { quantityKg = it }, if (outcome == "SILAGE") "Harvested Silage (kgs) *" else "Harvested Quantity (kgs) *", keyboard = KeyboardType.Decimal)
                 if (outcome == "SOLD") Input(sale, { sale = it }, "Total Sale Amount", keyboard = KeyboardType.Decimal)
                 Input(date, { date = it }, "Harvest Date")
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
                     Button(
                         onClick = {
-                            val harvested = tonnes.toDoubleOrNull() ?: 0.0
+                            val harvested = quantityKg.toDoubleOrNull() ?: 0.0
                             if (harvested > 0.0) onSave(outcome, harvested, if (outcome == "SOLD") sale.toDoubleOrNull() ?: 0.0 else 0.0, date)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)

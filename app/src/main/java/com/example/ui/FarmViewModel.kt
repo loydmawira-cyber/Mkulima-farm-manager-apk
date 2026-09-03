@@ -925,19 +925,19 @@ class FarmViewModel(
         }
     }
 
-    fun recordFieldHarvest(field: FieldPlan, outcome: String, tonnes: Double, saleAmount: Double, harvestDate: String) {
+    fun recordFieldHarvest(field: FieldPlan, outcome: String, quantityKg: Double, saleAmount: Double, harvestDate: String) {
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
-            if (tonnes <= 0.0 || field.status == "HARVESTED") return@launch
+            if (quantityKg <= 0.0 || field.status == "HARVESTED") return@launch
             val finalOutcome = outcome.uppercase()
             val updated = field.copy(status = "HARVESTED", harvestedDate = harvestDate, harvestOutcome = finalOutcome,
-                harvestedTonnes = tonnes, saleAmount = if (finalOutcome == "SOLD") saleAmount else 0.0)
+                harvestedTonnes = quantityKg, saleAmount = if (finalOutcome == "SOLD") saleAmount else 0.0)
             repository.updateFieldPlan(updated)
             if (finalOutcome == "SILAGE") {
-                repository.receiveSilage(updated.farmId, tonnes, updated.fieldName, harvestDate)
+                repository.receiveSilage(updated.farmId, quantityKg, updated.fieldName, harvestDate)
             } else if (finalOutcome == "SOLD" && saleAmount > 0.0) {
                 addFinanceRecord(FinanceType.INCOME, "Crop Sale", saleAmount,
-                    "${updated.cropName} harvest from ${updated.fieldName} (${tonnes} tonnes)", harvestDate)
+                    "${updated.cropName} harvest from ${updated.fieldName} (${quantityKg} kgs)", harvestDate)
             }
         }
     }

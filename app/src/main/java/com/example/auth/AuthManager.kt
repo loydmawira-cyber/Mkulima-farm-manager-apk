@@ -157,9 +157,9 @@ class AuthManager(
     private var workerProvisioningAuth: FirebaseAuth? = null
     private var firestore: FirebaseFirestore? = null
 
-    private fun <T> Task<T>.awaitTask(): T {
+    private fun <T> Task<T>.awaitTask(timeoutMs: Long = 10000L): T {
         try {
-            return Tasks.await(this)
+            return Tasks.await(this, timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
         } catch (e: ExecutionException) {
             throw e.cause ?: e
         }

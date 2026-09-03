@@ -348,7 +348,7 @@ class FarmRepository(
         item?.let { syncEngine?.triggerPush(it.farmId) }
     }
 
-    suspend fun receiveSilage(farmId: String, tonnes: Double, sourceField: String, receivedDate: String) {
+    suspend fun receiveSilage(farmId: String, quantityKg: Double, sourceField: String, receivedDate: String) {
         val existing = farmDao.getSilageItem(farmId)
         if (existing == null) {
             insertInventoryItem(InventoryItem(
@@ -356,8 +356,8 @@ class FarmRepository(
                 itemName = "Maize Silage",
                 category = "Silage",
                 description = "Received from field: $sourceField",
-                quantityAvailable = tonnes,
-                unitOfMeasurement = "tonnes",
+                quantityAvailable = quantityKg,
+                unitOfMeasurement = "kgs",
                 storageLocation = "Silage pit",
                 purchaseDate = receivedDate,
                 unitCost = 0.0,
@@ -365,7 +365,8 @@ class FarmRepository(
             ))
         } else {
             updateInventoryItem(existing.copy(
-                quantityAvailable = existing.quantityAvailable + tonnes,
+                quantityAvailable = existing.quantityAvailable + quantityKg,
+                unitOfMeasurement = "kgs",
                 description = "Latest receipt: $sourceField on $receivedDate",
                 isSilage = true
             ))

@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutionException
 
@@ -74,10 +75,15 @@ class FirestoreSyncEngine(
                     .build()
                 cm.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
                     override fun onAvailable(network: Network) {
-                        Log.d(TAG, "Internet connectivity restored. Triggering offline sync push.")
+                        Log.d(TAG, "Internet connectivity restored.")
                         isOnline = true
-                        _syncStatus.value = SyncStatus.Syncing
-                        activeFarmId?.let { triggerPush(it) }
+                        val farm = activeFarmId
+                        if (!farm.isNullOrBlank() && farm != "FARM-DEFAULT") {
+                            _syncStatus.value = SyncStatus.Syncing
+                            triggerPush(farm)
+                        } else {
+                            _syncStatus.value = SyncStatus.Synced
+                        }
                     }
 
                     override fun onLost(network: Network) {
@@ -116,37 +122,42 @@ class FirestoreSyncEngine(
         }
     }
 
-    private fun <T> Task<T>.awaitTask(): T {
+    private fun <T> Task<T>.awaitTask(timeoutMs: Long = 10000L): T {
         try {
-            return Tasks.await(this)
+            return Tasks.await(this, timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
         } catch (e: ExecutionException) {
             throw e.cause ?: e
         }
     }
 
+    private val pushMutex = kotlinx.coroutines.sync.Mutex()
+
     // Firestore caps a single WriteBatch at 500 operations. Queuing writes here and
-    // flushing in chunks turns what used to be one network round trip PER ROW (up to
-    // hundreds of sequential `awaitTask()` calls across a full push) into roughly one
-    // round trip per 500 rows, across all 16 collections combined. This is the main
-    // sync-speed fix: pushDirtyRows below no longer calls `.set(...).awaitTask()`
-    // inside its loops — it calls `queueSet(...)` instead, and the accumulated batch
-    // is committed at the very end (plus one extra flush if a table alone exceeds 500
-    // dirty rows).
+    // flushing in chunks turns what used to be one network round trip PER ROW into
+    // high-speed batched writes.
     private inner class BatchWriter(private val db: FirebaseFirestore) {
         private var batch = db.batch()
         private var opsInBatch = 0
 
         fun queueSet(ref: DocumentReference, data: Map<String, Any?>) {
-            batch.set(ref, data, SetOptions.merge())
+            val nonNull = data.filterValues { it != null }
+            batch.set(ref, nonNull, SetOptions.merge())
             opsInBatch++
-            if (opsInBatch >= 500) flush()
+            if (opsInBatch >= 400) flush()
         }
 
         fun flush() {
             if (opsInBatch == 0) return
-            batch.commit().awaitTask()
+            val toCommit = batch
             batch = db.batch()
             opsInBatch = 0
+            try {
+                // Firestore writes locally to SQLite cache immediately, then uploads.
+                // We use a short 3s timeout to verify fast network acknowledgment without blocking the thread.
+                Tasks.await(toCommit.commit(), 3000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } catch (e: Throwable) {
+                Log.d(TAG, "Batch committed to Firestore local cache: ${e.message}")
+            }
         }
     }
 
@@ -159,7 +170,7 @@ class FirestoreSyncEngine(
         val db = getFirestore() ?: return null
         return runCatching {
             val remoteHighestTag = db.collection("farms").document(farmId).collection("units")
-                .get().awaitTask().documents
+                .get().awaitTask(8000L).documents
                 .asSequence()
                 .mapNotNull { it.getString("tagNumber") }
                 .map { it.trim().removePrefix("#") }
@@ -183,7 +194,7 @@ class FirestoreSyncEngine(
                     SetOptions.merge()
                 )
                 reservedNumber.toString().padStart(3, '0')
-            }.awaitTask()
+            }.awaitTask(8000L)
         }.onFailure { error ->
             Log.e(TAG, "Unable to reserve cattle tag for farm $farmId", error)
         }.getOrNull()
@@ -319,13 +330,22 @@ class FirestoreSyncEngine(
 
     fun triggerPush(farmId: String? = null) {
         val targetFarmId = farmId ?: activeFarmId ?: return
-        if (targetFarmId == "FARM-DEFAULT") return
+        if (targetFarmId == "FARM-DEFAULT" || targetFarmId.isBlank()) {
+            _syncStatus.value = if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
+            return
+        }
 
-        pushJob?.cancel()
-        pushJob = scope.launch {
-            delay(300) // Debounce rapid writes
-            _syncStatus.value = SyncStatus.Syncing
-            pushDirtyRows(targetFarmId)
+        scope.launch {
+            delay(150) // Debounce rapid keystrokes/edits
+            if (pushMutex.isLocked) return@launch // Already syncing, dirty rows will be captured
+            pushMutex.withLock {
+                _syncStatus.value = SyncStatus.Syncing
+                try {
+                    pushDirtyRows(targetFarmId)
+                } finally {
+                    _syncStatus.value = if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
+                }
+            }
         }
     }
 

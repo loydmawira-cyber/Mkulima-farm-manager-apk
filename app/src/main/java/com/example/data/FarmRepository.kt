@@ -697,8 +697,21 @@ class FarmRepository(
         farmDao.deleteAllReminderCompletions()
     }
 
-    suspend fun saveFeedPlan(plan: FeedPlan) { farmDao.insertFeedPlan(plan.copy(updatedAt = System.currentTimeMillis())) }
-    suspend fun deleteFeedPlan(id: Long) { farmDao.softDeleteFeedPlan(id) }
+    suspend fun saveFeedPlan(plan: FeedPlan) {
+        val prepared = plan.copy(
+            syncId = plan.syncId.ifBlank { UUID.randomUUID().toString() },
+            updatedAt = System.currentTimeMillis(),
+            isDeleted = false
+        )
+        farmDao.insertFeedPlan(prepared)
+        syncEngine?.triggerPush(prepared.farmId)
+    }
+
+    suspend fun deleteFeedPlan(id: Long) {
+        val plan = farmDao.getFeedPlanById(id) ?: return
+        farmDao.softDeleteFeedPlan(id)
+        syncEngine?.triggerPush(plan.farmId)
+    }
 
     /** Idempotent: sourceKey is deterministic for a plan + calendar day, so app restarts cannot deduct twice. */
     suspend fun processAutomaticFeedDeductions(farmId: String, settings: FarmSettings, dateKey: String) {
@@ -722,6 +735,8 @@ class FarmRepository(
             ))
             farmDao.updateFeedPlan(plan.copy(lastProcessedDate = dateKey, updatedAt = System.currentTimeMillis()))
         }
+        // These writes bypass the normal repository mutation methods, so explicitly enqueue them.
+        syncEngine?.triggerPush(farmId)
     }
 
 }

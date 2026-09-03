@@ -344,8 +344,7 @@ class FirestoreSyncEngine(
             if (pushMutex.isLocked) return@launch // Already syncing, dirty rows will be captured
             pushMutex.withLock {
                 _syncStatus.value = SyncStatus.Syncing
-                val pushed = pushDirtyRows(targetFarmId)
-                _syncStatus.value = if (pushed) SyncStatus.Synced else SyncStatus.Offline
+                pushDirtyRows(targetFarmId)
             }
         }
     }
@@ -354,6 +353,7 @@ class FirestoreSyncEngine(
         try {
             val db = getFirestore() ?: run {
                 Log.e(TAG, "Firestore instance unavailable — skipping push for farm: $farmId")
+                _syncStatus.value = SyncStatus.Error("Firestore instance unavailable")
                 return@withContext false
             }
             val farmRef = db.collection("farms").document(farmId)
@@ -760,7 +760,9 @@ class FirestoreSyncEngine(
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to push dirty rows for farm $farmId", e)
             // Keep dirty rows eligible for retry. Never report Synced after a failed write.
-            _syncStatus.value = SyncStatus.Offline
+            _syncStatus.value = SyncStatus.Error(
+                e.message ?: e.javaClass.simpleName
+            )
             false
         }
     }

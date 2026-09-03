@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -32,6 +35,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -55,6 +59,7 @@ import com.example.data.MonthlyReport
 import com.example.ui.components.ConfirmDeleteDialog
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 
 @Composable
@@ -66,6 +71,9 @@ fun FinanceScreen(
     onDeleteTransaction: (FinanceRecord) -> Unit = {},
     onOpenReport: (MonthlyReport) -> Unit = {},
     currency: String = "KES",
+    canEditFinance: Boolean = true,
+    userRole: String = "OWNER",
+    canEditPastDaysLogs: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -111,7 +119,10 @@ fun FinanceScreen(
                 onMenuExpanded = { activeMenuRecordId = it },
                 onEditTransaction = onEditTransaction,
                 onDeleteTransactionRequested = { recordToDelete = it },
-                onAddTransactionClick = onAddTransactionClick
+                onAddTransactionClick = onAddTransactionClick,
+                canEditFinance = canEditFinance,
+                userRole = userRole,
+                canEditPastDaysLogs = canEditPastDaysLogs
             )
         } else {
             ReportsTab(reports = reports, currency = currency, onOpenReport = onOpenReport)
@@ -127,13 +138,80 @@ private fun FinanceTab(
     onMenuExpanded: (Long?) -> Unit,
     onEditTransaction: (FinanceRecord) -> Unit,
     onDeleteTransactionRequested: (FinanceRecord) -> Unit,
-    onAddTransactionClick: () -> Unit
+    onAddTransactionClick: () -> Unit,
+    canEditFinance: Boolean = true,
+    userRole: String = "OWNER",
+    canEditPastDaysLogs: Boolean = true
 ) {
-    val totalIncome = records.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }
-    val totalExpenses = records.filter { it.type == FinanceType.EXPENSE }.sumOf { it.amount }
+    val currentCal = remember { Calendar.getInstance() }
+    val defaultMonthName = remember { SimpleDateFormat("MMMM", Locale.getDefault()).format(currentCal.time) }
+    val defaultYearName = remember { SimpleDateFormat("yyyy", Locale.getDefault()).format(currentCal.time) }
+    val currentYearNum = remember { currentCal.get(Calendar.YEAR) }
+    val todayDateStr = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(currentCal.time) }
+
+    val monthsList = remember {
+        listOf(
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        )
+    }
+    val yearsList = remember { ((currentYearNum - 5)..currentYearNum).map { it.toString() } }
+
+    var financeTimeframe by remember { mutableStateOf("TODAY") } // TODAY, MONTH, YEAR
+    var selectedFinanceMonth by remember { mutableStateOf(defaultMonthName) }
+    var selectedFinanceYear by remember { mutableStateOf(defaultYearName) }
+    var isFinanceMonthMenuExpanded by remember { mutableStateOf(false) }
+    var isFinanceYearMenuExpanded by remember { mutableStateOf(false) }
+
+    val targetMonthIdx = monthsList.indexOfFirst { it.equals(selectedFinanceMonth, ignoreCase = true) }
+    val targetYearInt = selectedFinanceYear.toIntOrNull() ?: currentYearNum
+
+    val filteredRecords = remember(records, financeTimeframe, selectedFinanceMonth, selectedFinanceYear, targetMonthIdx, targetYearInt) {
+        records.filter { record ->
+            val cal = parseFinanceCalendar(record.date, record.updatedAt)
+            when (financeTimeframe) {
+                "TODAY" -> {
+                    if (cal != null) {
+                        cal.get(Calendar.YEAR) == currentYearNum &&
+                                cal.get(Calendar.DAY_OF_YEAR) == currentCal.get(Calendar.DAY_OF_YEAR)
+                    } else {
+                        record.date.contains("Today", ignoreCase = true) ||
+                                record.date.contains(todayDateStr, ignoreCase = true)
+                    }
+                }
+                "MONTH" -> {
+                    if (cal != null) {
+                        cal.get(Calendar.MONTH) == targetMonthIdx &&
+                                cal.get(Calendar.YEAR) == targetYearInt
+                    } else {
+                        record.date.contains(selectedFinanceMonth, ignoreCase = true) &&
+                                record.date.contains(targetYearInt.toString())
+                    }
+                }
+                "YEAR" -> {
+                    if (cal != null) {
+                        cal.get(Calendar.YEAR) == targetYearInt
+                    } else {
+                        record.date.contains(targetYearInt.toString())
+                    }
+                }
+                else -> true
+            }
+        }
+    }
+
+    val totalIncome = filteredRecords.filter { it.type == FinanceType.INCOME }.sumOf { it.amount }
+    val totalExpenses = filteredRecords.filter { it.type == FinanceType.EXPENSE }.sumOf { it.amount }
     val netBalance = totalIncome - totalExpenses
     val netColor = if (netBalance >= 0) Color(0xFF15803D) else Color(0xFFB91C1C)
     val netBackground = if (netBalance >= 0) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)
+
+    val timeframeLabel = when (financeTimeframe) {
+        "TODAY" -> "Today"
+        "MONTH" -> "$selectedFinanceMonth $selectedFinanceYear"
+        "YEAR" -> selectedFinanceYear
+        else -> "All Time"
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -144,6 +222,179 @@ private fun FinanceTab(
             Text("Financial Overview", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1C1D1F))
             Text("Income, expenses and farm performance", fontSize = 12.sp, color = Color(0xFF64748B))
             Spacer(Modifier.height(12.dp))
+
+            // Timeframe Tabs for Finance Overview: Today, Month, Year (Identical to Milk Production Overview)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 1. TODAY TAB
+                val isTodaySelected = financeTimeframe == "TODAY"
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isTodaySelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                    border = if (isTodaySelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { financeTimeframe = "TODAY" }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Today",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isTodaySelected) Color.White else Color(0xFF334155)
+                        )
+                    }
+                }
+
+                // 2. MONTH TAB
+                val isMonthSelected = financeTimeframe == "MONTH"
+                Box(modifier = Modifier.weight(1.1f)) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isMonthSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                        border = if (isMonthSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                financeTimeframe = "MONTH"
+                                isFinanceMonthMenuExpanded = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = selectedFinanceMonth,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isMonthSelected) Color.White else Color(0xFF334155),
+                                maxLines = 1
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Icon(
+                                imageVector = Icons.Filled.ArrowDropDown,
+                                contentDescription = "Select Month",
+                                tint = if (isMonthSelected) Color.White else Color(0xFF64748B),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = isFinanceMonthMenuExpanded,
+                        onDismissRequest = { isFinanceMonthMenuExpanded = false },
+                        modifier = Modifier.background(Color.White)
+                    ) {
+                        monthsList.forEach { month ->
+                            val isCurrent = month.equals(selectedFinanceMonth, ignoreCase = true)
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = month,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                        )
+                                        if (isCurrent) {
+                                            Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    selectedFinanceMonth = month
+                                    financeTimeframe = "MONTH"
+                                    isFinanceMonthMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // 3. YEAR TAB
+                val isYearSelected = financeTimeframe == "YEAR"
+                Box(modifier = Modifier.weight(1.1f)) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isYearSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                        border = if (isYearSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                financeTimeframe = "YEAR"
+                                isFinanceYearMenuExpanded = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = selectedFinanceYear,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isYearSelected) Color.White else Color(0xFF334155),
+                                maxLines = 1
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Icon(
+                                imageVector = Icons.Filled.ArrowDropDown,
+                                contentDescription = "Select Year",
+                                tint = if (isYearSelected) Color.White else Color(0xFF64748B),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = isFinanceYearMenuExpanded,
+                        onDismissRequest = { isFinanceYearMenuExpanded = false },
+                        modifier = Modifier.background(Color.White)
+                    ) {
+                        yearsList.forEach { yr ->
+                            val isCurrent = yr == selectedFinanceYear
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = yr,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                        )
+                                        if (isCurrent) {
+                                            Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    selectedFinanceYear = yr
+                                    financeTimeframe = "YEAR"
+                                    isFinanceYearMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
                 SummaryMetric("Income", totalIncome, Color(0xFF15803D), Color(0xFFDCFCE7), currency, Modifier.weight(1f))
                 SummaryMetric("Expense", totalExpenses, Color(0xFFB91C1C), Color(0xFFFEE2E2), currency, Modifier.weight(1f))
@@ -153,37 +404,60 @@ private fun FinanceTab(
 
         item {
             Spacer(Modifier.height(4.dp))
-            Text("RECENT TRANSACTIONS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+            Text("RECENT TRANSACTIONS ($timeframeLabel • ${filteredRecords.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
         }
 
-        if (records.isEmpty()) {
-            item { EmptyState("No transactions yet", "Tap Log Transaction to record your first income or expense.") }
+        if (filteredRecords.isEmpty()) {
+            item { EmptyState("No transactions for $timeframeLabel", "Tap Log Transaction to record your first income or expense for this period.") }
         }
 
-        items(records.sortedByDescending { it.updatedAt }, key = { it.id }) { record ->
+        val isOwner = userRole.equals("OWNER", ignoreCase = true)
+        items(filteredRecords.sortedByDescending { it.updatedAt }, key = { it.id }) { record ->
+            val canModifyThisRecord = canEditFinance && (isOwner || canEditPastDaysLogs || com.example.util.DateValidationUtils.isTodayOrFuture(record.date, record.updatedAt))
             TransactionCard(
                 record = record,
                 currency = currency,
                 menuExpanded = activeMenuRecordId == record.id,
                 onMenuExpanded = { onMenuExpanded(if (it) record.id else null) },
                 onEdit = { onEditTransaction(record) },
-                onDelete = { onDeleteTransactionRequested(record) }
+                onDelete = { onDeleteTransactionRequested(record) },
+                canEdit = canModifyThisRecord
             )
         }
 
-        item {
-            Spacer(Modifier.height(6.dp))
-            Button(
-                onClick = onAddTransactionClick,
-                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("log_transaction_button"),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Log Transaction", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        if (canEditFinance) {
+            item {
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    onClick = onAddTransactionClick,
+                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("log_transaction_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Log Transaction", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                Spacer(Modifier.height(20.dp))
             }
-            Spacer(Modifier.height(20.dp))
+        } else {
+            item {
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFF1F5F9),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Viewing finance in read-only mode.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF64748B),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+                Spacer(Modifier.height(20.dp))
+            }
         }
     }
 }
@@ -205,7 +479,8 @@ private fun TransactionCard(
     menuExpanded: Boolean,
     onMenuExpanded: (Boolean) -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    canEdit: Boolean = true
 ) {
     val isIncome = record.type == FinanceType.INCOME
     val color = if (isIncome) Color(0xFF15803D) else Color(0xFFB91C1C)
@@ -231,21 +506,23 @@ private fun TransactionCard(
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text("${if (isIncome) "+" else "−"}${formatMoney(currency, record.amount)}", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = color)
-                Box {
-                    IconButton(onClick = { onMenuExpanded(true) }, modifier = Modifier.size(30.dp).testTag("finance_item_menu_${record.id}")) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Transaction Actions", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { onMenuExpanded(false) }, modifier = Modifier.background(Color.White)) {
-                        DropdownMenuItem(
-                            text = { Text("Edit Transaction", fontSize = 14.sp, fontWeight = FontWeight.Medium) },
-                            leadingIcon = { Icon(Icons.Filled.Edit, null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp)) },
-                            onClick = { onMenuExpanded(false); onEdit() }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Delete Transaction", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFDC2626)) },
-                            leadingIcon = { Icon(Icons.Filled.Delete, null, tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp)) },
-                            onClick = { onMenuExpanded(false); onDelete() }
-                        )
+                if (canEdit) {
+                    Box {
+                        IconButton(onClick = { onMenuExpanded(true) }, modifier = Modifier.size(30.dp).testTag("finance_item_menu_${record.id}")) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "Transaction Actions", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                        }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { onMenuExpanded(false) }, modifier = Modifier.background(Color.White)) {
+                            DropdownMenuItem(
+                                text = { Text("Edit Transaction", fontSize = 14.sp, fontWeight = FontWeight.Medium) },
+                                leadingIcon = { Icon(Icons.Filled.Edit, null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp)) },
+                                onClick = { onMenuExpanded(false); onEdit() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete Transaction", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFDC2626)) },
+                                leadingIcon = { Icon(Icons.Filled.Delete, null, tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp)) },
+                                onClick = { onMenuExpanded(false); onDelete() }
+                            )
+                        }
                     }
                 }
             }
@@ -304,6 +581,40 @@ private fun EmptyState(title: String, body: String) {
     }
 }
 
+private fun parseFinanceCalendar(dateStr: String, fallbackTimestamp: Long = 0L): Calendar? {
+    val clean = dateStr.trim()
+    val formats = arrayOf(
+        "dd MMM yyyy",
+        "d MMM yyyy",
+        "dd MMMM yyyy",
+        "d MMMM yyyy",
+        "yyyy-MM-dd",
+        "dd/MM/yyyy",
+        "dd-MM-yyyy",
+        "MMMM yyyy",
+        "MMM yyyy",
+        "dd MMM, hh:mm a",
+        "dd MMM"
+    )
+    for (fmt in formats) {
+        try {
+            val sdf = SimpleDateFormat(fmt, Locale.getDefault())
+            val parsed = sdf.parse(clean)
+            if (parsed != null) {
+                val cal = Calendar.getInstance().apply { time = parsed }
+                if (cal.get(Calendar.YEAR) < 2000) {
+                    cal.set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
+                }
+                return cal
+            }
+        } catch (_: Exception) {}
+    }
+    if (fallbackTimestamp > 0L) {
+        return Calendar.getInstance().apply { timeInMillis = fallbackTimestamp }
+    }
+    return null
+}
+
 private fun formatMoney(currency: String, amount: Double, fractionDigits: Int = 2): String =
     "$currency ${String.format(Locale.getDefault(), "%,.${fractionDigits}f", amount)}"
 
@@ -311,3 +622,4 @@ private fun reportMonthLabel(value: String): String = runCatching {
     val source = SimpleDateFormat("yyyy-MM", Locale.US)
     SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(source.parse(value) ?: return@runCatching value)
 }.getOrDefault(value)
+

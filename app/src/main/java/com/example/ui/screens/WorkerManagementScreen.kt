@@ -254,15 +254,20 @@ fun WorkerManagementScreen(
                     name = name,
                     emailOrPhone = emailOrPhone,
                     password = pass,
+                    canViewHome = permissions.canViewHome,
+                    canUseQuickActions = permissions.canUseQuickActions,
                     canViewLivestock = permissions.canViewLivestock,
                     canEditLivestock = permissions.canEditLivestock,
                     canViewLogs = permissions.canViewLogs,
                     canEditLogs = permissions.canEditLogs,
+                    canEditPastDaysLogs = permissions.canEditPastDaysLogs,
                     canViewFinance = permissions.canViewFinance,
                     canEditFinance = permissions.canEditFinance,
                     canViewTasks = permissions.canViewTasks,
                     canCompleteTasks = permissions.canCompleteTasks,
-                    canViewRequests = permissions.canViewRequests
+                    canCreateTasks = permissions.canCreateTasks,
+                    canViewRequests = permissions.canViewRequests,
+                    canSubmitRequests = permissions.canSubmitRequests
                 )
                 onUpdateWorker(updated)
                 editingWorker = null
@@ -351,11 +356,6 @@ fun WorkerAccountCard(
                             fontSize = 12.sp,
                             color = Color(0xFF64748B)
                         )
-                        Text(
-                            text = "DEBUG PW: ${worker.password}",
-                            fontSize = 10.sp,
-                            color = Color(0xFFDC2626)
-                        )
                     }
                 }
 
@@ -376,15 +376,23 @@ fun WorkerAccountCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Permissions preview pills
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                PermissionPill("Livestock", worker.canViewLivestock, worker.canEditLivestock)
-                PermissionPill("Logs", worker.canViewLogs, worker.canEditLogs)
-                PermissionPill("Finance", worker.canViewFinance, worker.canEditFinance)
-                PermissionPill("Tasks", worker.canViewTasks, worker.canCompleteTasks)
+            // Permissions preview pills across all 5 tabs
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    PermissionPill("Home", worker.canViewHome, worker.canUseQuickActions, "Quick Entry", Modifier.weight(1f))
+                    PermissionPill("Assets", worker.canViewLivestock, worker.canEditLivestock, "Manage", Modifier.weight(1f))
+                    PermissionPill("Logs", worker.canViewLogs, worker.canEditLogs, if (worker.canEditPastDaysLogs) "All Days" else "Today Only", Modifier.weight(1f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    PermissionPill("Finance", worker.canViewFinance, worker.canEditFinance, "Transact", Modifier.weight(1f))
+                    PermissionPill("Requests", worker.canViewTasks || worker.canViewRequests, worker.canCompleteTasks || worker.canSubmitRequests, "Full", Modifier.weight(1f))
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -399,7 +407,7 @@ fun WorkerAccountCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Key, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Pass: ••••••", fontSize = 11.sp, color = Color(0xFF64748B))
+                    Text("Secure Login Account", fontSize = 11.sp, color = Color(0xFF64748B))
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -433,22 +441,37 @@ fun WorkerAccountCard(
 }
 
 @Composable
-fun PermissionPill(name: String, canView: Boolean, canEdit: Boolean) {
-    val bg = if (canView) Color(0xFFE2E8F0) else Color(0xFFF8FAFC)
-    val text = if (canView) {
-        if (canEdit) "$name (Full)" else "$name (View)"
+fun PermissionPill(
+    name: String,
+    canView: Boolean,
+    canEdit: Boolean,
+    actionLabel: String = "Full",
+    modifier: Modifier = Modifier
+) {
+    val bg = if (canView) {
+        if (canEdit) Color(0xFFDCFCE7) else Color(0xFFE2E8F0)
     } else {
-        "$name (Hidden)"
+        Color(0xFFF8FAFC)
     }
-    val textColor = if (canView) Color(0xFF1E293B) else Color(0xFF94A3B8)
+    val text = if (canView) {
+        if (canEdit) "$name ($actionLabel)" else "$name (View)"
+    } else {
+        "$name (Off)"
+    }
+    val textColor = if (canView) {
+        if (canEdit) ForestGreenDark else Color(0xFF1E293B)
+    } else {
+        Color(0xFF94A3B8)
+    }
 
-    Surface(shape = RoundedCornerShape(4.dp), color = bg) {
+    Surface(shape = RoundedCornerShape(4.dp), color = bg, modifier = modifier) {
         Text(
             text = text,
-            fontSize = 9.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
             color = textColor,
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp)
         )
     }
 }
@@ -461,20 +484,28 @@ fun AddOrEditWorkerDialog(
 ) {
     var name by remember { mutableStateOf(worker?.name ?: "") }
     var emailOrPhone by remember { mutableStateOf(worker?.emailOrPhone ?: "") }
-    // Firebase Auth owns credentials, so existing workers never expose a
-    // stored password. A password is required only while creating a new worker.
     var password by remember { mutableStateOf("") }
     var passVisible by remember { mutableStateOf(false) }
 
+    // Granular 5-Tab Permissions State
+    var canViewHome by remember { mutableStateOf(worker?.canViewHome ?: true) }
+    var canUseQuickActions by remember { mutableStateOf(worker?.canUseQuickActions ?: true) }
+
     var canViewLivestock by remember { mutableStateOf(worker?.canViewLivestock ?: true) }
     var canEditLivestock by remember { mutableStateOf(worker?.canEditLivestock ?: true) }
+
     var canViewLogs by remember { mutableStateOf(worker?.canViewLogs ?: true) }
     var canEditLogs by remember { mutableStateOf(worker?.canEditLogs ?: true) }
+    var canEditPastDaysLogs by remember { mutableStateOf(worker?.canEditPastDaysLogs ?: true) }
+
     var canViewFinance by remember { mutableStateOf(worker?.canViewFinance ?: false) }
     var canEditFinance by remember { mutableStateOf(worker?.canEditFinance ?: false) }
+
     var canViewTasks by remember { mutableStateOf(worker?.canViewTasks ?: true) }
     var canCompleteTasks by remember { mutableStateOf(worker?.canCompleteTasks ?: true) }
+    var canCreateTasks by remember { mutableStateOf(worker?.canCreateTasks ?: true) }
     var canViewRequests by remember { mutableStateOf(worker?.canViewRequests ?: true) }
+    var canSubmitRequests by remember { mutableStateOf(worker?.canSubmitRequests ?: true) }
 
     var validationError by remember { mutableStateOf<String?>(null) }
 
@@ -541,7 +572,7 @@ fun AddOrEditWorkerDialog(
                     value = password,
                     onValueChange = { password = it; validationError = null },
                     label = { Text(if (worker == null) "Initial Worker Password" else "Password (managed separately)") },
-                    placeholder = { Text(if (worker == null) "At least 6 characters" else "Leave blank to keep the current password") },
+                    placeholder = { Text(if (worker == null) "At least 6 characters" else "Leave blank to keep current password") },
                     trailingIcon = {
                         IconButton(onClick = { passVisible = !passVisible }) {
                             Icon(if (passVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, contentDescription = null)
@@ -553,41 +584,195 @@ fun AddOrEditWorkerDialog(
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
-                Text(
-                    text = "Feature Permissions",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E293B)
-                )
-                Text(
-                    text = "Choose which tabs and actions this worker can access:",
-                    fontSize = 11.sp,
-                    color = Color(0xFF64748B)
-                )
+                // Permission Presets Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Granular Tab & Feature Controls",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E293B)
+                        )
+                        Text(
+                            text = "Control visible tabs and enabled actions:",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                PermissionToggleRow("Livestock & Flocks Tab", canViewLivestock, { canViewLivestock = it }, "Can Add / Edit / Delete Animals", canEditLivestock, { canEditLivestock = it })
-                PermissionToggleRow("Daily Logs Tab (Milk / Eggs)", canViewLogs, { canViewLogs = it }, "Can Record Milk & Egg Logs", canEditLogs, { canEditLogs = it })
-                PermissionToggleRow("Finance & Store Tab", canViewFinance, { canViewFinance = it }, "Can Add Income / Expense Transactions", canEditFinance, { canEditFinance = it })
-                PermissionToggleRow("Farm Tasks & Dashboard", canViewTasks, { canViewTasks = it }, "Can Complete Tasks & Upload Proofs", canCompleteTasks, { canCompleteTasks = it })
-
+                // Quick Presets
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("Requests & Advance Tab", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFF334155))
-                    Switch(
-                        checked = canViewRequests,
-                        onCheckedChange = { canViewRequests = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = ForestGreenPrimary)
-                    )
+                    OutlinedButton(
+                        onClick = {
+                            canViewHome = true
+                            canUseQuickActions = true
+                            canViewLivestock = true
+                            canEditLivestock = true
+                            canViewLogs = true
+                            canEditLogs = true
+                            canEditPastDaysLogs = true
+                            canViewFinance = true
+                            canEditFinance = true
+                            canViewTasks = true
+                            canCompleteTasks = true
+                            canCreateTasks = true
+                            canViewRequests = true
+                            canSubmitRequests = true
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Full", fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            canViewHome = true
+                            canUseQuickActions = true
+                            canViewLivestock = true
+                            canEditLivestock = true
+                            canViewLogs = true
+                            canEditLogs = true
+                            canEditPastDaysLogs = false
+                            canViewFinance = false
+                            canEditFinance = false
+                            canViewTasks = true
+                            canCompleteTasks = true
+                            canCreateTasks = true
+                            canViewRequests = true
+                            canSubmitRequests = true
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Standard", fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            canViewHome = true
+                            canUseQuickActions = true
+                            canViewLivestock = false
+                            canEditLivestock = false
+                            canViewLogs = true
+                            canEditLogs = true
+                            canEditPastDaysLogs = false
+                            canViewFinance = false
+                            canEditFinance = false
+                            canViewTasks = true
+                            canCompleteTasks = true
+                            canCreateTasks = false
+                            canViewRequests = true
+                            canSubmitRequests = true
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Milker", fontSize = 11.sp)
+                    }
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 1. Home Tab Control
+                PermissionToggleCard(
+                    title = "1. Home Tab (Dashboard)",
+                    canView = canViewHome,
+                    onViewChange = { canViewHome = it },
+                    features = listOf(
+                        PermissionFeatureToggle(
+                            label = "Allow Quick 1-Tap Entry on Home (Quick Milk, Eggs, Livestock)",
+                            isEnabled = canUseQuickActions,
+                            onToggle = { canUseQuickActions = it }
+                        )
+                    )
+                )
+
+                // 2. Assets Tab Control
+                PermissionToggleCard(
+                    title = "2. Assets Tab (Livestock, Crops & Inventory)",
+                    canView = canViewLivestock,
+                    onViewChange = { canViewLivestock = it },
+                    features = listOf(
+                        PermissionFeatureToggle(
+                            label = "Allow Adding, Editing & Deleting Livestock, Crops & Inventory",
+                            isEnabled = canEditLivestock,
+                            onToggle = { canEditLivestock = it }
+                        )
+                    )
+                )
+
+                // 3. Log Tab Control
+                PermissionToggleCard(
+                    title = "3. Daily Logs Tab (Milk & Egg Production)",
+                    canView = canViewLogs,
+                    onViewChange = { canViewLogs = it },
+                    features = listOf(
+                        PermissionFeatureToggle(
+                            label = "Allow Recording, Editing & Deleting Milk & Egg Logs",
+                            isEnabled = canEditLogs,
+                            onToggle = { canEditLogs = it }
+                        ),
+                        PermissionFeatureToggle(
+                            label = "Allow Editing / Deleting Past Days' Entries (If OFF: Locks previous days' logs & records to prevent backdated modifications)",
+                            isEnabled = canEditPastDaysLogs,
+                            onToggle = { canEditPastDaysLogs = it }
+                        )
+                    )
+                )
+
+                // 4. Finance Tab Control
+                PermissionToggleCard(
+                    title = "4. Finance Tab (Income, Expenses & Reports)",
+                    canView = canViewFinance,
+                    onViewChange = { canViewFinance = it },
+                    features = listOf(
+                        PermissionFeatureToggle(
+                            label = "Allow Adding & Modifying Financial Transactions",
+                            isEnabled = canEditFinance,
+                            onToggle = { canEditFinance = it }
+                        )
+                    )
+                )
+
+                // 5. Requests & Tasks Tab Control
+                PermissionToggleCard(
+                    title = "5. Requests & Tasks Tab",
+                    canView = canViewTasks || canViewRequests,
+                    onViewChange = {
+                        canViewTasks = it
+                        canViewRequests = it
+                    },
+                    features = listOf(
+                        PermissionFeatureToggle(
+                            label = "Allow Completing Tasks & Uploading Photo Proofs",
+                            isEnabled = canCompleteTasks,
+                            onToggle = { canCompleteTasks = it }
+                        ),
+                        PermissionFeatureToggle(
+                            label = "Allow Assigning & Creating New Farm Tasks",
+                            isEnabled = canCreateTasks,
+                            onToggle = { canCreateTasks = it }
+                        ),
+                        PermissionFeatureToggle(
+                            label = "Allow Submitting Salary Advances & Leave Requests",
+                            isEnabled = canSubmitRequests,
+                            onToggle = { canSubmitRequests = it }
+                        )
+                    )
+                )
 
                 validationError?.let { err ->
                     Spacer(modifier = Modifier.height(8.dp))
@@ -615,15 +800,20 @@ fun AddOrEditWorkerDialog(
                                 return@Button
                             }
                             val perms = WorkerPermissions(
+                                canViewHome = canViewHome,
+                                canUseQuickActions = if (canViewHome) canUseQuickActions else false,
                                 canViewLivestock = canViewLivestock,
                                 canEditLivestock = if (canViewLivestock) canEditLivestock else false,
                                 canViewLogs = canViewLogs,
                                 canEditLogs = if (canViewLogs) canEditLogs else false,
+                                canEditPastDaysLogs = if (canViewLogs) canEditPastDaysLogs else false,
                                 canViewFinance = canViewFinance,
                                 canEditFinance = if (canViewFinance) canEditFinance else false,
                                 canViewTasks = canViewTasks,
                                 canCompleteTasks = if (canViewTasks) canCompleteTasks else false,
-                                canViewRequests = canViewRequests
+                                canCreateTasks = if (canViewTasks) canCreateTasks else false,
+                                canViewRequests = canViewRequests,
+                                canSubmitRequests = if (canViewRequests || canViewTasks) canSubmitRequests else false
                             )
                             onSave(name, emailOrPhone, password, perms)
                         },
@@ -639,48 +829,94 @@ fun AddOrEditWorkerDialog(
     }
 }
 
+data class PermissionFeatureToggle(
+    val label: String,
+    val isEnabled: Boolean,
+    val onToggle: (Boolean) -> Unit
+)
+
 @Composable
-fun PermissionToggleRow(
+fun PermissionToggleCard(
     title: String,
     canView: Boolean,
     onViewChange: (Boolean) -> Unit,
-    subActionLabel: String,
-    canAction: Boolean,
-    onActionChange: (Boolean) -> Unit
+    features: List<PermissionFeatureToggle> = emptyList()
 ) {
-    Column(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
-            .padding(8.dp)
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (canView) Color(0xFFF1FDF4) else Color(0xFFF8FAFC)
+        ),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
-            Switch(
-                checked = canView,
-                onCheckedChange = onViewChange,
-                colors = SwitchDefaults.colors(checkedThumbColor = ForestGreenPrimary)
-            )
-        }
-
-        if (canView) {
+        Column(modifier = Modifier.padding(10.dp)) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Checkbox(
-                    checked = canAction,
-                    onCheckedChange = onActionChange,
-                    colors = CheckboxDefaults.colors(checkedColor = ForestGreenPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (canView) Color(0xFFDCFCE7) else Color(0xFFE2E8F0),
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                if (canView) Icons.Filled.Check else Icons.Filled.Close,
+                                contentDescription = null,
+                                tint = if (canView) ForestGreenDark else Color(0xFF94A3B8),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = title,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canView) Color(0xFF0F172A) else Color(0xFF64748B)
+                    )
+                }
+                Switch(
+                    checked = canView,
+                    onCheckedChange = onViewChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = ForestGreenPrimary
+                    )
                 )
-                Text(subActionLabel, fontSize = 11.sp, color = Color(0xFF475569))
+            }
+
+            if (canView && features.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Divider(color = Color(0xFFDCFCE7), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(4.dp))
+                features.forEach { feature ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { feature.onToggle(!feature.isEnabled) }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = feature.isEnabled,
+                            onCheckedChange = feature.onToggle,
+                            colors = CheckboxDefaults.colors(checkedColor = ForestGreenPrimary)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = feature.label,
+                            fontSize = 11.sp,
+                            color = Color(0xFF334155),
+                            lineHeight = 14.sp
+                        )
+                    }
+                }
             }
         }
     }

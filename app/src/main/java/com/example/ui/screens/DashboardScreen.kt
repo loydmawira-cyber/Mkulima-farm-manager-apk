@@ -942,7 +942,6 @@ fun DashboardScreen(
                                 .testTag("qa_milk_log"),
                             onClick = {
                                 onAddMilkLogClick()
-                                onNavigateToTab(2)
                             }
                         )
                         QuickActionChip(
@@ -953,7 +952,6 @@ fun DashboardScreen(
                                 .testTag("qa_add_animal"),
                             onClick = {
                                 onAddUnitClick()
-                                onNavigateToTab(1)
                             }
                         )
                         QuickActionChip(
@@ -981,7 +979,6 @@ fun DashboardScreen(
                                 .testTag("qa_egg_log"),
                             onClick = {
                                 onAddEggLogClick()
-                                onNavigateToTab(2)
                             }
                         )
                         QuickActionChip(
@@ -992,7 +989,6 @@ fun DashboardScreen(
                                 .testTag("qa_add_animal"),
                             onClick = {
                                 onAddUnitClick()
-                                onNavigateToTab(1)
                             }
                         )
                         QuickActionChip(
@@ -1020,7 +1016,6 @@ fun DashboardScreen(
                                 .testTag("qa_milk_log"),
                             onClick = {
                                 onAddMilkLogClick()
-                                onNavigateToTab(2)
                             }
                         )
                         QuickActionChip(
@@ -1031,7 +1026,6 @@ fun DashboardScreen(
                                 .testTag("qa_egg_log"),
                             onClick = {
                                 onAddEggLogClick()
-                                onNavigateToTab(2)
                             }
                         )
                         QuickActionChip(

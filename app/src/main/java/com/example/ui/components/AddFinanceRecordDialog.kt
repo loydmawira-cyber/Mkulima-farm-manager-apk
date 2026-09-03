@@ -55,8 +55,12 @@ fun AddFinanceRecordDialog(
     onDismiss: () -> Unit,
     onSaveRecord: (type: FinanceType, category: String, amount: Double, description: String) -> Unit,
     onUpdateRecord: ((FinanceRecord) -> Unit)? = null,
-    existing: FinanceRecord? = null
+    existing: FinanceRecord? = null,
+    userRole: String = "OWNER",
+    canEditPastDaysLogs: Boolean = true
 ) {
+    val isOwner = userRole.equals("OWNER", ignoreCase = true)
+    val cannotEditPast = !isOwner && !canEditPastDaysLogs
     var selectedType by remember { mutableStateOf(existing?.type ?: FinanceType.INCOME) }
     val incomeCategories = listOf("Milk Sales", "Egg Sales", "Cattle Sales", "Crop Harvest Sales", "Other Income")
     val expenseCategories = listOf("Feeds & Supplies", "Vaccines & Vet", "Equipment & Repairs", "Labor & Wages", "Other Expense")
@@ -69,6 +73,7 @@ fun AddFinanceRecordDialog(
     var transactionDate by remember {
         mutableStateOf(existing?.date ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
     }
+    val transactionDateIsPastRestricted = cannotEditPast && com.example.util.DateValidationUtils.isPastDate(transactionDate)
 
     // Update category options when type toggles
     androidx.compose.runtime.LaunchedEffect(selectedType) {
@@ -205,6 +210,16 @@ fun AddFinanceRecordDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                if (transactionDateIsPastRestricted) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Recording or modifying transactions for previous days is disabled for worker accounts. Please select today's date.",
+                        color = Color(0xFFB91C1C),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
@@ -219,6 +234,7 @@ fun AddFinanceRecordDialog(
                         onClick = {
                             val amt = amountText.toDoubleOrNull() ?: 0.0
                             val finalDescription = descriptionText.ifBlank { "Recorded on $transactionDate" }
+                            if (amt <= 0.0 || transactionDateIsPastRestricted) return@Button
                             if (existing != null && onUpdateRecord != null) {
                                 onUpdateRecord(existing.copy(
                                     type = selectedType,
@@ -234,10 +250,19 @@ fun AddFinanceRecordDialog(
                         },
                         shape = RoundedCornerShape(100.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedType == FinanceType.INCOME) Color(0xFF166534) else Color(0xFFB3261E)
-                        )
+                            containerColor = if (selectedType == FinanceType.INCOME) Color(0xFF166534) else Color(0xFFB3261E),
+                            disabledContainerColor = Color(0xFF94A3B8)
+                        ),
+                        enabled = !transactionDateIsPastRestricted && (amountText.toDoubleOrNull() ?: 0.0) > 0.0
                     ) {
-                        Text(if (existing != null) "Update Transaction" else "Save Transaction", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = when {
+                                transactionDateIsPastRestricted -> "Previous Days Locked"
+                                existing != null -> "Update Transaction"
+                                else -> "Save Transaction"
+                            },
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }

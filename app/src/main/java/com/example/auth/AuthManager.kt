@@ -255,15 +255,20 @@ class AuthManager(
             (userData?.get(name) as? Boolean) ?: if (isOwner) ownerDefault else workerDefault
 
         return WorkerPermissions(
+            canViewHome = flag("canViewHome", true, true),
+            canUseQuickActions = flag("canUseQuickActions", true, true),
             canViewLivestock = flag("canViewLivestock", true, true),
             canEditLivestock = flag("canEditLivestock", true, true),
             canViewLogs = flag("canViewLogs", true, true),
             canEditLogs = flag("canEditLogs", true, true),
+            canEditPastDaysLogs = flag("canEditPastDaysLogs", true, false),
             canViewFinance = flag("canViewFinance", true, false),
             canEditFinance = flag("canEditFinance", true, false),
             canViewTasks = flag("canViewTasks", true, true),
             canCompleteTasks = flag("canCompleteTasks", true, true),
-            canViewRequests = flag("canViewRequests", true, true)
+            canCreateTasks = flag("canCreateTasks", true, true),
+            canViewRequests = flag("canViewRequests", true, true),
+            canSubmitRequests = flag("canSubmitRequests", true, true)
         )
     }
 
@@ -428,15 +433,20 @@ class AuthManager(
         val farmId = prefs.getString("farm_id", null) ?: return null
         val farmName = prefs.getString("farm_name", null) ?: prefs.getString("last_farm_name", "My Farm") ?: "My Farm"
 
+        val canViewHome = prefs.getBoolean("can_view_home", true)
+        val canUseQuickActions = prefs.getBoolean("can_use_quick_actions", true)
         val canViewLivestock = prefs.getBoolean("can_view_livestock", true)
         val canEditLivestock = prefs.getBoolean("can_edit_livestock", role == "OWNER")
         val canViewLogs = prefs.getBoolean("can_view_logs", true)
         val canEditLogs = prefs.getBoolean("can_edit_logs", role == "OWNER")
+        val canEditPastDaysLogs = prefs.getBoolean("can_edit_past_days_logs", role == "OWNER")
         val canViewFinance = prefs.getBoolean("can_view_finance", role == "OWNER")
         val canEditFinance = prefs.getBoolean("can_edit_finance", role == "OWNER")
         val canViewTasks = prefs.getBoolean("can_view_tasks", true)
         val canCompleteTasks = prefs.getBoolean("can_complete_tasks", true)
+        val canCreateTasks = prefs.getBoolean("can_create_tasks", true)
         val canViewRequests = prefs.getBoolean("can_view_requests", true)
+        val canSubmitRequests = prefs.getBoolean("can_submit_requests", true)
 
         return UserSession(
             userId = userId,
@@ -447,15 +457,20 @@ class AuthManager(
             farmName = farmName,
             isRevoked = false,
             permissions = WorkerPermissions(
+                canViewHome = canViewHome,
+                canUseQuickActions = canUseQuickActions,
                 canViewLivestock = canViewLivestock,
                 canEditLivestock = canEditLivestock,
                 canViewLogs = canViewLogs,
                 canEditLogs = canEditLogs,
+                canEditPastDaysLogs = canEditPastDaysLogs,
                 canViewFinance = canViewFinance,
                 canEditFinance = canEditFinance,
                 canViewTasks = canViewTasks,
                 canCompleteTasks = canCompleteTasks,
-                canViewRequests = canViewRequests
+                canCreateTasks = canCreateTasks,
+                canViewRequests = canViewRequests,
+                canSubmitRequests = canSubmitRequests
             )
         )
     }
@@ -576,15 +591,20 @@ class AuthManager(
             putString("last_user_role", session.role)
             putString("last_farm_id", session.farmId)
             putString("last_farm_name", session.farmName)
+            putBoolean("can_view_home", session.permissions.canViewHome)
+            putBoolean("can_use_quick_actions", session.permissions.canUseQuickActions)
             putBoolean("can_view_livestock", session.permissions.canViewLivestock)
             putBoolean("can_edit_livestock", session.permissions.canEditLivestock)
             putBoolean("can_view_logs", session.permissions.canViewLogs)
             putBoolean("can_edit_logs", session.permissions.canEditLogs)
+            putBoolean("can_edit_past_days_logs", session.permissions.canEditPastDaysLogs)
             putBoolean("can_view_finance", session.permissions.canViewFinance)
             putBoolean("can_edit_finance", session.permissions.canEditFinance)
             putBoolean("can_view_tasks", session.permissions.canViewTasks)
             putBoolean("can_complete_tasks", session.permissions.canCompleteTasks)
+            putBoolean("can_create_tasks", session.permissions.canCreateTasks)
             putBoolean("can_view_requests", session.permissions.canViewRequests)
+            putBoolean("can_submit_requests", session.permissions.canSubmitRequests)
             commit()
         }
         FarmDeviceTokenRegistry.registerOwnerDevice(context, session)
@@ -765,6 +785,7 @@ class AuthManager(
                 canEditLivestock = true,
                 canViewLogs = true,
                 canEditLogs = true,
+                canEditPastDaysLogs = true,
                 canViewFinance = true,
                 canEditFinance = true,
                 canViewTasks = true,
@@ -1265,15 +1286,20 @@ class AuthManager(
                 password = "",
                 role = "WORKER",
                 isRevoked = false,
+                canViewHome = permissions.canViewHome,
+                canUseQuickActions = permissions.canUseQuickActions,
                 canViewLivestock = permissions.canViewLivestock,
                 canEditLivestock = permissions.canEditLivestock,
                 canViewLogs = permissions.canViewLogs,
                 canEditLogs = permissions.canEditLogs,
+                canEditPastDaysLogs = permissions.canEditPastDaysLogs,
                 canViewFinance = permissions.canViewFinance,
                 canEditFinance = permissions.canEditFinance,
                 canViewTasks = permissions.canViewTasks,
                 canCompleteTasks = permissions.canCompleteTasks,
-                canViewRequests = permissions.canViewRequests
+                canCreateTasks = permissions.canCreateTasks,
+                canViewRequests = permissions.canViewRequests,
+                canSubmitRequests = permissions.canSubmitRequests
             )
 
             val workerData = hashMapOf<String, Any>(
@@ -1288,15 +1314,20 @@ class AuthManager(
                 "farmId" to farmId,
                 "farmName" to farmName,
                 "isRevoked" to false,
+                "canViewHome" to permissions.canViewHome,
+                "canUseQuickActions" to permissions.canUseQuickActions,
                 "canViewLivestock" to permissions.canViewLivestock,
                 "canEditLivestock" to permissions.canEditLivestock,
                 "canViewLogs" to permissions.canViewLogs,
                 "canEditLogs" to permissions.canEditLogs,
+                "canEditPastDaysLogs" to permissions.canEditPastDaysLogs,
                 "canViewFinance" to permissions.canViewFinance,
                 "canEditFinance" to permissions.canEditFinance,
                 "canViewTasks" to permissions.canViewTasks,
                 "canCompleteTasks" to permissions.canCompleteTasks,
+                "canCreateTasks" to permissions.canCreateTasks,
                 "canViewRequests" to permissions.canViewRequests,
+                "canSubmitRequests" to permissions.canSubmitRequests,
                 "createdAt" to System.currentTimeMillis(),
                 "updatedAt" to System.currentTimeMillis()
             )
@@ -1354,15 +1385,20 @@ class AuthManager(
                     "phone" to if (sanitized.emailOrPhone.contains("@")) "" else sanitized.emailOrPhone,
                     "phoneNumber" to if (sanitized.emailOrPhone.contains("@")) "" else sanitized.emailOrPhone,
                     "isRevoked" to sanitized.isRevoked,
+                    "canViewHome" to sanitized.canViewHome,
+                    "canUseQuickActions" to sanitized.canUseQuickActions,
                     "canViewLivestock" to sanitized.canViewLivestock,
                     "canEditLivestock" to sanitized.canEditLivestock,
                     "canViewLogs" to sanitized.canViewLogs,
                     "canEditLogs" to sanitized.canEditLogs,
+                    "canEditPastDaysLogs" to sanitized.canEditPastDaysLogs,
                     "canViewFinance" to sanitized.canViewFinance,
                     "canEditFinance" to sanitized.canEditFinance,
                     "canViewTasks" to sanitized.canViewTasks,
                     "canCompleteTasks" to sanitized.canCompleteTasks,
+                    "canCreateTasks" to sanitized.canCreateTasks,
                     "canViewRequests" to sanitized.canViewRequests,
+                    "canSubmitRequests" to sanitized.canSubmitRequests,
                     "updatedAt" to System.currentTimeMillis()
                 )
                 db.collection("users").document(sanitized.workerId).set(workerData, SetOptions.merge()).awaitTask()

@@ -13,14 +13,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbCloudy
 import androidx.compose.material.icons.filled.WbSunny
@@ -30,6 +35,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -37,6 +44,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,16 +60,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.FarmUnit
+import com.example.data.MilkLog
+import com.example.data.MilkLogEntryRules
+import com.example.ui.screens.AnimalCowItem
 import com.example.ui.screens.isMilkingCow
 import com.example.ui.screens.mockAnimals
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
 @Composable
 fun AddMilkLogDialog(
     availableUnits: List<FarmUnit>,
+    milkLogs: List<MilkLog> = emptyList(),
+    userRole: String = "OWNER",
+    canEditPastDaysLogs: Boolean = true,
     onDismiss: () -> Unit,
     onSaveMilkLog: (
         cowName: String,
@@ -84,18 +99,31 @@ fun AddMilkLogDialog(
         }
     }
 
-    val milkingCows = remember(availableUnits, deletedSet) {
-        val result = mutableListOf<String>()
+    val cowsList = remember(availableUnits, deletedSet) {
+        val result = mutableListOf<AnimalCowItem>()
 
         // 1. From Room units (registered farm livestock)
         availableUnits.filter {
             (it.type.equals("Cattle", ignoreCase = true) || it.type.equals("CATTLE", ignoreCase = true)) &&
             !deletedSet.contains("unit_${it.id}") && !deletedSet.contains(it.name.lowercase()) &&
-            isMilkingCow(name = it.name, breed = it.breed, status = it.healthStatus, tag = it.tagNumber)
+            isMilkingCow(
+                name = it.name,
+                breed = it.breed,
+                status = it.healthStatus,
+                tag = it.tagNumber,
+                lastMilk = it.currentWeight
+            )
         }.forEach { unit ->
             val tag = unit.tagNumber.ifBlank { "#${unit.id + 100}" }
-            val breed = unit.breed.ifBlank { "Dairy Cow" }
-            result.add("${unit.name} ($tag - $breed)")
+            val displayName = if (unit.name.contains(tag)) unit.name else "${unit.name} ($tag)"
+            result.add(
+                AnimalCowItem(
+                    tagId = tag,
+                    name = displayName,
+                    breed = unit.breed.ifBlank { "Dairy Cattle" },
+                    lactationDay = 90
+                )
+            )
         }
 
         // 2. From mockAnimals (registered farm livestock list)
@@ -112,30 +140,70 @@ fun AddMilkLogDialog(
             )
         }.forEach { animal ->
             val tag = animal.tagNumber.ifBlank { "#100" }
-            val breed = animal.breed.ifBlank { "Dairy Cow" }
-            result.add("${animal.name} ($tag - $breed)")
+            val displayName = if (animal.name.contains(tag)) animal.name else "${animal.name} ($tag)"
+            result.add(
+                AnimalCowItem(
+                    tagId = tag,
+                    name = displayName,
+                    breed = animal.breed.ifBlank { "Dairy Cattle" },
+                    lactationDay = 90
+                )
+            )
         }
 
-        result.add("Overall Herd Bulk Yield")
-        result.distinct()
+        // Deduplicate by normalized base name
+        result.distinctBy {
+            it.name.substringBefore(" (").substringBefore(" -").substringBefore("#").trim().lowercase()
+        }
     }
 
-    var selectedCowName by remember(milkingCows) { mutableStateOf(milkingCows.firstOrNull() ?: "Overall Herd Bulk Yield") }
-    var cowDropdownExpanded by remember { mutableStateOf(false) }
+    var cowSearchQuery by remember { mutableStateOf("") }
+    var selectedCow by remember { mutableStateOf<AnimalCowItem?>(cowsList.firstOrNull()) }
+    var showCowDropdown by remember { mutableStateOf(false) }
+    var milkLitresText by remember { mutableStateOf("") }
+    var fatPercentageText by remember { mutableStateOf("3.8") }
+    var selectedSession by remember { mutableStateOf("Morning") } // Morning, Afternoon, Evening
 
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+    val todayDateStr = remember { dateFormat.format(Date()) }
+    val yesterdayDateStr = remember {
+        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+        dateFormat.format(cal.time)
+    }
+    val twoDaysAgoDateStr = remember {
+        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -2) }
+        dateFormat.format(cal.time)
+    }
+    var selectedLogDate by remember { mutableStateOf(todayDateStr) }
+
+    val isOwner = userRole.equals("OWNER", ignoreCase = true)
+    val cannotEditPast = !isOwner && !canEditPastDaysLogs
+    val selectedDateIsPastRestricted = cannotEditPast && com.example.util.DateValidationUtils.isPastDate(selectedLogDate)
     val dairyUnits = availableUnits.filter { it.type.contains("Cattle", ignoreCase = true) || it.name.contains("Dairy", ignoreCase = true) }
     var selectedUnitName by remember(dairyUnits) { mutableStateOf(dairyUnits.firstOrNull()?.name ?: "Dairy Section") }
-
-    var litresText by remember { mutableStateOf("15.5") }
-    var fatText by remember { mutableStateOf("3.8") }
-    var selectedSession by remember { mutableStateOf("Morning") }
-    var selectedDestination by remember { mutableStateOf("Cooperative Sale") }
-
-    val defaultDate = remember {
-        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-    }
-    var dateText by remember { mutableStateOf(defaultDate) }
     var notesText by remember { mutableStateOf("") }
+
+    val matchingCows = remember(cowsList, cowSearchQuery) {
+        cowsList.filter {
+            cowSearchQuery.isEmpty() ||
+            it.name.contains(cowSearchQuery, ignoreCase = true) ||
+            it.tagId.contains(cowSearchQuery, ignoreCase = true) ||
+            it.breed.contains(cowSearchQuery, ignoreCase = true)
+        }
+    }
+
+    LaunchedEffect(cowsList) {
+        if (selectedCow == null || cowsList.none { it.tagId == selectedCow?.tagId || it.name == selectedCow?.name }) {
+            selectedCow = cowsList.firstOrNull()
+        }
+    }
+
+    val selectedDateIsFuture = MilkLogEntryRules.isFutureDate(selectedLogDate)
+    val selectedDateIsValid = MilkLogEntryRules.canonicalDateKey(selectedLogDate) != null
+    val targetCowName = selectedCow?.name ?: cowSearchQuery.trim()
+    val selectedMilkSlotRecorded = if (targetCowName.isNotBlank()) {
+        milkLogs.any { log -> MilkLogEntryRules.isSameSlot(log, targetCowName, selectedLogDate, selectedSession) }
+    } else false
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -144,12 +212,13 @@ fun AddMilkLogDialog(
                 .padding(4.dp)
                 .testTag("add_milk_log_dialog"),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.5.dp, ForestGreenPrimary.copy(alpha = 0.25f))
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(18.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 // Header Row
@@ -160,7 +229,7 @@ fun AddMilkLogDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = CircleShape,
                             color = Color(0xFFDCFCE7)
                         ) {
                             Icon(
@@ -169,20 +238,20 @@ fun AddMilkLogDialog(
                                 tint = ForestGreenPrimary,
                                 modifier = Modifier
                                     .padding(8.dp)
-                                    .size(22.dp)
+                                    .size(20.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Log Milk Production",
-                                fontSize = 20.sp,
+                                text = "Quick Milk Entry",
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)
                             )
                             Text(
                                 text = "Record collection volume & session details",
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 color = Color(0xFF64748B)
                             )
                         }
@@ -193,45 +262,126 @@ fun AddMilkLogDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Cow Selector
+                // Step 1: Search Animal by Name, ID, or Tag
                 Text(
-                    text = "SELECT COW OR HERD BULK",
+                    text = "1. SEARCH & SELECT ANIMAL (MILKING COWS ONLY)",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF64748B)
                 )
                 Spacer(modifier = Modifier.height(6.dp))
+
                 Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedTextField(
-                        value = selectedCowName,
-                        onValueChange = {},
-                        readOnly = true,
+                        value = if (selectedCow != null && cowSearchQuery.isBlank()) selectedCow?.name ?: "" else cowSearchQuery,
+                        onValueChange = { query ->
+                            cowSearchQuery = query
+                            selectedCow = cowsList.firstOrNull { it.name.equals(query.trim(), ignoreCase = true) }
+                            showCowDropdown = true
+                        },
+                        placeholder = { Text("Search by Name (e.g. Bessie), Tag (#102)...") },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = ForestGreenPrimary) },
                         trailingIcon = {
-                            Icon(
-                                Icons.Filled.ArrowDropDown,
-                                contentDescription = "Select Cow",
-                                modifier = Modifier.clickable { cowDropdownExpanded = true }
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (selectedCow != null || cowSearchQuery.isNotBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            selectedCow = null
+                                            cowSearchQuery = ""
+                                            showCowDropdown = true
+                                        }
+                                    ) {
+                                        Icon(Icons.Filled.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp), tint = Color(0xFF94A3B8))
+                                    }
+                                }
+                                IconButton(onClick = { showCowDropdown = !showCowDropdown }) {
+                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = "Dropdown", tint = Color(0xFF475569))
+                                }
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { cowDropdownExpanded = true },
-                        shape = RoundedCornerShape(12.dp)
+                            .testTag("dialog_cow_search_input"),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
                     )
+
                     DropdownMenu(
-                        expanded = cowDropdownExpanded,
-                        onDismissRequest = { cowDropdownExpanded = false },
-                        modifier = Modifier.fillMaxWidth(0.82f)
+                        expanded = showCowDropdown,
+                        onDismissRequest = { showCowDropdown = false },
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .background(Color.White)
                     ) {
-                        milkingCows.forEach { cow ->
+                        if (matchingCows.isEmpty()) {
                             DropdownMenuItem(
-                                text = { Text(cow, fontWeight = FontWeight.Medium) },
-                                onClick = {
-                                    selectedCowName = cow
-                                    cowDropdownExpanded = false
-                                }
+                                text = { Text("No matching milking cows found", color = Color.Gray, fontSize = 13.sp) },
+                                onClick = { showCowDropdown = false }
+                            )
+                        } else {
+                            matchingCows.forEach { cow ->
+                                val isCurrent = selectedCow?.tagId == cow.tagId || selectedCow?.name == cow.name
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = cow.name,
+                                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                )
+                                                Text(
+                                                    text = "${cow.breed} • ${cow.tagId}",
+                                                    fontSize = 12.sp,
+                                                    color = Color(0xFF64748B)
+                                                )
+                                            }
+                                            if (isCurrent) {
+                                                Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedCow = cow
+                                        cowSearchQuery = ""
+                                        showCowDropdown = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Quick Select Animal Chips
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(cowsList) { cow ->
+                        val isSel = selectedCow?.tagId == cow.tagId || selectedCow?.name == cow.name
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSel) ForestGreenPrimary else Color(0xFFF1F5F9),
+                            border = if (isSel) null else BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            modifier = Modifier.clickable {
+                                selectedCow = cow
+                                cowSearchQuery = ""
+                            }
+                        ) {
+                            Text(
+                                text = cow.name,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) Color.White else Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
                     }
@@ -239,37 +389,35 @@ fun AddMilkLogDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Session Selector (Morning, Afternoon, Evening)
+                // Step 2: Session Selection (Morning, Afternoon, Evening)
                 Text(
-                    text = "MILKING SESSION",
+                    text = "2. MILKING SESSION",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF64748B)
                 )
                 Spacer(modifier = Modifier.height(6.dp))
 
-                val sessions = listOf(
-                    Triple("Morning", "🌅 Morning", Icons.Filled.WbSunny),
-                    Triple("Afternoon", "☀️ Midday", Icons.Filled.WbCloudy),
-                    Triple("Evening", "🌙 Evening", Icons.Filled.NightsStay)
-                )
-
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFF1F5F9), RoundedCornerShape(10.dp))
+                        .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    sessions.forEach { (sessKey, sessLabel, icon) ->
-                        val isSelected = selectedSession.equals(sessKey, ignoreCase = true)
+                    listOf(
+                        Triple("Morning", "🌅 Morning", Icons.Filled.WbSunny),
+                        Triple("Afternoon", "☀️ Afternoon", Icons.Filled.WbCloudy),
+                        Triple("Evening", "🌙 Evening", Icons.Filled.NightsStay)
+                    ).forEach { (sessionKey, sessionLabel, icon) ->
+                        val isSelected = selectedSession.equals(sessionKey, ignoreCase = true)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp)
+                                .height(42.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isSelected) ForestGreenPrimary else Color.Transparent)
-                                .clickable { selectedSession = sessKey },
+                                .clickable { selectedSession = sessionKey },
                             contentAlignment = Alignment.Center
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -281,7 +429,7 @@ fun AddMilkLogDialog(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = sessLabel,
+                                    text = sessionLabel,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSelected) Color.White else Color(0xFF475569)
@@ -293,99 +441,109 @@ fun AddMilkLogDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Quantity & Fat % Input
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = litresText,
-                        onValueChange = { litresText = it },
-                        label = { Text("Quantity (Litres)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-
-                    OutlinedTextField(
-                        value = fatText,
-                        onValueChange = { fatText = it },
-                        label = { Text("Fat %") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Date & Dairy Unit
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    AppDatePickerField(
-                        value = dateText,
-                        onValueChange = { dateText = it },
-                        label = "Collection Date",
-                        modifier = Modifier.weight(1f),
-                        testTag = "milk_log_date_picker"
-                    )
-
-                    OutlinedTextField(
-                        value = selectedUnitName,
-                        onValueChange = { selectedUnitName = it },
-                        label = { Text("Dairy Shed / Unit") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Milk Destination / Utilization
+                // Step 3: Record Date (Today, Yesterday, 2 Days Ago, Custom)
                 Text(
-                    text = "MILK DESTINATION / USE",
+                    text = "3. RECORD DATE",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF64748B)
                 )
                 Spacer(modifier = Modifier.height(6.dp))
 
-                val destinations = listOf("Cooperative Sale", "Calf Feeding", "Home / Staff", "Chilled Tank")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    destinations.forEach { dest ->
-                        val isSelected = selectedDestination == dest
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) ForestGreenPrimary else Color.Transparent
+                    FilterChip(
+                        selected = selectedLogDate == todayDateStr,
+                        onClick = { selectedLogDate = todayDateStr },
+                        label = { Text("Today", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = ForestGreenPrimary,
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFFF1F5F9),
+                            labelColor = Color(0xFF475569)
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (!cannotEditPast) {
+                        FilterChip(
+                            selected = selectedLogDate == yesterdayDateStr,
+                            onClick = { selectedLogDate = yesterdayDateStr },
+                            label = { Text("Yesterday", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = ForestGreenPrimary,
+                                selectedLabelColor = Color.White,
+                                containerColor = Color(0xFFF1F5F9),
+                                labelColor = Color(0xFF475569)
                             ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { selectedDestination = dest }
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = dest.split(" ").first(),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) ForestGreenPrimary else Color(0xFF475569)
-                                )
-                            }
-                        }
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        FilterChip(
+                            selected = selectedLogDate == twoDaysAgoDateStr,
+                            onClick = { selectedLogDate = twoDaysAgoDateStr },
+                            label = { Text("2 Days Ago", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = ForestGreenPrimary,
+                                selectedLabelColor = Color.White,
+                                containerColor = Color(0xFFF1F5F9),
+                                labelColor = Color(0xFF475569)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
                     }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                AppDatePickerField(
+                    value = selectedLogDate,
+                    onValueChange = { selectedLogDate = it },
+                    label = "Log Date",
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "dialog_milk_quick_log_date_picker"
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Step 4: Enter Milk Details (Litres & Fat %)
+                Text(
+                    text = "4. MILK VOLUME & DETAILS",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF64748B)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = milkLitresText,
+                        onValueChange = { milkLitresText = it },
+                        label = { Text("Volume (Litres)*") },
+                        placeholder = { Text("e.g. 14.5") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .testTag("dialog_milk_litres_input"),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = fatPercentageText,
+                        onValueChange = { fatPercentageText = it },
+                        label = { Text("Fat % (Optional)") },
+                        placeholder = { Text("e.g. 3.8") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -393,54 +551,91 @@ fun AddMilkLogDialog(
                 OutlinedTextField(
                     value = notesText,
                     onValueChange = { notesText = it },
-                    label = { Text("Notes / Quality / Chilling Temp (°C)") },
+                    label = { Text("Notes (Optional)") },
                     placeholder = { Text("e.g. Chilled to 4°C, Delivered to Co-op") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .weight(0.7f)
+                            .height(48.dp)
                     ) {
-                        Text("Cancel", color = Color(0xFF475569))
+                        Text("Cancel", color = Color(0xFF475569), fontWeight = FontWeight.SemiBold)
                     }
-
-                    Spacer(modifier = Modifier.width(10.dp))
 
                     Button(
                         onClick = {
-                            val litres = litresText.toDoubleOrNull() ?: 0.0
-                            val fat = fatText.toDoubleOrNull() ?: 3.8
-                            val fullNote = buildString {
-                                append("Use: $selectedDestination")
-                                if (notesText.isNotBlank()) {
-                                    append(" • $notesText")
-                                }
+                            val cowName = selectedCow?.name ?: cowSearchQuery.ifBlank { "Unassigned Cow" }
+                            val litres = milkLitresText.toDoubleOrNull() ?: 0.0
+                            val fat = fatPercentageText.toDoubleOrNull() ?: 3.8
+                            val fullNote = notesText.trim().ifBlank { null }
+
+                            if (litres > 0 && !selectedMilkSlotRecorded && !selectedDateIsFuture && !selectedDateIsPastRestricted && selectedDateIsValid) {
+                                onSaveMilkLog(
+                                    cowName,
+                                    selectedUnitName,
+                                    litres,
+                                    selectedSession,
+                                    fat,
+                                    selectedLogDate,
+                                    fullNote
+                                )
                             }
-                            onSaveMilkLog(
-                                selectedCowName,
-                                selectedUnitName,
-                                litres,
-                                selectedSession,
-                                fat,
-                                dateText,
-                                fullNote
-                            )
                         },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(48.dp)
+                            .testTag("dialog_quick_save_milk_btn"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ForestGreenPrimary,
+                            disabledContainerColor = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFCBD5E1)
+                        ),
+                        enabled = milkLitresText.isNotBlank() && (selectedCow != null || cowSearchQuery.isNotBlank()) &&
+                            !selectedMilkSlotRecorded && !selectedDateIsFuture && !selectedDateIsPastRestricted && selectedDateIsValid
                     ) {
-                        Text("SAVE MILK LOG", fontWeight = FontWeight.Bold, color = Color.White)
+                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = when {
+                                selectedMilkSlotRecorded -> "RECORDED"
+                                selectedDateIsFuture -> "FUTURE DATE NOT ALLOWED"
+                                selectedDateIsPastRestricted -> "PREVIOUS DAYS LOCKED"
+                                !selectedDateIsValid -> "SELECT A VALID DATE"
+                                else -> "SAVE COW MILK LOG"
+                            },
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
+                }
+
+                if (selectedMilkSlotRecorded || selectedDateIsFuture || selectedDateIsPastRestricted || !selectedDateIsValid) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = when {
+                            selectedMilkSlotRecorded -> "This cow's ${MilkLogEntryRules.normalizedSession(selectedSession).lowercase()} milk is already recorded for this date. Delete it in Log History before recording again."
+                            selectedDateIsFuture -> "Milk cannot be recorded for a future date."
+                            selectedDateIsPastRestricted -> "Recording logs for previous days is disabled for worker accounts. Please select today's date."
+                            else -> "Choose a valid date on or before today."
+                        },
+                        color = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFB91C1C),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }

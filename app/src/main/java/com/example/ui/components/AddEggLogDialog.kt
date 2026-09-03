@@ -44,9 +44,13 @@ import java.util.Locale
 @Composable
 fun AddEggLogDialog(
     availableUnits: List<FarmUnit>,
+    userRole: String = "OWNER",
+    canEditPastDaysLogs: Boolean = true,
     onDismiss: () -> Unit,
     onSaveEggLog: (unitName: String, totalEggs: Int, damagedEggs: Int, grade: String, notes: String?) -> Unit
 ) {
+    val isOwner = userRole.equals("OWNER", ignoreCase = true)
+    val cannotEditPast = !isOwner && !canEditPastDaysLogs
     // This defensive filter prevents sample, deleted, cattle, or field units from
     // becoming a valid egg-yield target even if a caller passes an unfiltered list.
     val poultryUnits = remember(availableUnits) {
@@ -73,6 +77,7 @@ fun AddEggLogDialog(
     var collectionDate by remember {
         mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
     }
+    val eggDateIsPastRestricted = cannotEditPast && com.example.util.DateValidationUtils.isPastDate(collectionDate)
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -203,6 +208,16 @@ fun AddEggLogDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                if (eggDateIsPastRestricted) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Recording egg collections for previous days is disabled for worker accounts. Please select today's date.",
+                        color = Color(0xFFB91C1C),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
@@ -219,17 +234,18 @@ fun AddEggLogDialog(
                                 ?: return@Button
                             val total = totalText.toIntOrNull() ?: 0
                             val damaged = damagedText.toIntOrNull() ?: 0
-                            if (total <= 0 || damaged < 0 || damaged > total) return@Button
+                            if (total <= 0 || damaged < 0 || damaged > total || eggDateIsPastRestricted) return@Button
                             val fullNote = if (notesText.isNotBlank()) "[$collectionDate] $notesText" else "[$collectionDate]"
                             onSaveEggLog(selected.name, total, damaged, selectedGrade, fullNote)
                         },
                         shape = RoundedCornerShape(100.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
-                        enabled = poultryUnits.any { it.name == selectedUnitName } &&
+                        enabled = !eggDateIsPastRestricted &&
+                            poultryUnits.any { it.name == selectedUnitName } &&
                             (totalText.toIntOrNull() ?: 0) > 0 &&
                             (damagedText.toIntOrNull() ?: 0) in 0..(totalText.toIntOrNull() ?: 0)
                     ) {
-                        Text("Save Egg Record", fontWeight = FontWeight.Bold)
+                        Text(if (eggDateIsPastRestricted) "Previous Days Locked" else "Save Egg Record", fontWeight = FontWeight.Bold)
                     }
                 }
             }

@@ -662,15 +662,20 @@ class FirestoreSyncEngine(
                     "createdAt" to worker.createdAt,
                     "updatedAt" to worker.updatedAt,
                     "isDeleted" to worker.isDeleted,
+                    "canViewHome" to worker.canViewHome,
+                    "canUseQuickActions" to worker.canUseQuickActions,
                     "canViewLivestock" to worker.canViewLivestock,
                     "canEditLivestock" to worker.canEditLivestock,
                     "canViewLogs" to worker.canViewLogs,
                     "canEditLogs" to worker.canEditLogs,
+                    "canEditPastDaysLogs" to worker.canEditPastDaysLogs,
                     "canViewFinance" to worker.canViewFinance,
                     "canEditFinance" to worker.canEditFinance,
                     "canViewTasks" to worker.canViewTasks,
                     "canCompleteTasks" to worker.canCompleteTasks,
-                    "canViewRequests" to worker.canViewRequests
+                    "canCreateTasks" to worker.canCreateTasks,
+                    "canViewRequests" to worker.canViewRequests,
+                    "canSubmitRequests" to worker.canSubmitRequests
                 )
                 writer.queueSet(farmRef.collection("worker_accounts").document(worker.workerId), data)
                 if (worker.updatedAt > maxWorkerUpdatedAt) maxWorkerUpdatedAt = worker.updatedAt
@@ -1178,15 +1183,20 @@ class FirestoreSyncEngine(
                 createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis(),
                 updatedAt = remoteUpdatedAt,
                 isDeleted = isDeleted,
+                canViewHome = doc.getBoolean("canViewHome") ?: true,
+                canUseQuickActions = doc.getBoolean("canUseQuickActions") ?: true,
                 canViewLivestock = doc.getBoolean("canViewLivestock") ?: true,
                 canEditLivestock = doc.getBoolean("canEditLivestock") ?: true,
                 canViewLogs = doc.getBoolean("canViewLogs") ?: true,
                 canEditLogs = doc.getBoolean("canEditLogs") ?: true,
+                canEditPastDaysLogs = doc.getBoolean("canEditPastDaysLogs") ?: true,
                 canViewFinance = doc.getBoolean("canViewFinance") ?: false,
                 canEditFinance = doc.getBoolean("canEditFinance") ?: false,
                 canViewTasks = doc.getBoolean("canViewTasks") ?: true,
                 canCompleteTasks = doc.getBoolean("canCompleteTasks") ?: true,
-                canViewRequests = doc.getBoolean("canViewRequests") ?: true
+                canCreateTasks = doc.getBoolean("canCreateTasks") ?: true,
+                canViewRequests = doc.getBoolean("canViewRequests") ?: true,
+                canSubmitRequests = doc.getBoolean("canSubmitRequests") ?: true
             )
             farmDao.insertWorker(worker)
         }

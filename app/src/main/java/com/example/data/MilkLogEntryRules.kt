@@ -37,14 +37,56 @@ object MilkLogEntryRules {
         else -> "MORNING"
     }
 
-    fun cowKey(cowName: String): String {
+    fun extractBaseName(cowName: String): String {
         val trimmed = cowName.trim()
-        val tag = Regex("\\((?:#\\s*)?([A-Za-z0-9-]+)\\)").find(trimmed)?.groupValues?.getOrNull(1)
-        val normalized = (tag ?: trimmed.substringBefore(" (").substringBefore(" -").substringBefore("#"))
-            .trim().lowercase(Locale.US)
+        return trimmed
+            .substringBefore(" (")
+            .substringBefore(" -")
+            .replace(Regex("^#\\s*[0-9A-Za-z-]+\\s*"), "")
+            .substringBefore("#")
+            .trim()
+            .lowercase(Locale.US)
             .replace(Regex("[^a-z0-9]+"), "-")
             .trim('-')
+    }
+
+    fun extractTag(cowName: String): String? {
+        val trimmed = cowName.trim()
+        val inParens = Regex("\\((?:#\\s*)?([A-Za-z0-9-]+)[^)]*\\)").find(trimmed)?.groupValues?.getOrNull(1)
+        if (!inParens.isNullOrBlank()) return inParens.trim().lowercase(Locale.US)
+        val standaloneTag = Regex("#\\s*([A-Za-z0-9-]+)").find(trimmed)?.groupValues?.getOrNull(1)
+        if (!standaloneTag.isNullOrBlank()) return standaloneTag.trim().lowercase(Locale.US)
+        return null
+    }
+
+    fun cowKey(cowName: String): String {
+        val trimmed = cowName.trim()
+        val base = extractBaseName(trimmed)
+        if (base.isNotBlank()) return base
+        val tag = extractTag(trimmed)
+        if (!tag.isNullOrBlank()) return tag
+        val normalized = trimmed.lowercase(Locale.US).replace(Regex("[^a-z0-9]+"), "-").trim('-')
         return normalized.ifBlank { "unassigned-cow" }
+    }
+
+    fun isSameCow(firstCowName: String, secondCowName: String): Boolean {
+        val first = firstCowName.trim()
+        val second = secondCowName.trim()
+        if (first.equals(second, ignoreCase = true)) return true
+
+        val firstKey = cowKey(first)
+        val secondKey = cowKey(second)
+        if (firstKey == secondKey && firstKey.isNotBlank() && firstKey != "unassigned-cow") return true
+
+        val firstTag = extractTag(first)
+        val secondTag = extractTag(second)
+        if (firstTag != null && secondTag != null && firstTag == secondTag) return true
+
+        val firstName = extractBaseName(first)
+        val secondName = extractBaseName(second)
+        if (firstName.isNotBlank() && secondName.isNotBlank() && firstName == secondName && firstName != "unassigned-cow") return true
+
+        return false
     }
 
     fun entrySyncId(farmId: String, cowName: String, dateText: String, session: String): String? {
@@ -55,8 +97,8 @@ object MilkLogEntryRules {
     fun isSameSlot(first: MilkLog, secondCowName: String, secondDate: String, secondSession: String): Boolean {
         val firstDate = canonicalDateKey(first.date) ?: return false
         val secondDateKey = canonicalDateKey(secondDate) ?: return false
-        return cowKey(first.cowName) == cowKey(secondCowName) &&
-            firstDate == secondDateKey &&
-            normalizedSession(first.session) == normalizedSession(secondSession)
+        if (firstDate != secondDateKey) return false
+        if (normalizedSession(first.session) != normalizedSession(secondSession)) return false
+        return isSameCow(first.cowName, secondCowName)
     }
 }

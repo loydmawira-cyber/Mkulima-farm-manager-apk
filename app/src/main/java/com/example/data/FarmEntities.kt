@@ -25,15 +25,20 @@ enum class TaskCategory {
 }
 
 data class WorkerPermissions(
+    val canViewHome: Boolean = true,
+    val canUseQuickActions: Boolean = true,
     val canViewLivestock: Boolean = true,
     val canEditLivestock: Boolean = true,
     val canViewLogs: Boolean = true,
     val canEditLogs: Boolean = true,
+    val canEditPastDaysLogs: Boolean = true,
     val canViewFinance: Boolean = false,
     val canEditFinance: Boolean = false,
     val canViewTasks: Boolean = true,
     val canCompleteTasks: Boolean = true,
-    val canViewRequests: Boolean = true
+    val canCreateTasks: Boolean = true,
+    val canViewRequests: Boolean = true,
+    val canSubmitRequests: Boolean = true
 )
 
 @Entity(tableName = "worker_accounts")
@@ -49,27 +54,37 @@ data class WorkerAccount(
     val createdAt: Long = System.currentTimeMillis(),
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false,
+    val canViewHome: Boolean = true,
+    val canUseQuickActions: Boolean = true,
     val canViewLivestock: Boolean = true,
     val canEditLivestock: Boolean = true,
     val canViewLogs: Boolean = true,
     val canEditLogs: Boolean = true,
+    val canEditPastDaysLogs: Boolean = true,
     val canViewFinance: Boolean = false,
     val canEditFinance: Boolean = false,
     val canViewTasks: Boolean = true,
     val canCompleteTasks: Boolean = true,
-    val canViewRequests: Boolean = true
+    val canCreateTasks: Boolean = true,
+    val canViewRequests: Boolean = true,
+    val canSubmitRequests: Boolean = true
 ) : SyncableEntity {
     fun toPermissions(): WorkerPermissions {
         return WorkerPermissions(
+            canViewHome = canViewHome,
+            canUseQuickActions = canUseQuickActions,
             canViewLivestock = canViewLivestock,
             canEditLivestock = canEditLivestock,
             canViewLogs = canViewLogs,
             canEditLogs = canEditLogs,
+            canEditPastDaysLogs = canEditPastDaysLogs,
             canViewFinance = canViewFinance,
             canEditFinance = canEditFinance,
             canViewTasks = canViewTasks,
             canCompleteTasks = canCompleteTasks,
-            canViewRequests = canViewRequests
+            canCreateTasks = canCreateTasks,
+            canViewRequests = canViewRequests,
+            canSubmitRequests = canSubmitRequests
         )
     }
 }
@@ -97,15 +112,20 @@ data class UserSession(
     val farmName: String,
     val isRevoked: Boolean = false,
     val permissions: WorkerPermissions = WorkerPermissions(
+        canViewHome = true,
+        canUseQuickActions = true,
         canViewLivestock = true,
         canEditLivestock = true,
         canViewLogs = true,
         canEditLogs = true,
+        canEditPastDaysLogs = true,
         canViewFinance = true,
         canEditFinance = true,
         canViewTasks = true,
         canCompleteTasks = true,
-        canViewRequests = true
+        canCreateTasks = true,
+        canViewRequests = true,
+        canSubmitRequests = true
     )
 ) {
     val isOwner: Boolean get() = role.equals("OWNER", ignoreCase = true)

@@ -72,6 +72,7 @@ import com.example.data.FinanceType
 import com.example.data.MilkUsageLog
 import com.example.data.RequestStatus
 import com.example.data.SyncStatus
+import com.example.data.WorkerPermissions
 import com.example.ui.components.SyncStatusBadge
 import com.example.ui.components.AddEggLogDialog
 import com.example.ui.components.AddEmployeeRequestDialog
@@ -318,6 +319,9 @@ fun MkulimaAppContent(
     if (showAddMilkLogDialog) {
         AddMilkLogDialog(
             availableUnits = allUnits,
+            milkLogs = milkLogs,
+            userRole = userRole,
+            canEditPastDaysLogs = isOwner || permissions.canEditPastDaysLogs,
             onDismiss = { showAddMilkLogDialog = false },
             onSaveMilkLog = { cowName, unitName, litres, session, fat, date, notes ->
                 viewModel.addMilkLog(
@@ -333,6 +337,8 @@ fun MkulimaAppContent(
     if (showAddEggLogDialog) {
         AddEggLogDialog(
             availableUnits = allUnits,
+            userRole = userRole,
+            canEditPastDaysLogs = isOwner || permissions.canEditPastDaysLogs,
             onDismiss = { showAddEggLogDialog = false },
             onSaveEggLog = { unitName, totalEggs, damagedEggs, grade, notes ->
                 viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, notes)
@@ -344,6 +350,8 @@ fun MkulimaAppContent(
     // Add Finance Record Dialog
     if (showAddFinanceDialog) {
         AddFinanceRecordDialog(
+            userRole = userRole,
+            canEditPastDaysLogs = isOwner || permissions.canEditPastDaysLogs,
             onDismiss = { showAddFinanceDialog = false },
             onSaveRecord = { type, category, amount, description ->
                 viewModel.addFinanceRecord(type, category, amount, description)
@@ -356,6 +364,8 @@ fun MkulimaAppContent(
     if (editingFinanceRecord != null) {
         AddFinanceRecordDialog(
             existing = editingFinanceRecord,
+            userRole = userRole,
+            canEditPastDaysLogs = isOwner || permissions.canEditPastDaysLogs,
             onDismiss = { editingFinanceRecord = null },
             onSaveRecord = { _, _, _, _ -> },
             onUpdateRecord = { updated ->
@@ -550,6 +560,15 @@ fun MkulimaAppContent(
                 )
             },
             bottomBar = {
+                val permissions = userSession?.permissions ?: WorkerPermissions()
+                val isOwner = userRole.equals("OWNER", ignoreCase = true)
+
+                val canShowHome = isOwner || permissions.canViewHome
+                val canShowAssets = isOwner || permissions.canViewLivestock
+                val canShowLogs = isOwner || permissions.canViewLogs
+                val canShowFinance = (isOwner && subscriptionAccess.canUseFinance) || (!isOwner && permissions.canViewFinance)
+                val canShowTasks = isOwner || permissions.canViewTasks || permissions.canViewRequests
+
                 NavigationBar(
                     containerColor = MaterialTheme.mkulimaColors.cardBackground,
                     tonalElevation = 6.dp
@@ -563,82 +582,88 @@ fun MkulimaAppContent(
                     )
 
                     // Tab 0: Home
-                    NavigationBarItem(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        icon = {
-                            Icon(
-                                if (selectedTab == 0) Icons.Filled.Home else Icons.Outlined.Home,
-                                contentDescription = "Home"
-                            )
-                        },
-                        label = {
-                            Text(
-                                "Home",
-                                fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 11.sp
-                            )
-                        },
-                        colors = navItemColors,
-                        modifier = Modifier.testTag("nav_home_tab")
-                    )
+                    if (canShowHome) {
+                        NavigationBarItem(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            icon = {
+                                Icon(
+                                    if (selectedTab == 0) Icons.Filled.Home else Icons.Outlined.Home,
+                                    contentDescription = "Home"
+                                )
+                            },
+                            label = {
+                                Text(
+                                    "Home",
+                                    fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.sp
+                                )
+                            },
+                            colors = navItemColors,
+                            modifier = Modifier.testTag("nav_home_tab")
+                        )
+                    }
 
                     // Tab 1: Assets
-                    NavigationBarItem(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = {
-                            Icon(
-                                if (selectedTab == 1) Icons.Filled.Grass else Icons.Outlined.Grass,
-                                contentDescription = "Assets"
-                            )
-                        },
-                        label = {
-                            Text(
-                                "Assets",
-                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 11.sp
-                            )
-                        },
-                        colors = navItemColors,
-                        modifier = Modifier.testTag("nav_assets_tab")
-                    )
+                    if (canShowAssets) {
+                        NavigationBarItem(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            icon = {
+                                Icon(
+                                    if (selectedTab == 1) Icons.Filled.Grass else Icons.Outlined.Grass,
+                                    contentDescription = "Assets"
+                                )
+                            },
+                            label = {
+                                Text(
+                                    "Assets",
+                                    fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.sp
+                                )
+                            },
+                            colors = navItemColors,
+                            modifier = Modifier.testTag("nav_assets_tab")
+                        )
+                    }
 
                     // Tab 2: Log
-                    NavigationBarItem(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        icon = {
-                            Icon(
-                                if (selectedTab == 2) Icons.Filled.Assignment else Icons.Outlined.Assignment,
-                                contentDescription = "Log"
-                            )
-                        },
-                        label = {
-                            Text(
-                                "Log",
-                                fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 11.sp
-                            )
-                        },
-                        colors = navItemColors,
-                        modifier = Modifier.testTag("nav_daily_log_tab")
-                    )
+                    if (canShowLogs) {
+                        NavigationBarItem(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            icon = {
+                                Icon(
+                                    if (selectedTab == 2) Icons.Filled.Assignment else Icons.Outlined.Assignment,
+                                    contentDescription = "Log"
+                                )
+                            },
+                            label = {
+                                Text(
+                                    "Log",
+                                    fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.sp
+                                )
+                            },
+                            colors = navItemColors,
+                            modifier = Modifier.testTag("nav_daily_log_tab")
+                        )
+                    }
 
                     // Tab 3: Finance
-                    if (userRole == "OWNER") {
+                    if (canShowFinance) {
                         NavigationBarItem(
                             selected = selectedTab == 3,
                             onClick = {
-                                if (subscriptionAccess.canUseFinance) {
-                                    selectedTab = 3
-                                } else {
+                                if (isOwner && !subscriptionAccess.canUseFinance) {
                                     val message = if (subscriptionAccess.isReadOnly) {
                                         "Subscription expired. Finance and Reports are read-only until renewal."
                                     } else {
                                         "Finance and Reports are available on Premium and Pro."
                                     }
                                     Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                } else {
+                                    selectedTab = 3
                                 }
                             },
                             icon = {
@@ -660,25 +685,27 @@ fun MkulimaAppContent(
                     }
 
                     // Tab 4: Tasks (Daily Tasks & Requests)
-                    NavigationBarItem(
-                        selected = selectedTab == 4,
-                        onClick = { selectedTab = 4 },
-                        icon = {
-                            Icon(
-                                if (selectedTab == 4) Icons.Filled.FactCheck else Icons.Outlined.FactCheck,
-                                contentDescription = "Tasks"
-                            )
-                        },
-                        label = {
-                            Text(
-                                "Tasks",
-                                fontWeight = if (selectedTab == 4) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 11.sp
-                            )
-                        },
-                        colors = navItemColors,
-                        modifier = Modifier.testTag("nav_tasks_tab")
-                    )
+                    if (canShowTasks) {
+                        NavigationBarItem(
+                            selected = selectedTab == 4,
+                            onClick = { selectedTab = 4 },
+                            icon = {
+                                Icon(
+                                    if (selectedTab == 4) Icons.Filled.FactCheck else Icons.Outlined.FactCheck,
+                                    contentDescription = "Tasks"
+                                )
+                            },
+                            label = {
+                                Text(
+                                    "Tasks",
+                                    fontWeight = if (selectedTab == 4) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.sp
+                                )
+                            },
+                            colors = navItemColors,
+                            modifier = Modifier.testTag("nav_tasks_tab")
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -693,13 +720,28 @@ fun MkulimaAppContent(
                         .fillMaxSize()
                         .weight(1f)
                 ) {
-                val effectiveTab = if (userRole != "OWNER") {
-                    when(selectedTab) {
-                        0 -> 2
-                        3 -> 2
-                        else -> selectedTab
-                    }
-                } else selectedTab
+                val permissions = userSession?.permissions ?: WorkerPermissions()
+                val isOwner = userRole.equals("OWNER", ignoreCase = true)
+
+                val canShowHome = isOwner || permissions.canViewHome
+                val canShowAssets = isOwner || permissions.canViewLivestock
+                val canShowLogs = isOwner || permissions.canViewLogs
+                val canShowFinance = (isOwner && subscriptionAccess.canUseFinance) || (!isOwner && permissions.canViewFinance)
+                val canShowTasks = isOwner || permissions.canViewTasks || permissions.canViewRequests
+
+                val availableTabs = buildList {
+                    if (canShowHome) add(0)
+                    if (canShowAssets) add(1)
+                    if (canShowLogs) add(2)
+                    if (canShowFinance) add(3)
+                    if (canShowTasks) add(4)
+                }
+
+                val effectiveTab = if (selectedTab in availableTabs) {
+                    selectedTab
+                } else {
+                    availableTabs.firstOrNull() ?: 2
+                }
 
                 when (effectiveTab) {
                     0 -> DashboardScreen(
@@ -823,10 +865,12 @@ fun MkulimaAppContent(
                         onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
                         onDeleteEggLog = { viewModel.deleteEggLog(it) },
                         farmSettings = farmSettings,
-                        userRole = userRole
+                        userRole = userRole,
+                        canEditLogs = isOwner || permissions.canEditLogs,
+                        canEditPastDaysLogs = isOwner || permissions.canEditPastDaysLogs
                     )
 
-                    3 -> if (userRole == "OWNER" && subscriptionAccess.canUseFinance) FinanceScreen(
+                    3 -> if (canShowFinance) FinanceScreen(
                         records = financeRecords,
                         reports = monthlyReports,
                         onAddTransactionClick = { showAddFinanceDialog = true },
@@ -841,8 +885,11 @@ fun MkulimaAppContent(
                                 }
                             }
                         },
-                        currency = farmSettings.currency
-                    ) else { /* No-op for workers */ }
+                        currency = farmSettings.currency,
+                        canEditFinance = isOwner || permissions.canEditFinance,
+                        userRole = userRole,
+                        canEditPastDaysLogs = isOwner || permissions.canEditPastDaysLogs
+                    ) else { /* No-op */ }
 
                     4 -> ApprovalRequestsScreen(
                         tasks = filteredTasks,
@@ -853,11 +900,23 @@ fun MkulimaAppContent(
                         onCategorySelected = { viewModel.selectedCategoryFilter.value = it },
                         selectedStatus = selectedStatusFilter,
                         onStatusSelected = { viewModel.selectedStatusFilter.value = it },
-                        onCompleteTaskClick = { proofUploadTaskTarget = it },
+                        onCompleteTaskClick = {
+                            if (isOwner || permissions.canCompleteTasks) {
+                                proofUploadTaskTarget = it
+                            } else {
+                                Toast.makeText(context, "Task completion restricted by administrator.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         onReopenTaskClick = { viewModel.markTaskIncomplete(it.id) },
                         onViewProofClick = { proofModalTaskTarget = it },
                         onDeleteTaskClick = { viewModel.deleteTask(it.id) },
-                        onAddTaskClick = { showAddTaskDialog = true },
+                        onAddTaskClick = {
+                            if (isOwner || permissions.canCreateTasks) {
+                                showAddTaskDialog = true
+                            } else {
+                                Toast.makeText(context, "Task creation restricted by administrator.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         onUpdateRequestStatus = { req, statusString ->
                             val requestStatus = when (statusString) {
                                 "APPROVED" -> RequestStatus.APPROVED
@@ -868,7 +927,9 @@ fun MkulimaAppContent(
                         },
                         currency = farmSettings.currency,
                         userRole = userRole,
-                        onAddRequestClick = { showAddEmployeeRequestDialog = true }
+                        onAddRequestClick = if (isOwner || permissions.canSubmitRequests) {
+                            { showAddEmployeeRequestDialog = true }
+                        } else null
                     )
                 }
             }

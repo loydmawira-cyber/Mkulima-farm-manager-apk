@@ -614,6 +614,8 @@ fun MilkLogScreen(
     onDeleteEggLog: (Long) -> Unit,
     farmSettings: com.example.data.FarmSettings,
     userRole: String = "OWNER",
+    canEditLogs: Boolean = true,
+    canEditPastDaysLogs: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -739,7 +741,10 @@ fun MilkLogScreen(
     var saveSuccessMessage by remember { mutableStateOf<String?>(null) }
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
 
+    val isOwner = userRole.equals("OWNER", ignoreCase = true)
+    val cannotEditPast = !isOwner && !canEditPastDaysLogs
     val selectedDateIsFuture = MilkLogEntryRules.isFutureDate(selectedLogDate)
+    val selectedDateIsPastRestricted = cannotEditPast && com.example.util.DateValidationUtils.isPastDate(selectedLogDate)
     val selectedDateIsValid = MilkLogEntryRules.canonicalDateKey(selectedLogDate) != null
     val selectedMilkSlotRecorded = selectedCow?.let { cow ->
         milkLogs.any { log -> MilkLogEntryRules.isSameSlot(log, cow.name, selectedLogDate, selectedSession) }
@@ -844,9 +849,11 @@ fun MilkLogScreen(
     var eggGradeFilter by remember { mutableStateOf("ALL") }
     var eggFlockFilter by remember { mutableStateOf("ALL") }
     var analyticsEggFlock by remember { mutableStateOf("ALL") }
-    var analyticsEggTimeframe by remember { mutableStateOf("DAILY") } // DAILY, MONTH, YEAR
+    var analyticsEggTimeframe by remember { mutableStateOf("TODAY") } // TODAY, MONTH, YEAR
     var analyticsEggMonth by remember { mutableStateOf(defaultMonthName) }
     var analyticsEggYear by remember { mutableStateOf(defaultYearName) }
+    var isEggMonthMenuExpanded by remember { mutableStateOf(false) }
+    var isEggYearMenuExpanded by remember { mutableStateOf(false) }
     val eggAnalyticsYears = remember(currentYearNum) { (currentYearNum downTo (currentYearNum - 3)).map { it.toString() } }
 
     val filteredEggLogs = eggLogs.filter { log ->
@@ -1658,12 +1665,19 @@ fun MilkLogScreen(
                             HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 2.dp)
 
                             filteredUsageLogs.forEach { usage ->
+                                val canModifyThisUsage = isOwner || (canEditLogs && (canEditPastDaysLogs || com.example.util.DateValidationUtils.isTodayOrFuture(usage.date, usage.updatedAt)))
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .pointerInput(usage.id) {
+                                        .pointerInput(usage.id, canModifyThisUsage) {
                                             detectTapGestures(
-                                                onLongPress = { longPressedUsageLog = usage }
+                                                onLongPress = {
+                                                    if (canModifyThisUsage) {
+                                                        longPressedUsageLog = usage
+                                                    } else {
+                                                        android.widget.Toast.makeText(context, "Editing or deleting records for previous days is disabled for worker accounts.", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
                                             )
                                         }
                                         .padding(vertical = 10.dp)
@@ -2080,31 +2094,33 @@ fun MilkLogScreen(
                                 modifier = Modifier.weight(1f)
                             )
 
-                            FilterChip(
-                                selected = selectedLogDate == yesterdayDateStr,
-                                onClick = { selectedLogDate = yesterdayDateStr },
-                                label = { Text("Yesterday", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ForestGreenPrimary,
-                                    selectedLabelColor = Color.White,
-                                    containerColor = Color(0xFFF1F5F9),
-                                    labelColor = Color(0xFF475569)
-                                ),
-                                modifier = Modifier.weight(1f)
-                            )
+                            if (!cannotEditPast) {
+                                FilterChip(
+                                    selected = selectedLogDate == yesterdayDateStr,
+                                    onClick = { selectedLogDate = yesterdayDateStr },
+                                    label = { Text("Yesterday", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color(0xFFF1F5F9),
+                                        labelColor = Color(0xFF475569)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
 
-                            FilterChip(
-                                selected = selectedLogDate == twoDaysAgoDateStr,
-                                onClick = { selectedLogDate = twoDaysAgoDateStr },
-                                label = { Text("2 Days Ago", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ForestGreenPrimary,
-                                    selectedLabelColor = Color.White,
-                                    containerColor = Color(0xFFF1F5F9),
-                                    labelColor = Color(0xFF475569)
-                                ),
-                                modifier = Modifier.weight(1f)
-                            )
+                                FilterChip(
+                                    selected = selectedLogDate == twoDaysAgoDateStr,
+                                    onClick = { selectedLogDate = twoDaysAgoDateStr },
+                                    label = { Text("2 Days Ago", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color(0xFFF1F5F9),
+                                        labelColor = Color(0xFF475569)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(6.dp))
@@ -2156,7 +2172,7 @@ fun MilkLogScreen(
                             onClick = {
                                 val cowName = selectedCow?.name ?: cowSearchQuery.ifBlank { "Unassigned Cow" }
                                 val litres = milkLitresText.toDoubleOrNull() ?: 0.0
-                                if (litres > 0 && !selectedMilkSlotRecorded && !selectedDateIsFuture && selectedDateIsValid) {
+                                if (litres > 0 && !selectedMilkSlotRecorded && !selectedDateIsFuture && !selectedDateIsPastRestricted && selectedDateIsValid) {
                                     onQuickSaveMilkLog(cowName, litres, selectedSession, selectedLogDate) { saved, message ->
                                         if (saved) {
                                             saveErrorMessage = null
@@ -2179,7 +2195,7 @@ fun MilkLogScreen(
                                 disabledContainerColor = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFCBD5E1)
                             ),
                             enabled = milkLitresText.isNotBlank() && (selectedCow != null || cowSearchQuery.isNotBlank()) &&
-                                !selectedMilkSlotRecorded && !selectedDateIsFuture && selectedDateIsValid
+                                !selectedMilkSlotRecorded && !selectedDateIsFuture && !selectedDateIsPastRestricted && selectedDateIsValid
                         ) {
                             Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -2187,6 +2203,7 @@ fun MilkLogScreen(
                                 text = when {
                                     selectedMilkSlotRecorded -> "RECORDED"
                                     selectedDateIsFuture -> "FUTURE DATE NOT ALLOWED"
+                                    selectedDateIsPastRestricted -> "PREVIOUS DAYS LOCKED"
                                     !selectedDateIsValid -> "SELECT A VALID DATE"
                                     else -> "SAVE COW MILK LOG"
                                 },
@@ -2195,12 +2212,13 @@ fun MilkLogScreen(
                             )
                         }
 
-                        if (selectedMilkSlotRecorded || selectedDateIsFuture || !selectedDateIsValid) {
+                        if (selectedMilkSlotRecorded || selectedDateIsFuture || selectedDateIsPastRestricted || !selectedDateIsValid) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = when {
                                     selectedMilkSlotRecorded -> "This cow's ${MilkLogEntryRules.normalizedSession(selectedSession).lowercase()} milk is already recorded for this date. Delete it in Log History before recording again."
                                     selectedDateIsFuture -> "Milk cannot be recorded for a future date."
+                                    selectedDateIsPastRestricted -> "Recording logs for previous days is disabled for worker accounts. Please select today's date."
                                     else -> "Choose a valid date on or before today."
                                 },
                                 color = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFB91C1C),
@@ -2458,6 +2476,7 @@ fun MilkLogScreen(
                             }
                         }
                         val alreadyRecorded = existingUsageForDate != null
+                        val usageDateIsPastRestricted = cannotEditPast && com.example.util.DateValidationUtils.isPastDate(usageDateText)
 
                         Button(
                             onClick = {
@@ -2481,7 +2500,7 @@ fun MilkLogScreen(
                                     }
                                 }
                             },
-                            enabled = !alreadyRecorded,
+                            enabled = !alreadyRecorded && !usageDateIsPastRestricted,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("save_milk_usage_button"),
@@ -2492,7 +2511,11 @@ fun MilkLogScreen(
                             )
                         ) {
                             Text(
-                                text = if (alreadyRecorded) "Recorded" else "Save Usage Record",
+                                text = when {
+                                    alreadyRecorded -> "Recorded"
+                                    usageDateIsPastRestricted -> "Previous Days Locked"
+                                    else -> "Save Usage Record"
+                                },
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
                             )
@@ -2503,6 +2526,16 @@ fun MilkLogScreen(
                             Text(
                                 text = "A usage record already exists for this date and session. Delete it first to re-enter.",
                                 color = Color(0xFF64748B),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        if (usageDateIsPastRestricted) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "Recording milk usage for previous days is disabled for worker accounts. Please select today's date.",
+                                color = Color(0xFFB91C1C),
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -3553,7 +3586,8 @@ fun MilkLogScreen(
 
                                 Spacer(modifier = Modifier.width(8.dp))
 
-                                if (userRole == "OWNER") {
+                                val canDeleteThisLog = isOwner || (canEditLogs && (canEditPastDaysLogs || com.example.util.DateValidationUtils.isTodayOrFuture(log.date, log.updatedAt)))
+                                if (canDeleteThisLog) {
                                     IconButton(onClick = { onDeleteMilkLog(log.id) }) {
                                         Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
                                     }
@@ -3708,85 +3742,222 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Timeframe Selector Chips
-                            Text("TIMEFRAME:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                            Spacer(modifier = Modifier.height(4.dp))
-
+                            // Timeframe Tabs for Egg Yield: Today, Month, Year (Identical to Milk Production Overview)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                listOf("DAILY" to "Daily", "MONTH" to "Month", "YEAR" to "Year").forEach { (tfKey, tfLabel) ->
-                                    FilterChip(
-                                        selected = analyticsEggTimeframe == tfKey,
-                                        onClick = {
-                                            analyticsEggTimeframe = tfKey
-                                            if (tfKey == "MONTH") analyticsEggMonth = "ALL"
-                                            if (tfKey == "YEAR") analyticsEggYear = "ALL"
-                                        },
-                                        label = { Text(tfLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ForestGreenPrimary, selectedLabelColor = Color.White, containerColor = Color(0xFFF1F5F9), labelColor = Color(0xFF475569)),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                            }
-                            if (analyticsEggTimeframe == "MONTH") {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("SELECT MONTH:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                                Spacer(modifier = Modifier.height(4.dp))
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier.fillMaxWidth()
+                                // 1. TODAY TAB
+                                val isTodaySelected = analyticsEggTimeframe == "TODAY"
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isTodaySelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                    border = if (isTodaySelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { analyticsEggTimeframe = "TODAY" }
                                 ) {
-                                    (listOf("ALL") + monthsList).forEach { month ->
-                                        FilterChip(
-                                            selected = analyticsEggMonth == month,
-                                            onClick = { analyticsEggMonth = month },
-                                            label = { Text(if (month == "ALL") "All" else month.take(3), fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFDDF5E7), selectedLabelColor = Color(0xFF14532D), containerColor = Color(0xFFF8FAFC), labelColor = Color(0xFF475569))
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Today",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isTodaySelected) Color.White else Color(0xFF334155)
                                         )
                                     }
                                 }
-                            }
-                            if (analyticsEggTimeframe == "YEAR") {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("SELECT YEAR:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                                Spacer(modifier = Modifier.height(4.dp))
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    (listOf("ALL") + eggAnalyticsYears).forEach { year ->
-                                        FilterChip(
-                                            selected = analyticsEggYear == year,
-                                            onClick = { analyticsEggYear = year },
-                                            label = { Text(if (year == "ALL") "All" else year, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFFDDF5E7), selectedLabelColor = Color(0xFF14532D), containerColor = Color(0xFFF8FAFC), labelColor = Color(0xFF475569))
-                                        )
+
+                                // 2. MONTH TAB
+                                val isMonthSelected = analyticsEggTimeframe == "MONTH"
+                                Box(modifier = Modifier.weight(1.1f)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isMonthSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                        border = if (isMonthSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                analyticsEggTimeframe = "MONTH"
+                                                isEggMonthMenuExpanded = true
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = analyticsEggMonth,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isMonthSelected) Color.White else Color(0xFF334155),
+                                                maxLines = 1
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Icon(
+                                                imageVector = Icons.Filled.ArrowDropDown,
+                                                contentDescription = "Select Month",
+                                                tint = if (isMonthSelected) Color.White else Color(0xFF64748B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                    DropdownMenu(
+                                        expanded = isEggMonthMenuExpanded,
+                                        onDismissRequest = { isEggMonthMenuExpanded = false },
+                                        modifier = Modifier.background(Color.White)
+                                    ) {
+                                        monthsList.forEach { month ->
+                                            val isCurrent = month.equals(analyticsEggMonth, ignoreCase = true)
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = month,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                            color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                        )
+                                                        if (isCurrent) {
+                                                            Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                                        }
+                                                    }
+                                                },
+                                                onClick = {
+                                                    analyticsEggMonth = month
+                                                    analyticsEggTimeframe = "MONTH"
+                                                    isEggMonthMenuExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 3. YEAR TAB
+                                val isYearSelected = analyticsEggTimeframe == "YEAR"
+                                Box(modifier = Modifier.weight(1.1f)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isYearSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                        border = if (isYearSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                analyticsEggTimeframe = "YEAR"
+                                                isEggYearMenuExpanded = true
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = analyticsEggYear,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isYearSelected) Color.White else Color(0xFF334155),
+                                                maxLines = 1
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Icon(
+                                                imageVector = Icons.Filled.ArrowDropDown,
+                                                contentDescription = "Select Year",
+                                                tint = if (isYearSelected) Color.White else Color(0xFF64748B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                    DropdownMenu(
+                                        expanded = isEggYearMenuExpanded,
+                                        onDismissRequest = { isEggYearMenuExpanded = false },
+                                        modifier = Modifier.background(Color.White)
+                                    ) {
+                                        yearsList.forEach { yr ->
+                                            val isCurrent = yr == analyticsEggYear
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = yr,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                            color = if (isCurrent) ForestGreenPrimary else Color(0xFF1E293B)
+                                                        )
+                                                        if (isCurrent) {
+                                                            Text("✓", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+                                                        }
+                                                    }
+                                                },
+                                                onClick = {
+                                                    analyticsEggYear = yr
+                                                    analyticsEggTimeframe = "YEAR"
+                                                    isEggYearMenuExpanded = false
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Analytics records are now filtered by a real calendar period; no demo values are used.
+                            // Analytics records filtered by real calendar period
                             val selectedFlockLogs = if (analyticsEggFlock == "ALL") eggLogs else eggLogs.filter { it.unitName.equals(analyticsEggFlock, ignoreCase = true) }
+                            val targetEggMonthIdx = monthsList.indexOfFirst { it.equals(analyticsEggMonth, ignoreCase = true) }
+                            val targetEggYearInt = analyticsEggYear.toIntOrNull() ?: currentYearNum
+
+                            fun eggLogCalendar(log: EggLog): java.util.Calendar? =
+                                parseMilkLogCalendar(log.loggedAt) ?: parseMilkLogCalendar(log.notes?.substringAfter("[")?.substringBefore("]") ?: "")
+
                             val timeframeLogs = selectedFlockLogs.filter { log ->
-                                val parsed = parseMilkLogCalendar(log.loggedAt) ?: parseMilkLogCalendar(log.notes?.substringAfter("[")?.substringBefore("]") ?: "")
+                                val parsed = eggLogCalendar(log)
                                 when (analyticsEggTimeframe) {
-                                    "DAILY" -> parsed?.let { it.get(java.util.Calendar.YEAR) == currentYearNum && it.get(java.util.Calendar.DAY_OF_YEAR) == currentCal.get(java.util.Calendar.DAY_OF_YEAR) } ?: false
-                                    "MONTH" -> parsed?.let { analyticsEggMonth == "ALL" || it.get(java.util.Calendar.MONTH) == monthsList.indexOf(analyticsEggMonth) } ?: false
-                                    "YEAR" -> parsed?.let { analyticsEggYear == "ALL" || it.get(java.util.Calendar.YEAR).toString() == analyticsEggYear } ?: false
-                                    else -> false
+                                    "TODAY" -> {
+                                        if (parsed != null) {
+                                            parsed.get(java.util.Calendar.YEAR) == currentYearNum &&
+                                                    parsed.get(java.util.Calendar.DAY_OF_YEAR) == currentCal.get(java.util.Calendar.DAY_OF_YEAR)
+                                        } else {
+                                            log.loggedAt.contains("Today", ignoreCase = true) ||
+                                                    log.loggedAt.contains(todayDateStr, ignoreCase = true)
+                                        }
+                                    }
+                                    "MONTH" -> {
+                                        if (parsed != null) {
+                                            parsed.get(java.util.Calendar.MONTH) == targetEggMonthIdx &&
+                                                    parsed.get(java.util.Calendar.YEAR) == targetEggYearInt
+                                        } else {
+                                            log.loggedAt.contains(analyticsEggMonth, ignoreCase = true) &&
+                                                    log.loggedAt.contains(targetEggYearInt.toString())
+                                        }
+                                    }
+                                    "YEAR" -> {
+                                        if (parsed != null) {
+                                            parsed.get(java.util.Calendar.YEAR) == targetEggYearInt
+                                        } else {
+                                            log.loggedAt.contains(targetEggYearInt.toString())
+                                        }
+                                    }
+                                    else -> true
                                 }
                             }
                             val totalFlockEggs = timeframeLogs.sumOf { it.totalEggs }
                             val totalFlockTrays = totalFlockEggs / 30
                             val totalFlockRem = totalFlockEggs % 30
                             val totalFlockDamaged = timeframeLogs.sumOf { it.damagedEggs }
-                            val dailyAvgValue = if (timeframeLogs.isEmpty()) 0 else (totalFlockEggs.toDouble() / timeframeLogs.mapNotNull { parseMilkLogCalendar(it.loggedAt) }.map { it.get(java.util.Calendar.DAY_OF_YEAR) }.distinct().size.coerceAtLeast(1)).toInt()
+                            val dailyAvgValue = if (timeframeLogs.isEmpty()) 0 else (totalFlockEggs.toDouble() / timeframeLogs.mapNotNull { eggLogCalendar(it) }.map { it.get(java.util.Calendar.DAY_OF_YEAR) }.distinct().size.coerceAtLeast(1)).toInt()
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -3862,37 +4033,26 @@ fun MilkLogScreen(
 
                             // The chart uses exactly the flock and calendar period selected above.
                             val eggTrendTitle = when (analyticsEggTimeframe) {
-                                "DAILY" -> "TODAY'S EGG PRODUCTION"
-                                "MONTH" -> if (analyticsEggMonth == "ALL") "ALL-MONTH EGG PRODUCTION" else "${analyticsEggMonth.uppercase()} EGG PRODUCTION"
-                                else -> if (analyticsEggYear == "ALL") "ALL-YEAR EGG PRODUCTION" else "${analyticsEggYear} EGG PRODUCTION"
+                                "TODAY" -> "TODAY'S EGG PRODUCTION"
+                                "MONTH" -> "${analyticsEggMonth.uppercase()} $targetEggYearInt EGG PRODUCTION"
+                                else -> "$targetEggYearInt EGG PRODUCTION"
                             }
                             Text(eggTrendTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            fun eggLogCalendar(log: EggLog): java.util.Calendar? =
-                                parseMilkLogCalendar(log.loggedAt) ?: parseMilkLogCalendar(log.notes?.substringAfter("[")?.substringBefore("]") ?: "")
-
-                            val eggTrendPoints = remember(timeframeLogs, selectedFlockLogs, analyticsEggTimeframe, analyticsEggMonth, analyticsEggYear) {
+                            val eggTrendPoints = remember(timeframeLogs, selectedFlockLogs, analyticsEggTimeframe, analyticsEggMonth, analyticsEggYear, targetEggMonthIdx, targetEggYearInt) {
                                 when (analyticsEggTimeframe) {
-                                    "DAILY" -> listOf("Today" to timeframeLogs.sumOf { it.totalEggs }.toFloat())
-                                    "MONTH" -> if (analyticsEggMonth == "ALL") {
-                                        monthsList.mapIndexed { index, month ->
-                                            month.take(3) to selectedFlockLogs.filter { eggLogCalendar(it)?.get(java.util.Calendar.MONTH) == index }.sumOf { it.totalEggs }.toFloat()
-                                        }
-                                    } else {
-                                        val monthIndex = monthsList.indexOf(analyticsEggMonth)
+                                    "TODAY" -> listOf("Today" to timeframeLogs.sumOf { it.totalEggs }.toFloat())
+                                    "MONTH" -> {
                                         val maximumDay = java.util.Calendar.getInstance().apply {
-                                            set(java.util.Calendar.MONTH, monthIndex)
+                                            set(java.util.Calendar.YEAR, targetEggYearInt)
+                                            set(java.util.Calendar.MONTH, targetEggMonthIdx)
                                         }.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
                                         (1..maximumDay).map { day ->
                                             day.toString() to timeframeLogs.filter { eggLogCalendar(it)?.get(java.util.Calendar.DAY_OF_MONTH) == day }.sumOf { it.totalEggs }.toFloat()
                                         }
                                     }
-                                    else -> if (analyticsEggYear == "ALL") {
-                                        eggAnalyticsYears.reversed().map { year ->
-                                            year to selectedFlockLogs.filter { eggLogCalendar(it)?.get(java.util.Calendar.YEAR)?.toString() == year }.sumOf { it.totalEggs }.toFloat()
-                                        }
-                                    } else {
+                                    else -> {
                                         monthsList.mapIndexed { index, month ->
                                             month.take(3) to timeframeLogs.filter { eggLogCalendar(it)?.get(java.util.Calendar.MONTH) == index }.sumOf { it.totalEggs }.toFloat()
                                         }
@@ -3904,32 +4064,70 @@ fun MilkLogScreen(
                             val dayValues = eggTrendPoints.map { it.second }
                             val maxVal = (dayValues.maxOrNull() ?: 1f).coerceAtLeast(1f)
 
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(120.dp),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.Bottom
-                            ) {
-                                dayValues.forEachIndexed { idx, valAmt ->
-                                    val pct = if (valAmt <= 0f) 0.03f else (valAmt / maxVal).coerceIn(0.03f, 1f)
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.weight(1f)
+                            if (dayValues.size > 12) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState())
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .height(120.dp)
+                                            .padding(horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.Bottom
                                     ) {
-                                        Text("${valAmt.toInt()}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F))
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Box(
-                                            modifier = Modifier
-                                                .width(18.dp)
-                                                .fillMaxHeight(pct * 0.75f)
-                                                .background(
-                                                    color = if (idx == dayValues.lastIndex) Color(0xFFD97706) else Color(0xFFFBBF24),
-                                                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                        dayValues.forEachIndexed { idx, valAmt ->
+                                            val pct = if (valAmt <= 0f) 0.03f else (valAmt / maxVal).coerceIn(0.03f, 1f)
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                modifier = Modifier.width(26.dp)
+                                            ) {
+                                                Text("${valAmt.toInt()}", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F))
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(16.dp)
+                                                        .fillMaxHeight(pct * 0.75f)
+                                                    .background(
+                                                        color = if (idx == dayValues.lastIndex) Color(0xFFD97706) else Color(0xFFFBBF24),
+                                                        shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                                    )
                                                 )
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(daysList[idx], fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(daysList[idx], fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(120.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
+                                    dayValues.forEachIndexed { idx, valAmt ->
+                                        val pct = if (valAmt <= 0f) 0.03f else (valAmt / maxVal).coerceIn(0.03f, 1f)
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("${valAmt.toInt()}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F))
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(18.dp)
+                                                    .fillMaxHeight(pct * 0.75f)
+                                                    .background(
+                                                        color = if (idx == dayValues.lastIndex) Color(0xFFD97706) else Color(0xFFFBBF24),
+                                                        shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                                    )
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(daysList[idx], fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+                                        }
                                     }
                                 }
                             }
@@ -4018,8 +4216,9 @@ fun MilkLogScreen(
 
                             Text("Collection Date:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
                             Spacer(modifier = Modifier.height(6.dp))
+                            val eggDateOptions = if (cannotEditPast) listOf(todayDateStr) else listOf(todayDateStr, yesterdayDateStr, twoDaysAgoDateStr)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf(todayDateStr, yesterdayDateStr, twoDaysAgoDateStr).forEach { dt ->
+                                eggDateOptions.forEach { dt ->
                                     val isSel = selectedEggLogDate == dt
                                     FilterChip(
                                         selected = isSel,
@@ -4051,11 +4250,14 @@ fun MilkLogScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
+                            val eggDateIsPastRestricted = cannotEditPast && com.example.util.DateValidationUtils.isPastDate(selectedEggLogDate)
+                            val eggDateIsFuture = MilkLogEntryRules.isFutureDate(selectedEggLogDate)
+
                             Button(
                                 onClick = {
                                     val totalVal = eggTotalText.toIntOrNull() ?: 0
                                     val damagedVal = eggDamagedText.toIntOrNull() ?: 0
-                                    if (totalVal > 0) {
+                                    if (totalVal > 0 && !eggDateIsPastRestricted && !eggDateIsFuture) {
                                         onQuickSaveEggLog(
                                             selectedEggFlock,
                                             totalVal,
@@ -4072,9 +4274,31 @@ fun MilkLogScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                                enabled = !eggDateIsPastRestricted && !eggDateIsFuture && (eggTotalText.toIntOrNull() ?: 0) > 0,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ForestGreenPrimary,
+                                    disabledContainerColor = Color(0xFF94A3B8)
+                                )
                             ) {
-                                Text("+ SAVE EGG COLLECTION LOG", fontWeight = FontWeight.Bold, color = Color.White)
+                                Text(
+                                    text = when {
+                                        eggDateIsPastRestricted -> "PREVIOUS DAYS LOCKED"
+                                        eggDateIsFuture -> "FUTURE DATE NOT ALLOWED"
+                                        else -> "+ SAVE EGG COLLECTION LOG"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+
+                            if (eggDateIsPastRestricted) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Recording egg collections for previous days is disabled for worker accounts. Please select today's date.",
+                                    color = Color(0xFFB91C1C),
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
 
                             if (saveSuccessMessage != null) {
@@ -4264,7 +4488,8 @@ fun MilkLogScreen(
                                     }
                                 }
 
-                                if (userRole == "OWNER") {
+                                val canDeleteThisEggLog = isOwner || (canEditLogs && (canEditPastDaysLogs || com.example.util.DateValidationUtils.isTodayOrFuture(log.loggedAt, log.updatedAt)))
+                                if (canDeleteThisEggLog) {
                                     IconButton(onClick = { onDeleteEggLog(log.id) }) {
                                         Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
                                     }

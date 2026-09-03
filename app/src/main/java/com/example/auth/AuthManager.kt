@@ -1090,6 +1090,14 @@ class AuthManager(
             // Cache the profile locally. Credentials always remain in Firebase Auth.
             val profilePermissions = permissionsFromUserProfile(role, userDocData)
             if (role.equals("WORKER", ignoreCase = true)) {
+                // If this worker already has a local record, it reflects whatever
+                // the farm owner has set via Manage Workers (synced through the
+                // worker_accounts collection). Preserve those permission values on
+                // login rather than overwriting them with the legacy/default flags
+                // derived from the "users" profile document below — otherwise every
+                // login would silently revert any permission change the owner made.
+                val existingWorker = repository.getWorkerById(uid)
+                val effectivePermissions = existingWorker?.toPermissions() ?: profilePermissions
                 val workerAccount = WorkerAccount(
                     workerId = uid,
                     syncId = uid,
@@ -1099,15 +1107,20 @@ class AuthManager(
                     password = "",
                     role = "WORKER",
                     isRevoked = false,
-                    canViewLivestock = profilePermissions.canViewLivestock,
-                    canEditLivestock = profilePermissions.canEditLivestock,
-                    canViewLogs = profilePermissions.canViewLogs,
-                    canEditLogs = profilePermissions.canEditLogs,
-                    canViewFinance = profilePermissions.canViewFinance,
-                    canEditFinance = profilePermissions.canEditFinance,
-                    canViewTasks = profilePermissions.canViewTasks,
-                    canCompleteTasks = profilePermissions.canCompleteTasks,
-                    canViewRequests = profilePermissions.canViewRequests
+                    canViewHome = effectivePermissions.canViewHome,
+                    canUseQuickActions = effectivePermissions.canUseQuickActions,
+                    canViewLivestock = effectivePermissions.canViewLivestock,
+                    canEditLivestock = effectivePermissions.canEditLivestock,
+                    canViewLogs = effectivePermissions.canViewLogs,
+                    canEditLogs = effectivePermissions.canEditLogs,
+                    canEditPastDaysLogs = effectivePermissions.canEditPastDaysLogs,
+                    canViewFinance = effectivePermissions.canViewFinance,
+                    canEditFinance = effectivePermissions.canEditFinance,
+                    canViewTasks = effectivePermissions.canViewTasks,
+                    canCompleteTasks = effectivePermissions.canCompleteTasks,
+                    canCreateTasks = effectivePermissions.canCreateTasks,
+                    canViewRequests = effectivePermissions.canViewRequests,
+                    canSubmitRequests = effectivePermissions.canSubmitRequests
                 )
                 repository.insertWorker(workerAccount)
             } else {

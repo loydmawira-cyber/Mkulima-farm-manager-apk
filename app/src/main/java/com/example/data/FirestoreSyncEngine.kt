@@ -138,8 +138,10 @@ class FirestoreSyncEngine(
     private inner class BatchWriter(private val db: FirebaseFirestore) {
         private var batch = db.batch()
         private var opsInBatch = 0
+        private var failed = false
 
         fun queueSet(ref: DocumentReference, data: Map<String, Any?>) {
+            check(!failed) { "Cannot queue writes after a failed Firestore batch commit" }
             val nonNull = data.filterValues { it != null }
             batch.set(ref, nonNull, SetOptions.merge())
             opsInBatch++
@@ -152,11 +154,13 @@ class FirestoreSyncEngine(
             batch = db.batch()
             opsInBatch = 0
             try {
-                // Firestore writes locally to SQLite cache immediately, then uploads.
-                // We use a short 3s timeout to verify fast network acknowledgment without blocking the thread.
-                Tasks.await(toCommit.commit(), 3000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+                // Do not advance push watermarks unless the server acknowledges the batch.
+                // Firestore may update its local cache before the upload completes.
+                Tasks.await(toCommit.commit(), 15000L, java.util.concurrent.TimeUnit.MILLISECONDS)
             } catch (e: Throwable) {
-                Log.d(TAG, "Batch committed to Firestore local cache: ${e.message}")
+                failed = true
+                Log.e(TAG, "Firestore batch commit failed", e)
+                throw e
             }
         }
     }
@@ -340,21 +344,17 @@ class FirestoreSyncEngine(
             if (pushMutex.isLocked) return@launch // Already syncing, dirty rows will be captured
             pushMutex.withLock {
                 _syncStatus.value = SyncStatus.Syncing
-                try {
-                    pushDirtyRows(targetFarmId)
-                } finally {
-                    _syncStatus.value = if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
-                }
+                val pushed = pushDirtyRows(targetFarmId)
+                _syncStatus.value = if (pushed) SyncStatus.Synced else SyncStatus.Offline
             }
         }
     }
 
-    suspend fun pushDirtyRows(farmId: String) = withContext(Dispatchers.IO) {
+    suspend fun pushDirtyRows(farmId: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val db = getFirestore() ?: run {
                 Log.e(TAG, "Firestore instance unavailable — skipping push for farm: $farmId")
-                _syncStatus.value = if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
-                return@withContext
+                return@withContext false
             }
             val farmRef = db.collection("farms").document(farmId)
             val writer = BatchWriter(db)
@@ -756,9 +756,12 @@ class FirestoreSyncEngine(
 
             Log.d(TAG, "Successfully pushed dirty rows for farm: $farmId")
             _syncStatus.value = SyncStatus.Synced
+            true
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to push dirty rows for farm $farmId", e)
-            _syncStatus.value = if (isNetworkAvailable(context)) SyncStatus.Synced else SyncStatus.Offline
+            // Keep dirty rows eligible for retry. Never report Synced after a failed write.
+            _syncStatus.value = SyncStatus.Offline
+            false
         }
     }
 

@@ -73,7 +73,6 @@ import com.example.data.MilkUsageLog
 import com.example.data.RequestStatus
 import com.example.data.SyncStatus
 import com.example.ui.components.SyncStatusBadge
-import com.example.ui.components.SyncStatusBanner
 import com.example.ui.components.AddEggLogDialog
 import com.example.ui.components.AddEmployeeRequestDialog
 import com.example.ui.components.AddFinanceRecordDialog
@@ -688,12 +687,6 @@ fun MkulimaAppContent(
                     .padding(innerPadding)
                     .background(MaterialTheme.colorScheme.background)
             ) {
-                // Persistent sync & connectivity notification banner
-                SyncStatusBanner(
-                    status = syncStatus,
-                    onRetrySync = { viewModel.triggerManualSync() }
-                )
-
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

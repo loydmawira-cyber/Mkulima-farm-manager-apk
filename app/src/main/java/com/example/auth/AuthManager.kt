@@ -1375,36 +1375,8 @@ class AuthManager(
         // password requires an Admin SDK/Cloud Function and is intentionally not
         // attempted from this client app.
         val sanitized = worker.copy(password = "")
+        // repository.updateWorker writes to Room and triggers the sync engine,
+        // which pushes to the correct "worker_accounts" Firestore collection.
         repository.updateWorker(sanitized)
-        try {
-            val db = getFirestore()
-            if (db != null) {
-                val workerData = hashMapOf<String, Any>(
-                    "name" to sanitized.name,
-                    "email" to if (sanitized.emailOrPhone.contains("@")) sanitized.emailOrPhone.lowercase() else "",
-                    "phone" to if (sanitized.emailOrPhone.contains("@")) "" else sanitized.emailOrPhone,
-                    "phoneNumber" to if (sanitized.emailOrPhone.contains("@")) "" else sanitized.emailOrPhone,
-                    "isRevoked" to sanitized.isRevoked,
-                    "canViewHome" to sanitized.canViewHome,
-                    "canUseQuickActions" to sanitized.canUseQuickActions,
-                    "canViewLivestock" to sanitized.canViewLivestock,
-                    "canEditLivestock" to sanitized.canEditLivestock,
-                    "canViewLogs" to sanitized.canViewLogs,
-                    "canEditLogs" to sanitized.canEditLogs,
-                    "canEditPastDaysLogs" to sanitized.canEditPastDaysLogs,
-                    "canViewFinance" to sanitized.canViewFinance,
-                    "canEditFinance" to sanitized.canEditFinance,
-                    "canViewTasks" to sanitized.canViewTasks,
-                    "canCompleteTasks" to sanitized.canCompleteTasks,
-                    "canCreateTasks" to sanitized.canCreateTasks,
-                    "canViewRequests" to sanitized.canViewRequests,
-                    "canSubmitRequests" to sanitized.canSubmitRequests,
-                    "updatedAt" to System.currentTimeMillis()
-                )
-                db.collection("users").document(sanitized.workerId).set(workerData, SetOptions.merge()).awaitTask()
-            }
-        } catch (e: Throwable) {
-            Log.e(TAG, "Failed to update worker profile", e)
-        }
     }
 }

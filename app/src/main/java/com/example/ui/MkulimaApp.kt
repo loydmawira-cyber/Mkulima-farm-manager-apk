@@ -256,22 +256,31 @@ fun MkulimaAppContent(
 
     // Add Task Dialog
     if (showAddTaskDialog) {
-        AddTaskDialog(
-            availableUnits = allUnits,
-            initialCategory = addTaskInitialCategory,
-            initialTargetUnit = addTaskInitialTargetUnit,
-            onDismiss = {
-                showAddTaskDialog = false
-                addTaskInitialCategory = null
-                addTaskInitialTargetUnit = null
-            },
-            onTaskCreated = { title, category, targetUnit, priority, scheduledTime, instructions, worker ->
-                viewModel.addNewTask(title, category, targetUnit, priority, scheduledTime, instructions, worker)
+        if (userSession?.permissions?.canCreateTasks == false) {
+            LaunchedEffect(Unit) {
+                Toast.makeText(context, "You don't have access to add tasks.", Toast.LENGTH_LONG).show()
                 showAddTaskDialog = false
                 addTaskInitialCategory = null
                 addTaskInitialTargetUnit = null
             }
-        )
+        } else {
+            AddTaskDialog(
+                availableUnits = allUnits,
+                initialCategory = addTaskInitialCategory,
+                initialTargetUnit = addTaskInitialTargetUnit,
+                onDismiss = {
+                    showAddTaskDialog = false
+                    addTaskInitialCategory = null
+                    addTaskInitialTargetUnit = null
+                },
+                onTaskCreated = { title, category, targetUnit, priority, scheduledTime, instructions, worker ->
+                    viewModel.addNewTask(title, category, targetUnit, priority, scheduledTime, instructions, worker)
+                    showAddTaskDialog = false
+                    addTaskInitialCategory = null
+                    addTaskInitialTargetUnit = null
+                }
+            )
+        }
     }
 
     // Add Unit Dialog

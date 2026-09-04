@@ -98,6 +98,7 @@ import com.example.ui.components.AppDatePickerField
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.util.CattleLifecycleEngine
 import com.example.util.CattleStage
+import com.example.util.DateValidationUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -793,18 +794,21 @@ fun MilkLogScreen(
     var historySearchQuery by remember { mutableStateOf("") }
     var historySessionFilter by remember { mutableStateOf("ALL") }
 
-    val filteredHistoryLogs = milkLogs.filter { log ->
-        val matchesSession = when (historySessionFilter) {
-            "MORNING" -> log.session.equals("Morning", ignoreCase = true)
-            "AFTERNOON" -> log.session.equals("Afternoon", ignoreCase = true) || log.session.equals("Midday", ignoreCase = true)
-            "EVENING" -> log.session.equals("Evening", ignoreCase = true)
-            else -> true
-        }
-        val matchesSearch = historySearchQuery.isEmpty() ||
-                log.cowName.contains(historySearchQuery, ignoreCase = true) ||
-                log.date.contains(historySearchQuery, ignoreCase = true)
+    val filteredHistoryLogs = remember(milkLogs, historySessionFilter, historySearchQuery) {
+        val filtered = milkLogs.filter { log ->
+            val matchesSession = when (historySessionFilter) {
+                "MORNING" -> log.session.equals("Morning", ignoreCase = true)
+                "AFTERNOON" -> log.session.equals("Afternoon", ignoreCase = true) || log.session.equals("Midday", ignoreCase = true)
+                "EVENING" -> log.session.equals("Evening", ignoreCase = true)
+                else -> true
+            }
+            val matchesSearch = historySearchQuery.isEmpty() ||
+                    log.cowName.contains(historySearchQuery, ignoreCase = true) ||
+                    log.date.contains(historySearchQuery, ignoreCase = true)
 
-        matchesSession && matchesSearch
+            matchesSession && matchesSearch
+        }
+        DateValidationUtils.sortMilkLogsByClosestDate(filtered)
     }
 
     // Filtered Cows matching search query
@@ -856,14 +860,17 @@ fun MilkLogScreen(
     var isEggYearMenuExpanded by remember { mutableStateOf(false) }
     val eggAnalyticsYears = remember(currentYearNum) { (currentYearNum downTo (currentYearNum - 3)).map { it.toString() } }
 
-    val filteredEggLogs = eggLogs.filter { log ->
-        val matchesSearch = eggSearchQuery.isEmpty() ||
-                log.unitName.contains(eggSearchQuery, ignoreCase = true) ||
-                log.loggedAt.contains(eggSearchQuery, ignoreCase = true) ||
-                (log.notes?.contains(eggSearchQuery, ignoreCase = true) == true)
-        val matchesGrade = if (eggGradeFilter == "ALL") true else log.grade.equals(eggGradeFilter, ignoreCase = true)
-        val matchesFlock = if (eggFlockFilter == "ALL") true else log.unitName.equals(eggFlockFilter, ignoreCase = true)
-        matchesSearch && matchesGrade && matchesFlock
+    val filteredEggLogs = remember(eggLogs, eggSearchQuery, eggGradeFilter, eggFlockFilter) {
+        val filtered = eggLogs.filter { log ->
+            val matchesSearch = eggSearchQuery.isEmpty() ||
+                    log.unitName.contains(eggSearchQuery, ignoreCase = true) ||
+                    log.loggedAt.contains(eggSearchQuery, ignoreCase = true) ||
+                    (log.notes?.contains(eggSearchQuery, ignoreCase = true) == true)
+            val matchesGrade = if (eggGradeFilter == "ALL") true else log.grade.equals(eggGradeFilter, ignoreCase = true)
+            val matchesFlock = if (eggFlockFilter == "ALL") true else log.unitName.equals(eggFlockFilter, ignoreCase = true)
+            matchesSearch && matchesGrade && matchesFlock
+        }
+        DateValidationUtils.sortEggLogsByClosestDate(filtered)
     }
 
     LazyColumn(
@@ -2192,7 +2199,9 @@ fun MilkLogScreen(
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = ForestGreenPrimary,
-                                disabledContainerColor = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFCBD5E1)
+                                contentColor = Color.White,
+                                disabledContainerColor = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFCBD5E1),
+                                disabledContentColor = if (selectedMilkSlotRecorded) Color.White else Color(0xFF64748B)
                             ),
                             enabled = milkLitresText.isNotBlank() && (selectedCow != null || cowSearchQuery.isNotBlank()) &&
                                 !selectedMilkSlotRecorded && !selectedDateIsFuture && !selectedDateIsPastRestricted && selectedDateIsValid

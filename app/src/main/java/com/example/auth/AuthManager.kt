@@ -396,6 +396,12 @@ class AuthManager(
 
                 val isRevoked = (userDocData?.get("isRevoked") as? Boolean) ?: false
                 if (!isRevoked) {
+                    val recoveryEmail = (userDocData?.get("recoveryEmail") as? String)?.takeIf { isValidRecoveryEmail(it) }
+                        ?: (userDocData?.get("email") as? String)?.takeIf { isValidRecoveryEmail(it) }
+                        ?: currentUser.email?.takeIf { isValidRecoveryEmail(it) }
+                        ?: prefs.getString("recovery_email", null)?.takeIf { isValidRecoveryEmail(it) }
+                        ?: (if (isValidRecoveryEmail(identifier)) identifier else "")
+
                     val session = UserSession(
                         userId = uid,
                         name = name,
@@ -404,7 +410,8 @@ class AuthManager(
                         farmId = finalFarmId,
                         farmName = finalFarmName,
                         isRevoked = false,
-                        permissions = permissionsFromUserProfile(role, userDocData)
+                        permissions = permissionsFromUserProfile(role, userDocData),
+                        recoveryEmail = recoveryEmail
                     )
                     // Overwrite SharedPreferences with fresh data from Firestore
                     saveSession(session)
@@ -448,6 +455,10 @@ class AuthManager(
         val canViewRequests = prefs.getBoolean("can_view_requests", true)
         val canSubmitRequests = prefs.getBoolean("can_submit_requests", true)
 
+        val savedRecoveryEmail = prefs.getString("recovery_email", null)
+            ?: prefs.getString("last_recovery_email", "")
+            ?: ""
+
         return UserSession(
             userId = userId,
             name = name,
@@ -471,7 +482,8 @@ class AuthManager(
                 canCreateTasks = canCreateTasks,
                 canViewRequests = canViewRequests,
                 canSubmitRequests = canSubmitRequests
-            )
+            ),
+            recoveryEmail = savedRecoveryEmail
         )
     }
 
@@ -566,6 +578,13 @@ class AuthManager(
                 repository.updateFarmAccount(existing.copy(updatedAt = System.currentTimeMillis()))
             }
 
+            prefs.edit().apply {
+                putString("recovery_email", cleanEmail)
+                putString("last_recovery_email", cleanEmail)
+                apply()
+            }
+            _currentSession.value = session.copy(recoveryEmail = cleanEmail)
+
             cleanEmail
         }.fold(
             onSuccess = { Result.success(it) },
@@ -591,6 +610,10 @@ class AuthManager(
             putString("last_user_role", session.role)
             putString("last_farm_id", session.farmId)
             putString("last_farm_name", session.farmName)
+            if (session.recoveryEmail.isNotBlank()) {
+                putString("recovery_email", session.recoveryEmail)
+                putString("last_recovery_email", session.recoveryEmail)
+            }
             putBoolean("can_view_home", session.permissions.canViewHome)
             putBoolean("can_use_quick_actions", session.permissions.canUseQuickActions)
             putBoolean("can_view_livestock", session.permissions.canViewLivestock)
@@ -791,7 +814,8 @@ class AuthManager(
                 canViewTasks = true,
                 canCompleteTasks = true,
                 canViewRequests = true
-            )
+            ),
+            recoveryEmail = recoveryEmail
         )
         saveSession(session)
         AuthResult.Success(session)
@@ -1173,6 +1197,12 @@ class AuthManager(
                 repository.insertFarmAccount(farmAccount)
             }
 
+            val userRecoveryEmail = (userDocData?.get("recoveryEmail") as? String)?.takeIf { isValidRecoveryEmail(it) }
+                ?: (userDocData?.get("email") as? String)?.takeIf { isValidRecoveryEmail(it) }
+                ?: authenticatedUser.email?.takeIf { isValidRecoveryEmail(it) }
+                ?: prefs.getString("recovery_email", null)?.takeIf { isValidRecoveryEmail(it) }
+                ?: (if (isValidRecoveryEmail(cleanIdentifier)) cleanIdentifier else "")
+
             val session = UserSession(
                 userId = uid,
                 name = name,
@@ -1181,7 +1211,8 @@ class AuthManager(
                 farmId = finalFarmId,
                 farmName = finalFarmName,
                 isRevoked = false,
-                permissions = profilePermissions
+                permissions = profilePermissions,
+                recoveryEmail = userRecoveryEmail
             )
             saveSession(session)
             return@withContext AuthResult.Success(session)

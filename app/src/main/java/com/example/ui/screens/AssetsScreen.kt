@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Agriculture
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -196,37 +198,133 @@ private fun InventoryContent(items: List<InventoryItem>, onLongPress: ((Inventor
             Text("Long-press an item to edit or delete it.", color = Color(0xFF64748B), fontSize = 12.sp)
             if (lowStockItems.isNotEmpty()) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E5)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                 ) {
-                    Text(
-                        "Low stock: ${lowStockItems.joinToString { it.itemName }}",
-                        modifier = Modifier.padding(12.dp),
-                        color = Color(0xFF92400E)
-                    )
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Filled.Warning,
+                                contentDescription = "Low Stock Alert",
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Low Inventory Alert (${lowStockItems.size} ${if (lowStockItems.size == 1) "item" else "items"})",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF92400E),
+                                fontSize = 14.sp
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        lowStockItems.forEach { item ->
+                            val isDepleted = item.quantityAvailable <= 0.0
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "• ${item.itemName} (${item.category})",
+                                    fontSize = 12.5.sp,
+                                    color = Color(0xFF78350F),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    if (isDepleted) "Depleted (0 ${item.unitOfMeasurement})" else "Low: ${item.quantityAvailable}/${item.minimumThreshold} ${item.unitOfMeasurement}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDepleted) Color(0xFFDC2626) else Color(0xFFB45309)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
         if (items.isEmpty()) item { EmptyState("No inventory yet", "Use + to record seed, fertiliser, tools, feed, harvest or silage.") }
         items(items, key = { it.syncId }) { item ->
             val lowStock = item.minimumThreshold > 0 && item.quantityAvailable <= item.minimumThreshold
+            val isDepleted = item.minimumThreshold > 0 && item.quantityAvailable <= 0.0
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (onLongPress != null) Modifier.pointerInput(item.syncId) { detectTapGestures(onLongPress = { onLongPress(item) }) } else Modifier)
+                    .then(if (onLongPress != null) Modifier.pointerInput(item.syncId) { detectTapGestures(onLongPress = { onLongPress(item) }) } else Modifier),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDepleted) Color(0xFFFEF2F2) else if (lowStock) Color(0xFFFFFDF5) else Color.White
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (isDepleted) Color(0xFFFCA5A5) else if (lowStock) Color(0xFFFCD34D) else Color(0xFFE2E8F0)
+                )
             ) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Inventory2, null, tint = if (lowStock) Color(0xFFB45309) else ForestGreenPrimary)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isDepleted) Color(0xFFFEE2E2) else if (lowStock) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.Inventory2,
+                                contentDescription = null,
+                                tint = if (isDepleted) Color(0xFFDC2626) else if (lowStock) Color(0xFFD97706) else ForestGreenPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(item.itemName, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(item.itemName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
                         Text(item.category, fontSize = 12.sp, color = Color.Gray)
                         if (item.description.isNotBlank()) Text(item.description, fontSize = 11.sp, color = Color(0xFF64748B))
                         if (item.expirationDate.isNotBlank()) Text("Expires: ${item.expirationDate}", fontSize = 11.sp, color = Color.Gray)
+                        if (item.minimumThreshold > 0) {
+                            Text("Min threshold: ${item.minimumThreshold} ${item.unitOfMeasurement}", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("${item.quantityAvailable} ${item.unitOfMeasurement}", fontWeight = FontWeight.Bold, color = if (lowStock) Color(0xFFB45309) else Color(0xFF14532D))
-                        if (lowStock) Text("LOW STOCK", fontSize = 10.sp, color = Color(0xFFB45309))
+                        Text(
+                            "${item.quantityAvailable} ${item.unitOfMeasurement}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = if (isDepleted) Color(0xFFDC2626) else if (lowStock) Color(0xFFD97706) else Color(0xFF14532D)
+                        )
+                        if (isDepleted) {
+                            Spacer(Modifier.height(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFEE2E2)
+                            ) {
+                                Text(
+                                    "OUT OF STOCK",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFDC2626),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        } else if (lowStock) {
+                            Spacer(Modifier.height(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFEF3C7)
+                            ) {
+                                Text(
+                                    "LOW",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB45309),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

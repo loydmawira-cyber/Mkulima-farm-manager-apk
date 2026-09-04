@@ -125,6 +125,8 @@ fun TaskCard(
     onReopenClick: (FarmTask) -> Unit,
     onViewProofClick: (FarmTask) -> Unit,
     onDeleteClick: (FarmTask) -> Unit,
+    canCompleteTask: Boolean = true,
+    canDeleteTask: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -134,6 +136,7 @@ fun TaskCard(
     // Tasks due after tomorrow can't be completed or deleted — only viewed. Today's
     // and tomorrow's tasks remain fully actionable.
     val isLockedForFutureDueDate = remember(task.scheduledTime) { isTaskLockedForFutureDueDate(task) }
+    val isActionable = !isLockedForFutureDueDate && canCompleteTask
 
     val categoryColor = when (task.category) {
         TaskCategory.LIVESTOCK -> Color(0xFF0284C7)
@@ -245,10 +248,10 @@ fun TaskCard(
                                     Text(
                                         "Complete Task",
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else ForestGreenPrimary
+                                        color = if (!isActionable) Color(0xFFA1A1AA) else ForestGreenPrimary
                                     )
                                 },
-                                enabled = !isLockedForFutureDueDate,
+                                enabled = isActionable,
                                 onClick = {
                                     taskMenuExpanded = false
                                     onCompleteClick(task)
@@ -257,14 +260,15 @@ fun TaskCard(
                                     Icon(
                                         imageVector = Icons.Filled.CheckCircle,
                                         contentDescription = null,
-                                        tint = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else ForestGreenPrimary,
+                                        tint = if (!isActionable) Color(0xFFA1A1AA) else ForestGreenPrimary,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
                             )
                         } else {
                             DropdownMenuItem(
-                                text = { Text("Mark Incomplete", fontWeight = FontWeight.SemiBold, color = Color(0xFF475569)) },
+                                text = { Text("Mark Incomplete", fontWeight = FontWeight.SemiBold, color = if (!canCompleteTask) Color(0xFFA1A1AA) else Color(0xFF475569)) },
+                                enabled = canCompleteTask,
                                 onClick = {
                                     taskMenuExpanded = false
                                     onReopenClick(task)
@@ -273,7 +277,7 @@ fun TaskCard(
                                     Icon(
                                         imageVector = Icons.Outlined.CheckCircleOutline,
                                         contentDescription = null,
-                                        tint = Color(0xFF64748B),
+                                        tint = if (!canCompleteTask) Color(0xFFA1A1AA) else Color(0xFF64748B),
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -298,28 +302,30 @@ fun TaskCard(
                             )
                         }
 
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    "Delete Task",
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else Color(0xFFDC2626)
-                                )
-                            },
-                            enabled = !isLockedForFutureDueDate,
-                            onClick = {
-                                taskMenuExpanded = false
-                                onDeleteClick(task)
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = null,
-                                    tint = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else Color(0xFFDC2626),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        )
+                        if (canDeleteTask) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "Delete Task",
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else Color(0xFFDC2626)
+                                    )
+                                },
+                                enabled = !isLockedForFutureDueDate,
+                                onClick = {
+                                    taskMenuExpanded = false
+                                    onDeleteClick(task)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Delete,
+                                        contentDescription = null,
+                                        tint = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else Color(0xFFDC2626),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -380,7 +386,7 @@ fun TaskCard(
                 } else {
                     Button(
                         onClick = { onCompleteClick(task) },
-                        enabled = !isLockedForFutureDueDate,
+                        enabled = isActionable,
                         modifier = Modifier.testTag("complete_button_${task.id}"),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -397,7 +403,7 @@ fun TaskCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (isLockedForFutureDueDate) "Not yet due" else "Complete",
+                            text = if (isLockedForFutureDueDate) "Not yet due" else if (!canCompleteTask) "Read-only" else "Complete",
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         )

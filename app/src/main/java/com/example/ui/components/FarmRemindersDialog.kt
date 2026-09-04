@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -70,6 +72,7 @@ fun FarmRemindersDialog(
     reminders: List<FarmReminder>,
     onDismiss: () -> Unit,
     onNavigateToAnimal: (Long) -> Unit = {},
+    onNavigateToInventory: () -> Unit = {},
     onAddNewTaskClick: () -> Unit = {},
     onMarkTaskDone: (FarmReminder) -> Unit = {},
     onDismissReminder: (String) -> Unit = {}
@@ -129,7 +132,7 @@ fun FarmRemindersDialog(
                                 color = Color(0xFF0F172A)
                             )
                             Text(
-                                text = "${reminders.size} scheduled tasks & health milestones",
+                                text = "${reminders.size} active alerts & health milestones",
                                 fontSize = 12.sp,
                                 color = Color(0xFF64748B)
                             )
@@ -151,6 +154,7 @@ fun FarmRemindersDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
                         .padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -158,6 +162,15 @@ fun FarmRemindersDialog(
                         selected = selectedFilter == null,
                         onClick = { selectedFilter = null },
                         label = { Text("All (${reminders.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = ForestGreenPrimary,
+                            selectedLabelColor = Color.White
+                        )
+                    )
+                    FilterChip(
+                        selected = selectedFilter == ReminderType.INVENTORY_LOW,
+                        onClick = { selectedFilter = ReminderType.INVENTORY_LOW },
+                        label = { Text("📦 Low Stock", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = ForestGreenPrimary,
                             selectedLabelColor = Color.White
@@ -212,7 +225,7 @@ fun FarmRemindersDialog(
                                 color = Color(0xFF334155)
                             )
                             Text(
-                                text = "Your livestock vaccinations, deworming and calving schedules are up to date.",
+                                text = "Your livestock vaccinations, deworming, inventory levels and calving schedules are up to date.",
                                 fontSize = 12.sp,
                                 color = Color(0xFF64748B),
                                 modifier = Modifier.padding(horizontal = 24.dp)
@@ -228,9 +241,14 @@ fun FarmRemindersDialog(
                             FarmReminderCard(
                                 reminder = reminder,
                                 onActionClick = {
-                                    if (reminder.unitId != null) {
+                                    if (reminder.type == ReminderType.INVENTORY_LOW) {
+                                        onNavigateToInventory()
+                                        onDismiss()
+                                    } else if (reminder.unitId != null) {
                                         onNavigateToAnimal(reminder.unitId)
                                         onDismiss()
+                                    } else {
+                                        onMarkTaskDone(reminder)
                                     }
                                 },
                                 onCompleteClick = {
@@ -242,7 +260,7 @@ fun FarmRemindersDialog(
                             )
                         }
                     }
-               }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 

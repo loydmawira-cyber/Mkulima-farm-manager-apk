@@ -90,6 +90,7 @@ import com.example.data.RequestStatus
 import com.example.data.UserSession
 import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.util.DateValidationUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -960,12 +961,12 @@ private fun WorkerLogHistoryContent(
         )
 
         if (selectedHistoryType == 0) {
-            val filteredMilk = milkLogs.filter {
+            val filteredMilk = DateValidationUtils.sortMilkLogsByClosestDate(milkLogs.filter {
                 searchQuery.isBlank() ||
                         it.cowName.contains(searchQuery, ignoreCase = true) ||
                         it.session.contains(searchQuery, ignoreCase = true) ||
                         it.date.contains(searchQuery, ignoreCase = true)
-            }
+            })
 
             if (filteredMilk.isEmpty()) {
                 Box(
@@ -1039,12 +1040,12 @@ private fun WorkerLogHistoryContent(
                 .filter { it.type.equals("Poultry", ignoreCase = true) && !it.isDeleted }
                 .map { it.name }
                 .toSet()
-            val filteredEggs = eggLogs.filter { it.unitName in activePoultryFlockNames }.filter {
+            val filteredEggs = DateValidationUtils.sortEggLogsByClosestDate(eggLogs.filter { it.unitName in activePoultryFlockNames }.filter {
                 searchQuery.isBlank() ||
                         it.unitName.contains(searchQuery, ignoreCase = true) ||
                         it.grade.contains(searchQuery, ignoreCase = true) ||
                         it.loggedAt.contains(searchQuery, ignoreCase = true)
-            }
+            })
 
             if (filteredEggs.isEmpty()) {
                 Box(

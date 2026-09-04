@@ -175,6 +175,7 @@ fun AddMilkLogDialog(
         dateFormat.format(cal.time)
     }
     var selectedLogDate by remember { mutableStateOf(todayDateStr) }
+    var saveSuccessMessage by remember { mutableStateOf<String?>(null) }
 
     val isOwner = userRole.equals("OWNER", ignoreCase = true)
     val cannotEditPast = !isOwner && !canEditPastDaysLogs
@@ -196,6 +197,10 @@ fun AddMilkLogDialog(
         if (selectedCow == null || cowsList.none { it.tagId == selectedCow?.tagId || it.name == selectedCow?.name }) {
             selectedCow = cowsList.firstOrNull()
         }
+    }
+
+    LaunchedEffect(selectedCow, selectedSession, selectedLogDate) {
+        saveSuccessMessage = null
     }
 
     val selectedDateIsFuture = MilkLogEntryRules.isFutureDate(selectedLogDate)
@@ -411,28 +416,46 @@ fun AddMilkLogDialog(
                         Triple("Evening", "🌙 Evening", Icons.Filled.NightsStay)
                     ).forEach { (sessionKey, sessionLabel, icon) ->
                         val isSelected = selectedSession.equals(sessionKey, ignoreCase = true)
+                        val isSessionRecorded = if (targetCowName.isNotBlank()) {
+                            milkLogs.any { log -> MilkLogEntryRules.isSameSlot(log, targetCowName, selectedLogDate, sessionKey) }
+                        } else false
+
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(42.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) ForestGreenPrimary else Color.Transparent)
+                                .background(
+                                    when {
+                                        isSelected -> ForestGreenPrimary
+                                        isSessionRecorded -> Color(0xFFE2E8F0)
+                                        else -> Color.Transparent
+                                    }
+                                )
                                 .clickable { selectedSession = sessionKey },
                             contentAlignment = Alignment.Center
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = icon,
+                                    imageVector = if (isSessionRecorded && !isSelected) Icons.Filled.Check else icon,
                                     contentDescription = null,
-                                    tint = if (isSelected) Color.White else Color(0xFF64748B),
+                                    tint = when {
+                                        isSelected -> Color.White
+                                        isSessionRecorded -> ForestGreenPrimary
+                                        else -> Color(0xFF64748B)
+                                    },
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = sessionLabel,
-                                    fontSize = 12.sp,
+                                    text = if (isSessionRecorded && !isSelected) "${sessionKey} ✓" else sessionLabel,
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Color.White else Color(0xFF475569)
+                                    color = when {
+                                        isSelected -> Color.White
+                                        isSessionRecorded -> Color(0xFF1E293B)
+                                        else -> Color(0xFF475569)
+                                    }
                                 )
                             }
                         }
@@ -593,6 +616,7 @@ fun AddMilkLogDialog(
                                     selectedLogDate,
                                     fullNote
                                 )
+                                saveSuccessMessage = "Successfully recorded ${litres}L for $cowName ($selectedSession session)!"
                             }
                         },
                         modifier = Modifier
@@ -602,7 +626,9 @@ fun AddMilkLogDialog(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ForestGreenPrimary,
-                            disabledContainerColor = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFCBD5E1)
+                            contentColor = Color.White,
+                            disabledContainerColor = if (selectedMilkSlotRecorded) Color(0xFF475569) else Color(0xFFCBD5E1),
+                            disabledContentColor = if (selectedMilkSlotRecorded) Color.White else Color(0xFF64748B)
                         ),
                         enabled = milkLitresText.isNotBlank() && (selectedCow != null || cowSearchQuery.isNotBlank()) &&
                             !selectedMilkSlotRecorded && !selectedDateIsFuture && !selectedDateIsPastRestricted && selectedDateIsValid
@@ -620,6 +646,30 @@ fun AddMilkLogDialog(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+
+                if (saveSuccessMessage != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFDCFCE7),
+                        border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.Check, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = saveSuccessMessage ?: "",
+                                color = ForestGreenPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
                     }
                 }
 

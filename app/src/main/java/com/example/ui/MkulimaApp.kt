@@ -138,7 +138,18 @@ fun MkulimaAppContent(
     viewModel: FarmViewModel
 ) {
     val context = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val userSession by viewModel.currentSession.collectAsState()
+    val defaultTab = remember(userSession) {
+        val perms = userSession?.permissions
+        val isOwner = userSession?.isOwner ?: false
+        if (isOwner || perms == null || perms.canViewHome) 0
+        else if (perms.canViewLivestock) 1
+        else if (perms.canViewLogs) 2
+        else if (perms.canViewFinance) 3
+        else if (perms.canViewTasks || perms.canViewRequests) 4
+        else 0
+    }
+    var selectedTab by remember(userSession) { mutableIntStateOf(defaultTab) }
 
     val filteredTasks by viewModel.filteredTasks.collectAsState()
     val allTasks by viewModel.rawTasks.collectAsState()
@@ -158,7 +169,6 @@ fun MkulimaAppContent(
     val farmSettings by viewModel.farmSettings.collectAsState()
     val subscriptionAccess by viewModel.subscriptionAccess.collectAsState()
     val farmWorkers by viewModel.farmWorkers.collectAsState()
-    val userSession by viewModel.currentSession.collectAsState()
     val userRole = userSession?.role ?: "Worker"
 
     if (userSession == null) {
@@ -285,106 +295,159 @@ fun MkulimaAppContent(
 
     // Add Unit Dialog
     if (showAddUnitDialog) {
-        AddUnitDialog(
-            onDismiss = { showAddUnitDialog = false },
-            farmSettings = farmSettings,
-            onUnitCreated = { name, type, headCount, healthStatus, location, tagNumber, breed, dob, weightAtBirth, currentWeight, sire, dam, notes ->
-                val isCattle = type.contains("cattle", ignoreCase = true) || type.contains("cow", ignoreCase = true)
-                viewModel.addNewUnit(
-                    name = name,
-                    type = type,
-                    headCount = headCount,
-                    healthStatus = healthStatus,
-                    location = location,
-                    // Cattle tags are assigned permanently by the repository; manual input is ignored.
-                    tagNumber = if (isCattle) "" else tagNumber,
-                    breed = breed,
-                    dob = dob,
-                    weightAtBirth = weightAtBirth,
-                    currentWeight = currentWeight,
-                    sire = sire,
-                    dam = dam,
-                    notes = notes,
-                    onCreated = { savedUnit ->
-                        if (isCattle) {
-                            Toast.makeText(
-                                context,
-                                "Cattle tag ${savedUnit.tagNumber} assigned automatically.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                        showAddUnitDialog = false
-                    },
-                    onError = { message ->
-                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                    }
-                )
+        if (userSession?.permissions?.canEditLivestock == false && !activeSession.isOwner) {
+            LaunchedEffect(Unit) {
+                Toast.makeText(context, "You don't have permission to add livestock.", Toast.LENGTH_LONG).show()
+                showAddUnitDialog = false
             }
-        )
+        } else {
+            AddUnitDialog(
+                onDismiss = { showAddUnitDialog = false },
+                farmSettings = farmSettings,
+                onUnitCreated = { name, type, headCount, healthStatus, location, tagNumber, breed, dob, weightAtBirth, currentWeight, sire, dam, notes ->
+                    val isCattle = type.contains("cattle", ignoreCase = true) || type.contains("cow", ignoreCase = true)
+                    viewModel.addNewUnit(
+                        name = name,
+                        type = type,
+                        headCount = headCount,
+                        healthStatus = healthStatus,
+                        location = location,
+                        // Cattle tags are assigned permanently by the repository; manual input is ignored.
+                        tagNumber = if (isCattle) "" else tagNumber,
+                        breed = breed,
+                        dob = dob,
+                        weightAtBirth = weightAtBirth,
+                        currentWeight = currentWeight,
+                        sire = sire,
+                        dam = dam,
+                        notes = notes,
+                        onCreated = { savedUnit ->
+                            if (isCattle) {
+                                Toast.makeText(
+                                    context,
+                                    "Cattle tag ${savedUnit.tagNumber} assigned automatically.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            showAddUnitDialog = false
+                        },
+                        onError = { message ->
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }
+                    )
+                }
+            )
+        }
     }
 
     // Add Milk Log Dialog
     if (showAddMilkLogDialog) {
-        AddMilkLogDialog(
-            availableUnits = allUnits,
-            onDismiss = { showAddMilkLogDialog = false },
-            onSaveMilkLog = { cowName, unitName, litres, session, fat, date, notes ->
-                viewModel.addMilkLog(
-                    cowName, unitName, litres, session, fat, date, notes,
-                    onRecorded = { showAddMilkLogDialog = false },
-                    onError = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
-                )
+        if (userSession?.permissions?.canEditLogs == false && !activeSession.isOwner) {
+            LaunchedEffect(Unit) {
+                Toast.makeText(context, "You don't have permission to record milk logs.", Toast.LENGTH_LONG).show()
+                showAddMilkLogDialog = false
             }
-        )
+        } else {
+            AddMilkLogDialog(
+                availableUnits = allUnits,
+                milkLogs = milkLogs,
+                userRole = userRole,
+                canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true,
+                onDismiss = { showAddMilkLogDialog = false },
+                onSaveMilkLog = { cowName, unitName, litres, session, fat, date, notes ->
+                    viewModel.addMilkLog(
+                        cowName, unitName, litres, session, fat, date, notes,
+                        onRecorded = {
+                            Toast.makeText(context, "Milk log recorded for $cowName", Toast.LENGTH_SHORT).show()
+                        },
+                        onError = { message -> Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+                    )
+                }
+            )
+        }
     }
 
     // Add Egg Log Dialog
     if (showAddEggLogDialog) {
-        AddEggLogDialog(
-            availableUnits = allUnits,
-            onDismiss = { showAddEggLogDialog = false },
-            onSaveEggLog = { unitName, totalEggs, damagedEggs, grade, notes ->
-                viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, notes)
+        if (userSession?.permissions?.canEditLogs == false && !activeSession.isOwner) {
+            LaunchedEffect(Unit) {
+                Toast.makeText(context, "You don't have permission to record egg logs.", Toast.LENGTH_LONG).show()
                 showAddEggLogDialog = false
             }
-        )
+        } else {
+            AddEggLogDialog(
+                availableUnits = allUnits,
+                userRole = userRole,
+                canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true,
+                onDismiss = { showAddEggLogDialog = false },
+                onSaveEggLog = { unitName, totalEggs, damagedEggs, grade, notes ->
+                    viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, notes)
+                    showAddEggLogDialog = false
+                }
+            )
+        }
     }
 
     // Add Finance Record Dialog
     if (showAddFinanceDialog) {
-        AddFinanceRecordDialog(
-            onDismiss = { showAddFinanceDialog = false },
-            onSaveRecord = { type, category, amount, description ->
-                viewModel.addFinanceRecord(type, category, amount, description)
+        if (userSession?.permissions?.canEditFinance == false && !activeSession.isOwner) {
+            LaunchedEffect(Unit) {
+                Toast.makeText(context, "You don't have permission to record finances.", Toast.LENGTH_LONG).show()
                 showAddFinanceDialog = false
             }
-        )
+        } else {
+            AddFinanceRecordDialog(
+                onDismiss = { showAddFinanceDialog = false },
+                onSaveRecord = { type, category, amount, description ->
+                    viewModel.addFinanceRecord(type, category, amount, description)
+                    showAddFinanceDialog = false
+                },
+                userRole = userRole,
+                canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
+            )
+        }
     }
 
     // Edit Finance Record Dialog
     if (editingFinanceRecord != null) {
-        AddFinanceRecordDialog(
-            existing = editingFinanceRecord,
-            onDismiss = { editingFinanceRecord = null },
-            onSaveRecord = { _, _, _, _ -> },
-            onUpdateRecord = { updated ->
-                viewModel.updateFinanceRecord(updated)
+        if (userSession?.permissions?.canEditFinance == false && !activeSession.isOwner) {
+            LaunchedEffect(Unit) {
+                Toast.makeText(context, "You don't have permission to edit finances.", Toast.LENGTH_LONG).show()
                 editingFinanceRecord = null
             }
-        )
+        } else {
+            AddFinanceRecordDialog(
+                existing = editingFinanceRecord,
+                onDismiss = { editingFinanceRecord = null },
+                onSaveRecord = { _, _, _, _ -> },
+                onUpdateRecord = { updated ->
+                    viewModel.updateFinanceRecord(updated)
+                    editingFinanceRecord = null
+                },
+                userRole = userRole,
+                canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
+            )
+        }
     }
 
     // Add Employee Request Dialog
     if (showAddEmployeeRequestDialog) {
-        AddEmployeeRequestDialog(
-            onDismiss = { showAddEmployeeRequestDialog = false },
-            onSaveRequest = { name, type, amount, start, end, reason ->
-                viewModel.addEmployeeRequest(name, type, amount, start, end, reason)
+        if (userSession?.permissions?.canSubmitRequests == false && !activeSession.isOwner) {
+            LaunchedEffect(Unit) {
+                Toast.makeText(context, "You don't have permission to submit requests.", Toast.LENGTH_LONG).show()
                 showAddEmployeeRequestDialog = false
-            },
-            loggedInUserName = userSession?.name ?: "",
-            isOwner = userSession?.isOwner ?: false
-        )
+            }
+        } else {
+            AddEmployeeRequestDialog(
+                onDismiss = { showAddEmployeeRequestDialog = false },
+                onSaveRequest = { name, type, amount, start, end, reason ->
+                    viewModel.addEmployeeRequest(name, type, amount, start, end, reason)
+                    showAddEmployeeRequestDialog = false
+                },
+                loggedInUserName = userSession?.name ?: "",
+                isOwner = userSession?.isOwner ?: false
+            )
+        }
     }
 
     SlidingSettingsPanel(
@@ -432,6 +495,10 @@ fun MkulimaAppContent(
             onNavigateToAnimal = {
                 showRemindersDialog = false
                 selectedTab = 1
+            },
+            onNavigateToInventory = {
+                showRemindersDialog = false
+                selectedTab = 4
             },
             onAddNewTaskClick = {
                 showRemindersDialog = false
@@ -726,46 +793,39 @@ fun MkulimaAppContent(
                         .fillMaxSize()
                         .weight(1f)
                 ) {
-                val effectiveTab = if (userRole != "OWNER") {
-                    when(selectedTab) {
-                        0 -> 2
-                        3 -> 2
-                        else -> selectedTab
-                    }
-                } else selectedTab
-
-                when (effectiveTab) {
+                when (selectedTab) {
                     0 -> if (userSession?.permissions?.canViewHome != false) {
                         DashboardScreen(
-                        tasks = filteredTasks,
-                        milkLogs = milkLogs,
-                        eggLogs = eggLogs,
-                        units = allUnits,
-                        allCattleEvents = allCattleEvents,
-                        farmRemindersParam = farmReminders,
-                        financeRecords = financeRecords,
-                        employeeRequests = employeeRequests,
-                        onRestockClick = { showAddFinanceDialog = true },
-                        onNavigateToTab = { selectedTab = it },
-                        onAddUnitClick = { showAddUnitDialog = true },
-                        onAddMilkLogClick = { showAddMilkLogDialog = true },
-                        onAddEggLogClick = { showAddEggLogDialog = true },
-                        onCompleteReminderClick = { reminder ->
-                            viewModel.completeReminderAsTask(
-                                title = reminder.title,
-                                targetUnit = reminder.targetName,
-                                dueDateStr = reminder.dueDateStr,
-                                details = reminder.details,
-                                sourceTaskId = reminder.sourceTaskId,
-                                reminderRuleKey = if (reminder.sourceTaskId == null) reminder.id else null,
-                                reminderUnitId = reminder.unitId
-                            )
-                        },
-                        onDismissReminderClick = { reminderId ->
-                            dismissedReminderIds = dismissedReminderIds + reminderId
-                        },
-                        userRole = userRole,
-                        farmSettings = farmSettings
+                            tasks = filteredTasks,
+                            milkLogs = milkLogs,
+                            eggLogs = eggLogs,
+                            units = allUnits,
+                            allCattleEvents = allCattleEvents,
+                            farmRemindersParam = farmReminders,
+                            financeRecords = financeRecords,
+                            employeeRequests = employeeRequests,
+                            onRestockClick = { showAddFinanceDialog = true },
+                            onNavigateToTab = { selectedTab = it },
+                            onAddUnitClick = { showAddUnitDialog = true },
+                            onAddMilkLogClick = { showAddMilkLogDialog = true },
+                            onAddEggLogClick = { showAddEggLogDialog = true },
+                            onCompleteReminderClick = { reminder ->
+                                viewModel.completeReminderAsTask(
+                                    title = reminder.title,
+                                    targetUnit = reminder.targetName,
+                                    dueDateStr = reminder.dueDateStr,
+                                    details = reminder.details,
+                                    sourceTaskId = reminder.sourceTaskId,
+                                    reminderRuleKey = if (reminder.sourceTaskId == null) reminder.id else null,
+                                    reminderUnitId = reminder.unitId
+                                )
+                            },
+                            onDismissReminderClick = { reminderId ->
+                                dismissedReminderIds = dismissedReminderIds + reminderId
+                            },
+                            userRole = userRole,
+                            farmSettings = farmSettings,
+                            canUseQuickActions = activeSession.isOwner || (userSession?.permissions?.canEditLogs ?: true)
                         )
                     } else {
                         Box(
@@ -782,54 +842,55 @@ fun MkulimaAppContent(
 
                     1 -> if (userSession?.permissions?.canViewLivestock != false) {
                         AssetsScreen(
-                        userRole = userRole,
-                        inventoryItems = inventoryItems,
-                        fieldPlans = fieldPlans,
-                        units = allUnits,
-                        feedPlans = feedPlans,
-                        inventoryMovements = inventoryMovements,
-                        automaticFeedDeductionEnabled = farmSettings.automaticFeedDeductionEnabled,
-                        financeRecords = financeRecords,
-                        onAddInventory = { viewModel.addInventoryItem(it) },
-                        onUpdateInventory = { viewModel.updateInventoryItem(it) },
-                        onDeleteInventory = { viewModel.deleteInventoryItem(it) },
-                        onAddField = { viewModel.addFieldPlan(it) },
-                        onUpdateField = { viewModel.updateFieldPlan(it) },
-                        onDeleteField = { viewModel.deleteFieldPlan(it) },
-                        onHarvest = { field, outcome, tonnes, saleAmount, harvestDate ->
-                            viewModel.recordFieldHarvest(field, outcome, tonnes, saleAmount, harvestDate)
-                        },
-                        onSaveFeedPlan = { viewModel.saveFeedPlan(it) },
-                        onDeleteFeedPlan = { viewModel.deleteFeedPlan(it) },
-                        onAutomaticFeedDeductionChanged = { viewModel.setAutomaticFeedDeductionEnabled(it) },
-                        onLogCropActivity = { activityType, fieldName ->
-                            addTaskInitialCategory = TaskCategory.CROPS
-                            addTaskInitialTargetUnit = fieldName
-                            showAddTaskDialog = true
-                        },
-                        livestock = {
-                            FlocksScreen(
-                                viewModel = viewModel,
-                                userRole = userRole,
-                                units = allUnits,
-                                milkLogs = milkLogs,
-                                eggLogs = eggLogs,
-                                financeRecords = financeRecords,
-                                employeeRequests = employeeRequests,
-                                onAddUnitClick = { showAddUnitDialog = true },
-                                onAddTaskForUnit = { showAddTaskDialog = true },
-                                onAddMilkLogClick = { showAddMilkLogDialog = true },
-                                onAddEggLogClick = { showAddEggLogDialog = true },
-                                onAddFinanceClick = { showAddFinanceDialog = true },
-                                onAddEmployeeRequestClick = { showAddEmployeeRequestDialog = true },
-                                onUpdateRequestStatus = { req, status -> viewModel.updateEmployeeRequestStatus(req, status) },
-                                onAddFinanceRecord = { type, category, amount, description -> viewModel.addFinanceRecord(type, category, amount, description) },
-                                onUpdateUnitHeadCount = { unitId, newCount -> viewModel.updateUnitHeadCount(unitId, newCount) },
-                                onUpdateUnit = { unit -> viewModel.updateUnit(unit) },
-                                onDeleteUnit = { unitId -> viewModel.deleteUnit(unitId) },
-                                farmSettings = farmSettings
-                            )
-                        }
+                            userRole = userRole,
+                            inventoryItems = inventoryItems,
+                            fieldPlans = fieldPlans,
+                            units = allUnits,
+                            feedPlans = feedPlans,
+                            inventoryMovements = inventoryMovements,
+                            automaticFeedDeductionEnabled = farmSettings.automaticFeedDeductionEnabled,
+                            financeRecords = financeRecords,
+                            onAddInventory = { viewModel.addInventoryItem(it) },
+                            onUpdateInventory = { viewModel.updateInventoryItem(it) },
+                            onDeleteInventory = { viewModel.deleteInventoryItem(it) },
+                            onAddField = { viewModel.addFieldPlan(it) },
+                            onUpdateField = { viewModel.updateFieldPlan(it) },
+                            onDeleteField = { viewModel.deleteFieldPlan(it) },
+                            onHarvest = { field, outcome, tonnes, saleAmount, harvestDate ->
+                                viewModel.recordFieldHarvest(field, outcome, tonnes, saleAmount, harvestDate)
+                            },
+                            onSaveFeedPlan = { viewModel.saveFeedPlan(it) },
+                            onDeleteFeedPlan = { viewModel.deleteFeedPlan(it) },
+                            onAutomaticFeedDeductionChanged = { viewModel.setAutomaticFeedDeductionEnabled(it) },
+                            onLogCropActivity = { activityType, fieldName ->
+                                addTaskInitialCategory = TaskCategory.CROPS
+                                addTaskInitialTargetUnit = fieldName
+                                showAddTaskDialog = true
+                            },
+                            livestock = {
+                                FlocksScreen(
+                                    viewModel = viewModel,
+                                    userRole = userRole,
+                                    units = allUnits,
+                                    milkLogs = milkLogs,
+                                    eggLogs = eggLogs,
+                                    financeRecords = financeRecords,
+                                    employeeRequests = employeeRequests,
+                                    onAddUnitClick = { showAddUnitDialog = true },
+                                    onAddTaskForUnit = { showAddTaskDialog = true },
+                                    onAddMilkLogClick = { showAddMilkLogDialog = true },
+                                    onAddEggLogClick = { showAddEggLogDialog = true },
+                                    onAddFinanceClick = { showAddFinanceDialog = true },
+                                    onAddEmployeeRequestClick = { showAddEmployeeRequestDialog = true },
+                                    onUpdateRequestStatus = { req, status -> viewModel.updateEmployeeRequestStatus(req, status) },
+                                    onAddFinanceRecord = { type, category, amount, description -> viewModel.addFinanceRecord(type, category, amount, description) },
+                                    onUpdateUnitHeadCount = { unitId, newCount -> viewModel.updateUnitHeadCount(unitId, newCount) },
+                                    onUpdateUnit = { unit -> viewModel.updateUnit(unit) },
+                                    onDeleteUnit = { unitId -> viewModel.deleteUnit(unitId) },
+                                    farmSettings = farmSettings,
+                                    canEditLivestock = activeSession.isOwner || (userSession?.permissions?.canEditLivestock ?: true)
+                                )
+                            }
                         )
                     } else {
                         Box(
@@ -846,46 +907,46 @@ fun MkulimaAppContent(
 
                     2 -> if (userSession?.permissions?.canViewLogs != false) {
                         MilkLogScreen(
-                        milkLogs = milkLogs,
-                        milkUsageLogs = milkUsageLogs,
-                        eggLogs = eggLogs,
-                        units = allUnits,
-                        onAddMilkLogClick = { showAddMilkLogDialog = true },
-                        onAddEggLogClick = { showAddEggLogDialog = true },
-                        onQuickSaveMilkLog = { cowName, litres, session, recordDate, onResult ->
-                            val finalDate = recordDate.ifBlank {
-                                java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date())
-                            }
-                            viewModel.addMilkLog(
-                                cowName, "Cattle Unit", litres, session, 3.8, finalDate, "Recorded from Daily Log",
-                                onRecorded = { onResult(true, null) },
-                                onError = { message -> onResult(false, message) }
-                            )
-                        },
-                        onSaveMilkUsageLog = { date, session, coop, home, calves, onResult ->
-                            viewModel.saveMilkUsageLog(
-                                date, session, coop, home, calves,
-                                onSaved = { onResult(true, null) },
-                                onError = { message -> onResult(false, message) }
-                            )
-                        },
-                        onEditMilkUsageLog = { id, coop, home, calves, onResult ->
-                            viewModel.editMilkUsageLog(
-                                id, coop, home, calves,
-                                onSaved = { onResult(true, null) },
-                                onError = { message -> onResult(false, message) }
-                            )
-                        },
-                        onDeleteMilkUsageLog = { viewModel.deleteMilkUsageLog(it) },
-                        onQuickSaveEggLog = { flockName, totalEggs, damagedEggs, grade, date, notes ->
-                            viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, notes)
-                        },
-                        onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
-                        onDeleteEggLog = { viewModel.deleteEggLog(it) },
-                        farmSettings = farmSettings,
-                        userRole = userRole,
-                        canEditLogs = userSession?.permissions?.canEditLogs ?: true,
-                        canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
+                            milkLogs = milkLogs,
+                            milkUsageLogs = milkUsageLogs,
+                            eggLogs = eggLogs,
+                            units = allUnits,
+                            onAddMilkLogClick = { showAddMilkLogDialog = true },
+                            onAddEggLogClick = { showAddEggLogDialog = true },
+                            onQuickSaveMilkLog = { cowName, litres, session, recordDate, onResult ->
+                                val finalDate = recordDate.ifBlank {
+                                    java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+                                }
+                                viewModel.addMilkLog(
+                                    cowName, "Cattle Unit", litres, session, 3.8, finalDate, "Recorded from Daily Log",
+                                    onRecorded = { onResult(true, null) },
+                                    onError = { message -> onResult(false, message) }
+                                )
+                            },
+                            onSaveMilkUsageLog = { date, session, coop, home, calves, onResult ->
+                                viewModel.saveMilkUsageLog(
+                                    date, session, coop, home, calves,
+                                    onSaved = { onResult(true, null) },
+                                    onError = { message -> onResult(false, message) }
+                                )
+                            },
+                            onEditMilkUsageLog = { id, coop, home, calves, onResult ->
+                                viewModel.editMilkUsageLog(
+                                    id, coop, home, calves,
+                                    onSaved = { onResult(true, null) },
+                                    onError = { message -> onResult(false, message) }
+                                )
+                            },
+                            onDeleteMilkUsageLog = { viewModel.deleteMilkUsageLog(it) },
+                            onQuickSaveEggLog = { flockName, totalEggs, damagedEggs, grade, date, notes ->
+                                viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, notes)
+                            },
+                            onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
+                            onDeleteEggLog = { viewModel.deleteEggLog(it) },
+                            farmSettings = farmSettings,
+                            userRole = userRole,
+                            canEditLogs = userSession?.permissions?.canEditLogs ?: true,
+                            canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
                         )
                     } else {
                         Box(
@@ -902,21 +963,21 @@ fun MkulimaAppContent(
 
                     3 -> if (userSession?.permissions?.canViewFinance != false && subscriptionAccess.canUseFinance) {
                         FinanceScreen(
-                        records = financeRecords,
-                        reports = monthlyReports,
-                        onAddTransactionClick = { showAddFinanceDialog = true },
-                        onEditTransaction = { editingFinanceRecord = it },
-                        onDeleteTransaction = { viewModel.deleteFinanceRecord(it) },
-                        onOpenReport = { report ->
-                            if (report.fileUrl.isNotBlank()) {
-                                runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(report.fileUrl)))
-                                }.onFailure {
-                                    Toast.makeText(context, "Unable to open this report file.", Toast.LENGTH_SHORT).show()
+                            records = financeRecords,
+                            reports = monthlyReports,
+                            onAddTransactionClick = { showAddFinanceDialog = true },
+                            onEditTransaction = { editingFinanceRecord = it },
+                            onDeleteTransaction = { viewModel.deleteFinanceRecord(it) },
+                            onOpenReport = { report ->
+                                if (report.fileUrl.isNotBlank()) {
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(report.fileUrl)))
+                                    }.onFailure {
+                                        Toast.makeText(context, "Unable to open this report file.", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
-                            }
-                        },
-                        currency = farmSettings.currency
+                            },
+                            currency = farmSettings.currency
                         )
                     } else if (userSession?.permissions?.canViewFinance == false) {
                         Box(
@@ -933,30 +994,35 @@ fun MkulimaAppContent(
 
                     4 -> if (userSession?.permissions.let { it == null || it.canViewTasks || it.canViewRequests }) {
                         ApprovalRequestsScreen(
-                        tasks = filteredTasks,
-                        requests = employeeRequests,
-                        searchQuery = searchQuery,
-                        onSearchQueryChange = { viewModel.searchQuery.value = it },
-                        selectedCategory = selectedCategoryFilter,
-                        onCategorySelected = { viewModel.selectedCategoryFilter.value = it },
-                        selectedStatus = selectedStatusFilter,
-                        onStatusSelected = { viewModel.selectedStatusFilter.value = it },
-                        onCompleteTaskClick = { proofUploadTaskTarget = it },
-                        onReopenTaskClick = { viewModel.markTaskIncomplete(it.id) },
-                        onViewProofClick = { proofModalTaskTarget = it },
-                        onDeleteTaskClick = { viewModel.deleteTask(it.id) },
-                        onAddTaskClick = { showAddTaskDialog = true },
-                        onUpdateRequestStatus = { req, statusString ->
-                            val requestStatus = when (statusString) {
-                                "APPROVED" -> RequestStatus.APPROVED
-                                "REJECTED" -> RequestStatus.REJECTED
-                                else -> RequestStatus.PENDING
-                            }
-                            viewModel.updateEmployeeRequestStatus(req, requestStatus)
-                        },
-                        currency = farmSettings.currency,
-                        userRole = userRole,
-                        onAddRequestClick = { showAddEmployeeRequestDialog = true }
+                            tasks = filteredTasks,
+                            requests = employeeRequests,
+                            searchQuery = searchQuery,
+                            onSearchQueryChange = { viewModel.searchQuery.value = it },
+                            selectedCategory = selectedCategoryFilter,
+                            onCategorySelected = { viewModel.selectedCategoryFilter.value = it },
+                            selectedStatus = selectedStatusFilter,
+                            onStatusSelected = { viewModel.selectedStatusFilter.value = it },
+                            onCompleteTaskClick = { proofUploadTaskTarget = it },
+                            onReopenTaskClick = { viewModel.markTaskIncomplete(it.id) },
+                            onViewProofClick = { proofModalTaskTarget = it },
+                            onDeleteTaskClick = { viewModel.deleteTask(it.id) },
+                            onAddTaskClick = { showAddTaskDialog = true },
+                            onUpdateRequestStatus = { req, statusString ->
+                                val requestStatus = when (statusString) {
+                                    "APPROVED" -> RequestStatus.APPROVED
+                                    "REJECTED" -> RequestStatus.REJECTED
+                                    else -> RequestStatus.PENDING
+                                }
+                                viewModel.updateEmployeeRequestStatus(req, requestStatus)
+                            },
+                            currency = farmSettings.currency,
+                            userRole = userRole,
+                            canViewTasks = userSession?.permissions?.canViewTasks ?: true,
+                            canCompleteTasks = userSession?.permissions?.canCompleteTasks ?: true,
+                            canCreateTasks = userSession?.permissions?.canCreateTasks ?: true,
+                            canViewRequests = userSession?.permissions?.canViewRequests ?: true,
+                            canSubmitRequests = userSession?.permissions?.canSubmitRequests ?: true,
+                            onAddRequestClick = { showAddEmployeeRequestDialog = true }
                         )
                     } else {
                         Box(

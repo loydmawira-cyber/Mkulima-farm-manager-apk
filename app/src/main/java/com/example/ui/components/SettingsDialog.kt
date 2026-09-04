@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Logout
@@ -218,6 +219,27 @@ fun SettingsDialog(
                                 Icon(Icons.Filled.ContentCopy, contentDescription = "Copy Farm ID", modifier = Modifier.size(14.dp), tint = ForestGreenPrimary)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Copy ID", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                            }
+                        }
+
+                        val recoveryEmail = userSession?.recoveryEmail.orEmpty().ifBlank {
+                            if (userSession?.emailOrPhone?.contains("@") == true) userSession.emailOrPhone else ""
+                        }
+                        if (recoveryEmail.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFDCFCE7), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Email, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text("RECOVERY EMAIL", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = ForestGreenDark)
+                                    Text(recoveryEmail, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                                }
                             }
                         }
 

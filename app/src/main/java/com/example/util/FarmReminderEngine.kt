@@ -2,6 +2,7 @@ package com.example.util
 
 import com.example.data.FarmTask
 import com.example.data.FarmUnit
+import com.example.data.InventoryItem
 import com.example.data.TaskCategory
 import com.example.data.TaskPriority
 import com.example.ui.screens.AnimalDetailData
@@ -19,7 +20,8 @@ enum class ReminderType(val displayName: String, val emoji: String) {
     CALVING("Expected Calving", "🍼"),
     DRY_OFF("Dry-Off Milestone", "🍂"),
     PREGNANCY_CHECK("Pregnancy Check (PD)", "🤰"),
-    TASK("Scheduled Farm Task", "📋")
+    TASK("Scheduled Farm Task", "📋"),
+    INVENTORY_LOW("Low Stock Alert", "📦")
 }
 
 enum class ReminderUrgency(val label: String, val colorHex: Long) {
@@ -93,7 +95,8 @@ object FarmReminderEngine {
         units: List<FarmUnit>,
         cattleEventsMap: Map<Long, List<CattleEventItem>> = emptyMap(),
         tasks: List<FarmTask> = emptyList(),
-        completedRuleKeys: Map<String, Long> = emptyMap()
+        completedRuleKeys: Map<String, Long> = emptyMap(),
+        inventoryItems: List<InventoryItem> = emptyList()
     ): List<FarmReminder> {
         val reminders = mutableListOf<FarmReminder>()
         val today = Date()
@@ -400,6 +403,44 @@ object FarmReminderEngine {
                     sourceTaskId = task.id
                 )
             )
+        }
+
+        // 3. EVALUATE LOW INVENTORY & STOCK THRESHOLDS
+        inventoryItems.filter { !it.isDeleted && it.minimumThreshold > 0 && it.quantityAvailable <= it.minimumThreshold }.forEach { item ->
+            val ruleKey = "inventory_low_${item.id}"
+            if (!isSuppressedByCompletion(ruleKey, 2, completedRuleKeys, today)) {
+                val isDepleted = item.quantityAvailable <= 0.0
+                val isCritical = item.quantityAvailable <= (item.minimumThreshold / 2.0)
+                val urgency = when {
+                    isDepleted -> ReminderUrgency.OVERDUE
+                    isCritical -> ReminderUrgency.TODAY
+                    else -> ReminderUrgency.DUE_SOON
+                }
+                val statusTag = when {
+                    isDepleted -> "OUT OF STOCK"
+                    isCritical -> "CRITICALLY LOW"
+                    else -> "LOW STOCK"
+                }
+
+                reminders.add(
+                    FarmReminder(
+                        id = ruleKey,
+                        type = ReminderType.INVENTORY_LOW,
+                        title = "Low Stock: ${item.itemName}",
+                        targetName = "${item.quantityAvailable} ${item.unitOfMeasurement} remaining",
+                        targetTag = "[$statusTag • Min ${item.minimumThreshold} ${item.unitOfMeasurement}]",
+                        dueDateStr = if (isDepleted) "Immediate Restock Required" else "Restock Needed",
+                        daysRemaining = if (isDepleted) -1 else if (isCritical) 0 else 1,
+                        urgency = urgency,
+                        details = "Category: ${item.category} • Current Stock: ${item.quantityAvailable} ${item.unitOfMeasurement} is at or below minimum threshold (${item.minimumThreshold} ${item.unitOfMeasurement})${if (item.storageLocation.isNotBlank()) " • Location: ${item.storageLocation}" else ""}.",
+                        recommendation = "Reorder or replenish ${item.itemName} soon to avoid running out of stock.",
+                        actionLabel = "Restock Item",
+                        unitId = null,
+                        sourceTaskId = null,
+                        isCompleted = false
+                    )
+                )
+            }
         }
 
         // Sort by urgency: Overdue first, then Due Today, then Due Soon, then Upcoming

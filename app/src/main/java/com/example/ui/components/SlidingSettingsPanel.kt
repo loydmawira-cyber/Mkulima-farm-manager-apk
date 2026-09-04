@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,17 +21,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +62,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.FarmSettings
 import com.example.data.UserSession
+import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
 
 /** A full-height Settings surface that slides in from the left instead of appearing as a pop-up. */
@@ -84,10 +90,13 @@ fun SlidingSettingsPanel(
         mutableStateOf(settings.themeMode.ifBlank { "CLASSIC" }.uppercase())
     }
     var monthlyReportsEnabledDraft by remember(settings.monthlyReportsEnabled) { mutableStateOf(settings.monthlyReportsEnabled) }
-    var recoveryEmailDraft by remember { mutableStateOf("") }
+    val savedRecoveryEmail = userSession?.recoveryEmail.orEmpty().ifBlank {
+        if (userSession?.emailOrPhone?.contains("@") == true) userSession.emailOrPhone else ""
+    }
+    var recoveryEmailDraft by remember(savedRecoveryEmail) { mutableStateOf(savedRecoveryEmail) }
     val isOwner = userSession?.isOwner == true
     val canSaveFarmName = isOwner && farmNameDraft.trim().isNotBlank() && farmNameDraft.trim() != userSession?.farmName.orEmpty()
-    val canSaveRecoveryEmail = isOwner && recoveryEmailDraft.trim().contains("@") && recoveryEmailDraft.trim().contains(".")
+    val canSaveRecoveryEmail = isOwner && recoveryEmailDraft.trim().contains("@") && recoveryEmailDraft.trim().contains(".") && recoveryEmailDraft.trim() != savedRecoveryEmail
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -138,11 +147,110 @@ fun SlidingSettingsPanel(
                                 .verticalScroll(rememberScrollState())
                                 .imePadding()
                                 .padding(horizontal = 22.dp)
-                                .padding(bottom = 24.dp)
+                                .padding(bottom = 48.dp)
                         ) {
                         Spacer(Modifier.height(8.dp))
                         Text("ACCOUNT & SESSION", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                         Spacer(Modifier.height(8.dp))
+
+                        // User profile card
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFF1F5F9),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            modifier = Modifier.size(36.dp),
+                                            shape = RoundedCornerShape(18.dp),
+                                            color = if (isOwner) Color(0xFFDCFCE7) else Color(0xFFE0F2FE)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    Icons.Filled.Person,
+                                                    contentDescription = null,
+                                                    tint = if (isOwner) ForestGreenPrimary else Color(0xFF0284C7),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = userSession?.name ?: "Farm User",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = Color(0xFF1E293B)
+                                            )
+                                            Text(
+                                                text = userSession?.emailOrPhone.orEmpty().ifBlank { "Signed In" },
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isOwner) Color(0xFFDCFCE7) else Color(0xFFE0F2FE)
+                                    ) {
+                                        Text(
+                                            text = if (isOwner) "OWNER" else "WORKER",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isOwner) ForestGreenDark else Color(0xFF0369A1),
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                if (savedRecoveryEmail.isNotBlank()) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color.White,
+                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Shield,
+                                                contentDescription = null,
+                                                tint = ForestGreenPrimary,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Column {
+                                                Text(
+                                                    "RECOVERY EMAIL",
+                                                    fontSize = 8.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF64748B)
+                                                )
+                                                Text(
+                                                    savedRecoveryEmail,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(0xFF0F172A)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
                         if (isOwner) {
                             Button(
                                 onClick = {
@@ -176,15 +284,44 @@ fun SlidingSettingsPanel(
                             Spacer(Modifier.height(12.dp))
                             Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFF3F8F5), modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(14.dp)) {
-                                    Text("Recovery email", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF153E2D))
-                                    Text("Use a real email address to receive secure password reset links.", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Filled.Email, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Recovery Email", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF153E2D))
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("Used for password recovery if you forget your credentials.", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    
+                                    if (savedRecoveryEmail.isNotBlank()) {
+                                        Spacer(Modifier.height(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFFDCFCE7),
+                                            border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.3f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Filled.Check, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    "Saved: $savedRecoveryEmail",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ForestGreenDark
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     Spacer(Modifier.height(10.dp))
                                     OutlinedTextField(
                                         value = recoveryEmailDraft,
                                         onValueChange = { recoveryEmailDraft = it },
-                                        label = { Text("Recovery email address") },
+                                        label = { Text("Update recovery email") },
                                         placeholder = { Text("you@example.com") },
-                                        leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null) },
+                                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp)

@@ -126,7 +126,8 @@ data class UserSession(
         canCreateTasks = true,
         canViewRequests = true,
         canSubmitRequests = true
-    )
+    ),
+    val recoveryEmail: String = ""
 ) {
     val isOwner: Boolean get() = role.equals("OWNER", ignoreCase = true)
 }

@@ -7,6 +7,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -199,6 +201,7 @@ fun DashboardScreen(
     onAddEggLogClick: () -> Unit = {},
     userRole: String,
     farmSettings: com.example.data.FarmSettings,
+    canUseQuickActions: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val isCattleMode = farmSettings.farmType.equals("Cattle Only", ignoreCase = true)
@@ -635,13 +638,24 @@ fun DashboardScreen(
 
                             // Filter Chips Row
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 FilterChip(
                                     selected = selectedReminderFilter == null,
                                     onClick = { selectedReminderFilter = null },
                                     label = { Text("All", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                                FilterChip(
+                                    selected = selectedReminderFilter == ReminderType.INVENTORY_LOW,
+                                    onClick = { selectedReminderFilter = ReminderType.INVENTORY_LOW },
+                                    label = { Text("📦 Low Stock", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = ForestGreenPrimary,
                                         selectedLabelColor = Color.White
@@ -926,127 +940,129 @@ fun DashboardScreen(
             }
 
             // 3. QUICK ACTIONS ROW (Soil Border Chips)
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (isCattleMode) {
-                        QuickActionChip(
-                            icon = "🥛",
-                            label = "Milk Log",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_milk_log"),
-                            onClick = {
-                                onAddMilkLogClick()
-                            }
-                        )
-                        QuickActionChip(
-                            icon = "➕",
-                            label = "Add Cattle",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_add_animal"),
-                            onClick = {
-                                onAddUnitClick()
-                            }
-                        )
-                        QuickActionChip(
-                            icon = "📊",
-                            label = "Per Cow",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_per_cow"),
-                            onClick = { onNavigateToTab(2) }
-                        )
-                        QuickActionChip(
-                            icon = "✅",
-                            label = "Approvals",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_approvals"),
-                            onClick = { onNavigateToTab(4) }
-                        )
-                    } else if (isPoultryMode) {
-                        QuickActionChip(
-                            icon = "🥚",
-                            label = "Egg Log",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_egg_log"),
-                            onClick = {
-                                onAddEggLogClick()
-                            }
-                        )
-                        QuickActionChip(
-                            icon = "➕",
-                            label = "Add Flock",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_add_animal"),
-                            onClick = {
-                                onAddUnitClick()
-                            }
-                        )
-                        QuickActionChip(
-                            icon = "📉",
-                            label = "Laying %",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_laying_rate"),
-                            onClick = { onNavigateToTab(2) }
-                        )
-                        QuickActionChip(
-                            icon = "✅",
-                            label = "Approvals",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_approvals"),
-                            onClick = { onNavigateToTab(4) }
-                        )
-                    } else {
-                        QuickActionChip(
-                            icon = "🥛",
-                            label = "Milk Log",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_milk_log"),
-                            onClick = {
-                                onAddMilkLogClick()
-                            }
-                        )
-                        QuickActionChip(
-                            icon = "🥚",
-                            label = "Egg Log",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_egg_log"),
-                            onClick = {
-                                onAddEggLogClick()
-                            }
-                        )
-                        QuickActionChip(
-                            icon = "➕",
-                            label = "Add Unit",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_add_animal"),
-                            onClick = {
-                                onAddUnitClick()
-                                onNavigateToTab(1)
-                            }
-                        )
-                        QuickActionChip(
-                            icon = "✅",
-                            label = "Tasks",
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("qa_approvals"),
-                            onClick = { onNavigateToTab(4) }
-                        )
+            if (canUseQuickActions) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isCattleMode) {
+                            QuickActionChip(
+                                icon = "🥛",
+                                label = "Milk Log",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_milk_log"),
+                                onClick = {
+                                    onAddMilkLogClick()
+                                }
+                            )
+                            QuickActionChip(
+                                icon = "➕",
+                                label = "Add Cattle",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_add_animal"),
+                                onClick = {
+                                    onAddUnitClick()
+                                }
+                            )
+                            QuickActionChip(
+                                icon = "📊",
+                                label = "Per Cow",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_per_cow"),
+                                onClick = { onNavigateToTab(2) }
+                            )
+                            QuickActionChip(
+                                icon = "✅",
+                                label = "Approvals",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_approvals"),
+                                onClick = { onNavigateToTab(4) }
+                            )
+                        } else if (isPoultryMode) {
+                            QuickActionChip(
+                                icon = "🥚",
+                                label = "Egg Log",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_egg_log"),
+                                onClick = {
+                                    onAddEggLogClick()
+                                }
+                            )
+                            QuickActionChip(
+                                icon = "➕",
+                                label = "Add Flock",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_add_animal"),
+                                onClick = {
+                                    onAddUnitClick()
+                                }
+                            )
+                            QuickActionChip(
+                                icon = "📉",
+                                label = "Laying %",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_laying_rate"),
+                                onClick = { onNavigateToTab(2) }
+                            )
+                            QuickActionChip(
+                                icon = "✅",
+                                label = "Approvals",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_approvals"),
+                                onClick = { onNavigateToTab(4) }
+                            )
+                        } else {
+                            QuickActionChip(
+                                icon = "🥛",
+                                label = "Milk Log",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_milk_log"),
+                                onClick = {
+                                    onAddMilkLogClick()
+                                }
+                            )
+                            QuickActionChip(
+                                icon = "🥚",
+                                label = "Egg Log",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_egg_log"),
+                                onClick = {
+                                    onAddEggLogClick()
+                                }
+                            )
+                            QuickActionChip(
+                                icon = "➕",
+                                label = "Add Unit",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_add_animal"),
+                                onClick = {
+                                    onAddUnitClick()
+                                    onNavigateToTab(1)
+                                }
+                            )
+                            QuickActionChip(
+                                icon = "✅",
+                                label = "Tasks",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("qa_approvals"),
+                                onClick = { onNavigateToTab(4) }
+                            )
+                        }
                     }
                 }
             }
@@ -1063,6 +1079,10 @@ fun DashboardScreen(
                 onNavigateToAnimal = { unitId ->
                     showRemindersDialog = false
                     onNavigateToTab(1)
+                },
+                onNavigateToInventory = {
+                    showRemindersDialog = false
+                    onNavigateToTab(4)
                 },
                 onAddNewTaskClick = {
                     showRemindersDialog = false

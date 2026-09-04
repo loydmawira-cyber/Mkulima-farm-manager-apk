@@ -64,6 +64,7 @@ import com.example.ui.TaskStatusFilter
 import com.example.ui.components.TaskCard
 import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.util.DateValidationUtils
 import com.example.ui.theme.LineColor
 import com.example.ui.theme.Sage
 import com.example.ui.theme.Soil
@@ -97,11 +98,25 @@ fun ApprovalRequestsScreen(
     currency: String,
     modifier: Modifier = Modifier,
     userRole: String = "OWNER",
+    canViewTasks: Boolean = true,
+    canCompleteTasks: Boolean = true,
+    canCreateTasks: Boolean = true,
+    canViewRequests: Boolean = true,
+    canSubmitRequests: Boolean = true,
     onAddRequestClick: (() -> Unit)? = null
 ) {
-    var primarySectionIndex by remember { mutableIntStateOf(0) } // 0: Daily Tasks, 1: Requests & Approvals
-    var selectedRequestTabIndex by remember { mutableIntStateOf(0) }
     val isOwner = userRole.equals("OWNER", ignoreCase = true)
+    val effectiveCanViewTasks = isOwner || canViewTasks
+    val effectiveCanViewRequests = isOwner || canViewRequests
+    val effectiveCanCreateTasks = isOwner || canCreateTasks
+    val effectiveCanSubmitRequests = isOwner || canSubmitRequests
+    val effectiveCanCompleteTasks = isOwner || canCompleteTasks
+    val effectiveCanDeleteTasks = isOwner
+
+    var primarySectionIndex by remember(effectiveCanViewTasks, effectiveCanViewRequests) {
+        mutableIntStateOf(if (effectiveCanViewTasks) 0 else 1)
+    } // 0: Daily Tasks, 1: Requests & Approvals
+    var selectedRequestTabIndex by remember { mutableIntStateOf(0) }
 
     val pendingTasksCount = remember(tasks) { tasks.count { !it.isCompleted } }
     val pendingRequestsCount = remember(requests) { requests.count { it.status == RequestStatus.PENDING } }
@@ -156,7 +171,7 @@ fun ApprovalRequestsScreen(
                         )
                     }
 
-                    if (primarySectionIndex == 0) {
+                    if (primarySectionIndex == 0 && effectiveCanCreateTasks) {
                         Button(
                             onClick = onAddTaskClick,
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
@@ -167,7 +182,7 @@ fun ApprovalRequestsScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("New Task", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                    } else if (onAddRequestClick != null) {
+                    } else if (primarySectionIndex == 1 && effectiveCanSubmitRequests && onAddRequestClick != null) {
                         Button(
                             onClick = onAddRequestClick,
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
@@ -181,45 +196,47 @@ fun ApprovalRequestsScreen(
                     }
                 }
 
-                // Primary Segment Selector
-                TabRow(
-                    selectedTabIndex = primarySectionIndex,
-                    containerColor = Color.White,
-                    contentColor = ForestGreenPrimary,
-                    indicator = { tabPositions ->
-                        if (primarySectionIndex < tabPositions.size) {
-                            TabRowDefaults.SecondaryIndicator(
-                                Modifier.tabIndicatorOffset(tabPositions[primarySectionIndex]),
-                                color = ForestGreenPrimary,
-                                height = 3.dp
-                            )
+                // Primary Segment Selector (shown when both sections are available)
+                if (effectiveCanViewTasks && effectiveCanViewRequests) {
+                    TabRow(
+                        selectedTabIndex = primarySectionIndex,
+                        containerColor = Color.White,
+                        contentColor = ForestGreenPrimary,
+                        indicator = { tabPositions ->
+                            if (primarySectionIndex < tabPositions.size) {
+                                TabRowDefaults.SecondaryIndicator(
+                                    Modifier.tabIndicatorOffset(tabPositions[primarySectionIndex]),
+                                    color = ForestGreenPrimary,
+                                    height = 3.dp
+                                )
+                            }
                         }
+                    ) {
+                        Tab(
+                            selected = primarySectionIndex == 0,
+                            onClick = { primarySectionIndex = 0 },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.Assignment, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Daily Tasks ($pendingTasksCount)", fontWeight = if (primarySectionIndex == 0) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp)
+                                }
+                            },
+                            modifier = Modifier.testTag("segment_tab_daily_tasks")
+                        )
+                        Tab(
+                            selected = primarySectionIndex == 1,
+                            onClick = { primarySectionIndex = 1 },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.FactCheck, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Requests ($pendingRequestsCount)", fontWeight = if (primarySectionIndex == 1) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp)
+                                }
+                            },
+                            modifier = Modifier.testTag("segment_tab_requests")
+                        )
                     }
-                ) {
-                    Tab(
-                        selected = primarySectionIndex == 0,
-                        onClick = { primarySectionIndex = 0 },
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Assignment, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Daily Tasks ($pendingTasksCount)", fontWeight = if (primarySectionIndex == 0) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp)
-                            }
-                        },
-                        modifier = Modifier.testTag("segment_tab_daily_tasks")
-                    )
-                    Tab(
-                        selected = primarySectionIndex == 1,
-                        onClick = { primarySectionIndex = 1 },
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.FactCheck, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Requests ($pendingRequestsCount)", fontWeight = if (primarySectionIndex == 1) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp)
-                            }
-                        },
-                        modifier = Modifier.testTag("segment_tab_requests")
-                    )
                 }
             }
         }
@@ -228,7 +245,7 @@ fun ApprovalRequestsScreen(
 
         if (primarySectionIndex == 0) {
             // ================= DAILY TASKS SECTION =================
-            val displayedTasks = tasks.filter { task ->
+            val displayedTasks = DateValidationUtils.sortTasksByClosestDate(tasks.filter { task ->
                 val matchesStatus = when (selectedStatus) {
                     TaskStatusFilter.PENDING -> !task.isCompleted
                     TaskStatusFilter.COMPLETED -> task.isCompleted
@@ -242,7 +259,7 @@ fun ApprovalRequestsScreen(
                         task.targetUnit.contains(searchQuery, ignoreCase = true) ||
                         (task.assignedWorker?.contains(searchQuery, ignoreCase = true) == true)
                 matchesStatus && matchesCategory && matchesSearch
-            }
+            })
 
             LazyColumn(
                 modifier = Modifier
@@ -446,7 +463,9 @@ fun ApprovalRequestsScreen(
                             onCompleteClick = onCompleteTaskClick,
                             onReopenClick = onReopenTaskClick,
                             onViewProofClick = onViewProofClick,
-                            onDeleteClick = onDeleteTaskClick
+                            onDeleteClick = onDeleteTaskClick,
+                            canCompleteTask = effectiveCanCompleteTasks,
+                            canDeleteTask = effectiveCanDeleteTasks
                         )
                     }
                 }

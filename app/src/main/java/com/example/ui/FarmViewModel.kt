@@ -36,6 +36,7 @@ import com.example.data.TaskPriority
 import com.example.data.UserSession
 import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
+import com.example.util.DateValidationUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,7 +95,9 @@ class FarmViewModel(
 
     val allMilkLogs: StateFlow<List<MilkLog>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
-        repository.getMilkLogsForFarm(farmId)
+        repository.getMilkLogsForFarm(farmId).map { list ->
+            DateValidationUtils.sortMilkLogsByClosestDate(list)
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -112,7 +115,9 @@ class FarmViewModel(
 
     val allEggLogs: StateFlow<List<EggLog>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
-        repository.getEggLogsForFarm(farmId)
+        repository.getEggLogsForFarm(farmId).map { list ->
+            DateValidationUtils.sortEggLogsByClosestDate(list)
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -259,7 +264,9 @@ class FarmViewModel(
 
     val rawTasks: StateFlow<List<FarmTask>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
-        repository.getTasksForFarm(farmId)
+        repository.getTasksForFarm(farmId).map { list ->
+            DateValidationUtils.sortTasksByClosestDate(list)
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -273,7 +280,7 @@ class FarmViewModel(
         selectedStatusFilter
     ) { tasks, query, categoryFilter, statusFilter ->
         withContext(Dispatchers.Default) {
-            tasks.filter { task ->
+            val filtered = tasks.filter { task ->
                 val matchesQuery = query.isBlank() ||
                         task.title.contains(query, ignoreCase = true) ||
                         task.targetUnit.contains(query, ignoreCase = true) ||
@@ -290,6 +297,7 @@ class FarmViewModel(
 
                 matchesQuery && matchesCategory && matchesStatus
             }
+            DateValidationUtils.sortTasksByClosestDate(filtered)
         }
     }.stateIn(
         scope = viewModelScope,
@@ -1233,8 +1241,8 @@ class FarmViewModel(
         rawTasks,
         allCattleEvents,
         reminderCompletions,
-        subscriptionAccess
-    ) { units, tasks, cattleEvents, completions, access ->
+        combine(subscriptionAccess, allInventoryItems) { access, inventory -> Pair(access, inventory) }
+    ) { units, tasks, cattleEvents, completions, (access, inventoryItems) ->
         withContext(Dispatchers.Default) {
             if (!access.canReceiveReminders) return@withContext emptyList()
             val eventsMap = cattleEvents.groupBy { it.unitId }.mapValues { entry ->
@@ -1255,7 +1263,8 @@ class FarmViewModel(
                 units = units,
                 cattleEventsMap = eventsMap,
                 tasks = tasks,
-                completedRuleKeys = completedRuleKeys
+                completedRuleKeys = completedRuleKeys,
+                inventoryItems = inventoryItems
             ))
         }
     }.stateIn(

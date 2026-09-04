@@ -651,8 +651,11 @@ fun FlocksScreen(
     onUpdateUnit: (FarmUnit) -> Unit = { _ -> },
     onDeleteUnit: (Long) -> Unit,
     farmSettings: com.example.data.FarmSettings,
+    canEditLivestock: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val isOwner = userRole.equals("OWNER", ignoreCase = true)
+    val effectiveCanEditLivestock = isOwner || canEditLivestock
     var selectedAnimal by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalForOptions by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToEdit by remember { mutableStateOf<AnimalDetailData?>(null) }
@@ -1288,6 +1291,7 @@ fun FlocksScreen(
                         photoUri = newPhoto
                     )
                 },
+                canEditLivestock = effectiveCanEditLivestock,
                 modifier = modifier
             )
         } else {
@@ -1325,6 +1329,7 @@ fun FlocksScreen(
                         photoUri = newPhoto
                     )
                 },
+                canEditLivestock = effectiveCanEditLivestock,
                 modifier = modifier
             )
         }
@@ -1714,7 +1719,7 @@ fun FlocksScreen(
                                     )
                                 }
 
-                                if (userRole == "OWNER") {
+                                if (effectiveCanEditLivestock) {
                                     IconButton(
                                         onClick = { animalForOptions = animal },
                                         modifier = Modifier
@@ -1739,7 +1744,7 @@ fun FlocksScreen(
                 }
             }
 
-            if (userRole == "OWNER") {
+            if (effectiveCanEditLivestock) {
                 val isPoultrySection = selectedFilterCategory.equals("POULTRY", ignoreCase = true)
                 val addLabel = if (isPoultrySection) "ADD FLOCK" else "ADD ANIMAL"
                 FloatingActionButton(
@@ -1775,9 +1780,10 @@ fun AnimalDetailsView(
     milkLogs: List<MilkLog> = emptyList(),
     eggLogs: List<EggLog> = emptyList(),
     onUpdateAnimalStage: (newStatus: String, newBreedingStatus: String) -> Unit = { _, _ -> },
+    canEditLivestock: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val canEdit = userRole == "OWNER"
+    val canEdit = userRole.equals("OWNER", ignoreCase = true) || canEditLivestock
 
     val unitId = remember(animal.id) {
         animal.id.removePrefix("unit_").toLongOrNull() ?: ((animal.id.hashCode().toLong() and 0x7FFFFFFF) + 10000L)
@@ -3973,9 +3979,10 @@ fun FlockDetailsView(
     onEditFlock: () -> Unit = {},
     onDeleteFlock: () -> Unit = {},
     onUpdatePhoto: (String?) -> Unit = {},
+    canEditLivestock: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val canEdit = userRole == "OWNER"
+    val canEdit = userRole.equals("OWNER", ignoreCase = true) || canEditLivestock
     val unitId = remember(flock.id) { flock.id.removePrefix("unit_").toLongOrNull() ?: 0L }
     var showFeedDialog by remember { mutableStateOf(false) }
     var showMortalityDialog by remember { mutableStateOf(false) }

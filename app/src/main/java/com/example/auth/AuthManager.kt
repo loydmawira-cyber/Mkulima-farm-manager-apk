@@ -1090,14 +1090,50 @@ class AuthManager(
             // Cache the profile locally. Credentials always remain in Firebase Auth.
             val profilePermissions = permissionsFromUserProfile(role, userDocData)
             if (role.equals("WORKER", ignoreCase = true)) {
-                // If this worker already has a local record, it reflects whatever
-                // the farm owner has set via Manage Workers (synced through the
-                // worker_accounts collection). Preserve those permission values on
-                // login rather than overwriting them with the legacy/default flags
-                // derived from the "users" profile document below — otherwise every
-                // login would silently revert any permission change the owner made.
+                // Preference order for this worker's permissions:
+                // 1. An existing local Room record — reflects whatever the farm
+                //    owner has set via Manage Workers, synced through the
+                //    worker_accounts collection.
+                // 2. The worker_accounts document straight from Firestore — used
+                //    on this worker's very first login on a device, when no local
+                //    record exists yet to preserve.
+                // 3. Legacy/default flags derived from the "users" profile
+                //    document — only as a last resort for a worker who somehow
+                //    has no worker_accounts record at all.
+                // Skipping straight to (3) here was the bug: every first login on
+                // a fresh device ignored whatever the owner had actually granted.
                 val existingWorker = repository.getWorkerById(uid)
-                val effectivePermissions = existingWorker?.toPermissions() ?: profilePermissions
+                val remoteWorkerDoc = if (existingWorker == null && db != null) {
+                    try {
+                        db.collection("farms").document(finalFarmId)
+                            .collection("worker_accounts").document(uid)
+                            .get().awaitTask()
+                            .takeIf { it.exists() }
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "Failed to fetch worker_accounts record on login", e)
+                        null
+                    }
+                } else null
+                val effectivePermissions = when {
+                    existingWorker != null -> existingWorker.toPermissions()
+                    remoteWorkerDoc != null -> WorkerPermissions(
+                        canViewHome = remoteWorkerDoc.getBoolean("canViewHome") ?: true,
+                        canUseQuickActions = remoteWorkerDoc.getBoolean("canUseQuickActions") ?: true,
+                        canViewLivestock = remoteWorkerDoc.getBoolean("canViewLivestock") ?: true,
+                        canEditLivestock = remoteWorkerDoc.getBoolean("canEditLivestock") ?: true,
+                        canViewLogs = remoteWorkerDoc.getBoolean("canViewLogs") ?: true,
+                        canEditLogs = remoteWorkerDoc.getBoolean("canEditLogs") ?: true,
+                        canEditPastDaysLogs = remoteWorkerDoc.getBoolean("canEditPastDaysLogs") ?: true,
+                        canViewFinance = remoteWorkerDoc.getBoolean("canViewFinance") ?: false,
+                        canEditFinance = remoteWorkerDoc.getBoolean("canEditFinance") ?: false,
+                        canViewTasks = remoteWorkerDoc.getBoolean("canViewTasks") ?: true,
+                        canCompleteTasks = remoteWorkerDoc.getBoolean("canCompleteTasks") ?: true,
+                        canCreateTasks = remoteWorkerDoc.getBoolean("canCreateTasks") ?: true,
+                        canViewRequests = remoteWorkerDoc.getBoolean("canViewRequests") ?: true,
+                        canSubmitRequests = remoteWorkerDoc.getBoolean("canSubmitRequests") ?: true
+                    )
+                    else -> profilePermissions
+                }
                 val workerAccount = WorkerAccount(
                     workerId = uid,
                     syncId = uid,

@@ -564,7 +564,13 @@ fun MkulimaAppContent(
                     // Tab 0: Home
                     NavigationBarItem(
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
+                        onClick = {
+                            if (userSession?.permissions?.canViewHome != false) {
+                                selectedTab = 0
+                            } else {
+                                Toast.makeText(context, "You don't have access to Home.", Toast.LENGTH_LONG).show()
+                            }
+                        },
                         icon = {
                             Icon(
                                 if (selectedTab == 0) Icons.Filled.Home else Icons.Outlined.Home,
@@ -585,7 +591,13 @@ fun MkulimaAppContent(
                     // Tab 1: Assets
                     NavigationBarItem(
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
+                        onClick = {
+                            if (userSession?.permissions?.canViewLivestock != false) {
+                                selectedTab = 1
+                            } else {
+                                Toast.makeText(context, "You don't have access to Assets.", Toast.LENGTH_LONG).show()
+                            }
+                        },
                         icon = {
                             Icon(
                                 if (selectedTab == 1) Icons.Filled.Grass else Icons.Outlined.Grass,
@@ -606,7 +618,13 @@ fun MkulimaAppContent(
                     // Tab 2: Log
                     NavigationBarItem(
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
+                        onClick = {
+                            if (userSession?.permissions?.canViewLogs != false) {
+                                selectedTab = 2
+                            } else {
+                                Toast.makeText(context, "You don't have access to the Log.", Toast.LENGTH_LONG).show()
+                            }
+                        },
                         icon = {
                             Icon(
                                 if (selectedTab == 2) Icons.Filled.Assignment else Icons.Outlined.Assignment,
@@ -625,7 +643,7 @@ fun MkulimaAppContent(
                     )
 
                     // Tab 3: Finance
-                    if (userRole == "OWNER") {
+                    if (userSession?.permissions?.canViewFinance != false) {
                         NavigationBarItem(
                             selected = selectedTab == 3,
                             onClick = {
@@ -661,7 +679,14 @@ fun MkulimaAppContent(
                     // Tab 4: Tasks (Daily Tasks & Requests)
                     NavigationBarItem(
                         selected = selectedTab == 4,
-                        onClick = { selectedTab = 4 },
+                        onClick = {
+                            val perms = userSession?.permissions
+                            if (perms == null || perms.canViewTasks || perms.canViewRequests) {
+                                selectedTab = 4
+                            } else {
+                                Toast.makeText(context, "You don't have access to Tasks.", Toast.LENGTH_LONG).show()
+                            }
+                        },
                         icon = {
                             Icon(
                                 if (selectedTab == 4) Icons.Filled.FactCheck else Icons.Outlined.FactCheck,
@@ -701,7 +726,8 @@ fun MkulimaAppContent(
                 } else selectedTab
 
                 when (effectiveTab) {
-                    0 -> DashboardScreen(
+                    0 -> if (userSession?.permissions?.canViewHome != false) {
+                        DashboardScreen(
                         tasks = filteredTasks,
                         milkLogs = milkLogs,
                         eggLogs = eggLogs,
@@ -731,9 +757,22 @@ fun MkulimaAppContent(
                         },
                         userRole = userRole,
                         farmSettings = farmSettings
-                    )
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "You don't have access to Home.",
+                                color = MaterialTheme.mkulimaColors.textSecondary,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
 
-                    1 -> AssetsScreen(
+                    1 -> if (userSession?.permissions?.canViewLivestock != false) {
+                        AssetsScreen(
                         userRole = userRole,
                         inventoryItems = inventoryItems,
                         fieldPlans = fieldPlans,
@@ -782,9 +821,22 @@ fun MkulimaAppContent(
                                 farmSettings = farmSettings
                             )
                         }
-                    )
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "You don't have access to Assets.",
+                                color = MaterialTheme.mkulimaColors.textSecondary,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
 
-                    2 -> MilkLogScreen(
+                    2 -> if (userSession?.permissions?.canViewLogs != false) {
+                        MilkLogScreen(
                         milkLogs = milkLogs,
                         milkUsageLogs = milkUsageLogs,
                         eggLogs = eggLogs,
@@ -823,9 +875,22 @@ fun MkulimaAppContent(
                         onDeleteEggLog = { viewModel.deleteEggLog(it) },
                         farmSettings = farmSettings,
                         userRole = userRole
-                    )
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "You don't have access to the Log.",
+                                color = MaterialTheme.mkulimaColors.textSecondary,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
 
-                    3 -> if (userRole == "OWNER" && subscriptionAccess.canUseFinance) FinanceScreen(
+                    3 -> if (userSession?.permissions?.canViewFinance != false && subscriptionAccess.canUseFinance) {
+                        FinanceScreen(
                         records = financeRecords,
                         reports = monthlyReports,
                         onAddTransactionClick = { showAddFinanceDialog = true },
@@ -841,9 +906,22 @@ fun MkulimaAppContent(
                             }
                         },
                         currency = farmSettings.currency
-                    ) else { /* No-op for workers */ }
+                        )
+                    } else if (userSession?.permissions?.canViewFinance == false) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "You don't have access to Finance.",
+                                color = MaterialTheme.mkulimaColors.textSecondary,
+                                fontSize = 14.sp
+                            )
+                        }
+                    } else { /* Subscription doesn't allow Finance */ }
 
-                    4 -> ApprovalRequestsScreen(
+                    4 -> if (userSession?.permissions.let { it == null || it.canViewTasks || it.canViewRequests }) {
+                        ApprovalRequestsScreen(
                         tasks = filteredTasks,
                         requests = employeeRequests,
                         searchQuery = searchQuery,
@@ -868,7 +946,19 @@ fun MkulimaAppContent(
                         currency = farmSettings.currency,
                         userRole = userRole,
                         onAddRequestClick = { showAddEmployeeRequestDialog = true }
-                    )
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "You don't have access to Tasks.",
+                                color = MaterialTheme.mkulimaColors.textSecondary,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
                 }
             }
             }

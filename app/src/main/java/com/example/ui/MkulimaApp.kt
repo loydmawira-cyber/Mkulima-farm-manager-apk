@@ -874,7 +874,9 @@ fun MkulimaAppContent(
                         onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
                         onDeleteEggLog = { viewModel.deleteEggLog(it) },
                         farmSettings = farmSettings,
-                        userRole = userRole
+                        userRole = userRole,
+                        canEditLogs = userSession?.permissions?.canEditLogs ?: true,
+                        canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
                         )
                     } else {
                         Box(

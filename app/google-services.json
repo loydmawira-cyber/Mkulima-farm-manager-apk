@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "104751954749",
+    "project_id": "mkulima-farm",
+    "storage_bucket": "mkulima-farm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:104751954749:android:69531fd6e3380c8aefa354",
+        "android_client_info": {
+          "package_name": "com.aistudio.mkulimafarm.xrqz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_NcFaib-1gmETY6WjCniSza4JLL5XlLE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

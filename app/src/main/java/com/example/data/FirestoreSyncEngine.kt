@@ -348,13 +348,11 @@ class FirestoreSyncEngine(
         triggerPush(farmId)
 
         scope.launch {
-            ensureExistingPhotosBackedUp(farmId)
+            reconcileAndRestoreAllPhotos(farmId)
         }
     }
 
-    private suspend fun ensureExistingPhotosBackedUp(farmId: String) = withContext(Dispatchers.IO) {
-        val migrationKey = "photo_backup_migration_v1_$farmId"
-        if (prefs.getBoolean(migrationKey, false)) return@withContext
+    private suspend fun reconcileAndRestoreAllPhotos(farmId: String) = withContext(Dispatchers.IO) {
         val db = getFirestore() ?: return@withContext
         try {
             val farmRef = db.collection("farms").document(farmId)
@@ -362,27 +360,58 @@ class FirestoreSyncEngine(
             val tasks = farmDao.getTaskSnapshotForFarm(farmId)
 
             for (unit in units) {
-                if (!unit.photoUri.isNullOrBlank() && ImageStorageUtils.isLocalFileValid(context, unit.photoUri)) {
-                    val base64 = ImageStorageUtils.uriToBase64(context, unit.photoUri, 640, 80)
-                    if (!base64.isNullOrBlank()) {
-                        farmRef.collection("units").document(unit.syncId)
-                            .set(mapOf("photoBase64" to base64, "photoUri" to unit.photoUri), SetOptions.merge())
+                try {
+                    val localValid = !unit.photoUri.isNullOrBlank() && ImageStorageUtils.isLocalFileValid(context, unit.photoUri)
+                    if (localValid) {
+                        // Ensure remote Firestore has the Base64 backup
+                        val base64 = ImageStorageUtils.uriToBase64(context, unit.photoUri, 640, 80)
+                        if (!base64.isNullOrBlank()) {
+                            farmRef.collection("units").document(unit.syncId)
+                                .set(mapOf("photoBase64" to base64, "photoUri" to unit.photoUri), SetOptions.merge())
+                        }
+                    } else {
+                        // Local file is missing (e.g. fresh reinstall). Fetch remote doc and restore.
+                        val doc = farmRef.collection("units").document(unit.syncId).get().awaitTask(5000L)
+                        val base64 = doc.getString("photoBase64")
+                        if (!base64.isNullOrBlank()) {
+                            val restored = ImageStorageUtils.base64ToLocalUri(context, base64, "animal_photos", "animal_${unit.syncId}")
+                            if (!restored.isNullOrBlank()) {
+                                farmDao.updateUnit(unit.copy(photoUri = restored))
+                            }
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Reconciliation error for unit photo ${unit.syncId}: ${e.message}")
                 }
             }
 
             for (task in tasks) {
-                if (!task.proofPhotoUri.isNullOrBlank() && ImageStorageUtils.isLocalFileValid(context, task.proofPhotoUri)) {
-                    val base64 = ImageStorageUtils.uriToBase64(context, task.proofPhotoUri, 640, 80)
-                    if (!base64.isNullOrBlank()) {
-                        farmRef.collection("tasks").document(task.syncId)
-                            .set(mapOf("proofPhotoBase64" to base64, "proofPhotoUri" to task.proofPhotoUri), SetOptions.merge())
+                try {
+                    val localValid = !task.proofPhotoUri.isNullOrBlank() && ImageStorageUtils.isLocalFileValid(context, task.proofPhotoUri)
+                    if (localValid) {
+                        // Ensure remote Firestore has the Base64 backup
+                        val base64 = ImageStorageUtils.uriToBase64(context, task.proofPhotoUri, 640, 80)
+                        if (!base64.isNullOrBlank()) {
+                            farmRef.collection("tasks").document(task.syncId)
+                                .set(mapOf("proofPhotoBase64" to base64, "proofPhotoUri" to task.proofPhotoUri), SetOptions.merge())
+                        }
+                    } else if (task.isCompleted) {
+                        // Local file is missing. Fetch remote doc and restore.
+                        val doc = farmRef.collection("tasks").document(task.syncId).get().awaitTask(5000L)
+                        val base64 = doc.getString("proofPhotoBase64")
+                        if (!base64.isNullOrBlank()) {
+                            val restored = ImageStorageUtils.base64ToLocalUri(context, base64, "task_proofs", "proof_${task.syncId}")
+                            if (!restored.isNullOrBlank()) {
+                                farmDao.updateTask(task.copy(proofPhotoUri = restored))
+                            }
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Reconciliation error for task proof ${task.syncId}: ${e.message}")
                 }
             }
-            prefs.edit().putBoolean(migrationKey, true).apply()
         } catch (e: Exception) {
-            Log.w(TAG, "Photo backup migration deferred: ${e.message}")
+            Log.w(TAG, "Photo reconciliation deferred: ${e.message}")
         }
     }
 

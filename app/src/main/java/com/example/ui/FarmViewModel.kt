@@ -36,6 +36,7 @@ import com.example.data.TaskPriority
 import com.example.data.UserSession
 import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
+import com.example.ui.util.ImageStorageUtils
 import com.example.util.DateValidationUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -726,7 +727,8 @@ class FarmViewModel(
                 val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
                 val updated = existing.copy(
                     photoUri = photoUri,
-                    lastUpdated = nowFormatted
+                    lastUpdated = nowFormatted,
+                    updatedAt = System.currentTimeMillis()
                 )
                 repository.updateUnit(updated)
             }
@@ -1030,20 +1032,12 @@ class FarmViewModel(
     }
 
     fun savePhotoToInternalStorage(context: Context, sourceUri: Uri): String? {
-        return try {
-            val inputStream = context.contentResolver.openInputStream(sourceUri) ?: return null
-            val proofsDir = File(context.filesDir, "task_proofs").apply { mkdirs() }
-            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val destFile = File(proofsDir, "PROOF_$timeStamp.jpg")
-
-            FileOutputStream(destFile).use { outputStream ->
-                inputStream.copyTo(outputStream)
-            }
-            Uri.fromFile(destFile).toString()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            sourceUri.toString()
-        }
+        return ImageStorageUtils.saveImageToInternalStorage(
+            context = context,
+            sourceUri = sourceUri,
+            subDir = "task_proofs",
+            prefix = "PROOF"
+        ) ?: sourceUri.toString()
     }
 
     fun deleteWorker(workerId: String) {

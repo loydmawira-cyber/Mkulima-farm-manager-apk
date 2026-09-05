@@ -858,7 +858,7 @@ fun FlocksScreen(
                         currentWeight = currentWeight,
                         sire = sire,
                         dam = dam,
-                        photoUri = if (photoUri != null) photoUri else matching.photoUri,
+                        photoUri = photoUri,
                         notes = notes ?: matching.notes
                     )
                     onUpdateUnit(updatedUnit)
@@ -881,7 +881,7 @@ fun FlocksScreen(
                     currentWeight = currentWeight,
                     sire = sire,
                     dam = dam,
-                    photoUri = if (photoUri != null) photoUri else matching.photoUri,
+                    photoUri = photoUri,
                     notes = notes ?: matching.notes
                 )
                 onUpdateUnit(updatedUnit)

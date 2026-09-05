@@ -8,8 +8,10 @@ import android.media.ExifInterface
 import android.net.Uri
 import android.util.Base64
 import android.util.Log
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
@@ -21,29 +23,80 @@ object ImageStorageUtils {
     private const val TAG = "ImageStorageUtils"
 
     /**
-     * Saves and optimizes animal photo by downsampling and compressing to high-quality JPEG.
-     * Prevents multi-megabyte uncompressed files from stalling the UI during list rendering.
+     * Resiliently reads raw image bytes from any source:
+     * - content:// URIs
+     * - file:// URIs
+     * - android.resource:// URIs
+     * - absolute file paths (/data/user/0/...)
+     * - inline Base64 data strings (data:image/... or raw Base64)
+     *
+     * Performs a single read to prevent permissions expiration or closed-stream exceptions.
+     */
+    fun readBytesFromUri(context: Context, uriSource: Any?): ByteArray? {
+        if (uriSource == null) return null
+        val uriStr = uriSource.toString().trim()
+        if (uriStr.isBlank()) return null
+
+        // 1. Inline Base64 Data URI or raw Base64 string
+        if (uriStr.startsWith("data:image/") || uriStr.startsWith("data:application/")) {
+            val commaIndex = uriStr.indexOf(',')
+            val raw = if (commaIndex != -1) uriStr.substring(commaIndex + 1) else uriStr
+            return runCatching { Base64.decode(raw.trim(), Base64.DEFAULT) }.getOrNull()
+        }
+
+        // 2. Parse URI
+        val uri = if (uriSource is Uri) uriSource else runCatching { Uri.parse(uriStr) }.getOrNull()
+
+        // 3. File scheme or raw filesystem path
+        if (uri == null || uri.scheme == "file" || uri.scheme == null) {
+            val path = uri?.path ?: uriStr.removePrefix("file://")
+            val file = File(path)
+            if (file.exists() && file.isFile && file.length() > 0) {
+                return runCatching {
+                    FileInputStream(file).use { it.readBytes() }
+                }.getOrNull()
+            }
+        }
+
+        // 4. Content scheme or android.resource scheme via ContentResolver
+        if (uri != null) {
+            return runCatching {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }.getOrNull()
+        }
+
+        return null
+    }
+
+    /**
+     * Saves and optimizes animal photo or task proof by downsampling and compressing to high-quality JPEG.
+     * Guaranteed to persist in context.filesDir so it survives across app lifecycles.
      */
     fun saveImageToInternalStorage(
         context: Context,
-        sourceUri: Uri,
+        sourceUri: Any,
         subDir: String = "animal_photos",
         prefix: String = "animal"
     ): String? {
         return try {
+            val bytes = readBytesFromUri(context, sourceUri)
+            if (bytes == null || bytes.isEmpty()) {
+                Log.w(TAG, "Cannot save image: source bytes are empty for $sourceUri")
+                return null
+            }
+
             val photosDir = File(context.filesDir, subDir).apply {
                 if (!exists()) mkdirs()
             }
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val destFile = File(photosDir, "${prefix}_$timeStamp.jpg")
+            val cleanPrefix = prefix.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+            val destFile = File(photosDir, "${cleanPrefix}_${timeStamp}_${(System.currentTimeMillis() % 10000)}.jpg")
 
-            // 1. Decode image bounds first to compute sample size
+            // 1. Decode bounds
             val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                BitmapFactory.decodeStream(input, null, boundsOptions)
-            }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
 
-            val maxDimension = 800
+            val maxDimension = 900
             val srcWidth = boundsOptions.outWidth
             val srcHeight = boundsOptions.outHeight
             var sampleSize = 1
@@ -53,19 +106,17 @@ object ImageStorageUtils {
                 if (sampleSize < 1) sampleSize = 1
             }
 
-            // 2. Decode sampled bitmap with compact RGB_565 config
+            // 2. Decode sampled bitmap
             val decodeOptions = BitmapFactory.Options().apply {
                 inSampleSize = sampleSize
                 inPreferredConfig = Bitmap.Config.RGB_565
             }
-            var bitmap = context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                BitmapFactory.decodeStream(input, null, decodeOptions)
-            }
+            var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
 
-            // 3. Fix EXIF orientation if needed
             if (bitmap != null) {
+                // 3. Handle EXIF orientation
                 try {
-                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    ByteArrayInputStream(bytes).use { input ->
                         val exif = ExifInterface(input)
                         val orientation = exif.getAttributeInt(
                             ExifInterface.TAG_ORIENTATION,
@@ -87,24 +138,24 @@ object ImageStorageUtils {
                     }
                 } catch (_: Exception) {}
 
-                // 4. Compress to optimized JPEG (~50-70KB)
+                // 4. Compress to optimized JPEG
                 FileOutputStream(destFile).use { output ->
-                    bitmap?.compress(Bitmap.CompressFormat.JPEG, 82, output)
+                    bitmap?.compress(Bitmap.CompressFormat.JPEG, 85, output)
+                    output.flush()
                 }
                 bitmap?.recycle()
                 Uri.fromFile(destFile).toString()
             } else {
-                // Fallback raw copy if decode fails
-                context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                    FileOutputStream(destFile).use { output ->
-                        input.copyTo(output)
-                    }
+                // Fallback raw copy if bitmap decode failed
+                FileOutputStream(destFile).use { output ->
+                    output.write(bytes)
+                    output.flush()
                 }
                 Uri.fromFile(destFile).toString()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error saving image to internal storage: ${e.message}", e)
-            sourceUri.toString()
+            null
         }
     }
 
@@ -125,21 +176,10 @@ object ImageStorageUtils {
         }
 
         return try {
-            val uri = Uri.parse(uriString)
-            val openStream: () -> InputStream? = {
-                if (uri.scheme == "file" || uri.scheme == null) {
-                    val path = uri.path ?: uriString.removePrefix("file://")
-                    val file = File(path)
-                    if (file.exists() && file.length() > 0) file.inputStream() else null
-                } else {
-                    context.contentResolver.openInputStream(uri)
-                }
-            }
+            val bytes = readBytesFromUri(context, uriString) ?: return null
 
             val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            openStream()?.use { input ->
-                BitmapFactory.decodeStream(input, null, boundsOptions)
-            } ?: return null
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
 
             val srcWidth = boundsOptions.outWidth
             val srcHeight = boundsOptions.outHeight
@@ -156,12 +196,11 @@ object ImageStorageUtils {
                 inSampleSize = sampleSize
                 inPreferredConfig = Bitmap.Config.RGB_565
             }
-            var bitmap = openStream()?.use { input ->
-                BitmapFactory.decodeStream(input, null, decodeOptions)
-            } ?: return null
+            var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions) ?: return null
 
+            // Handle EXIF orientation
             try {
-                openStream()?.use { input ->
+                ByteArrayInputStream(bytes).use { input ->
                     val exif = ExifInterface(input)
                     val orientation = exif.getAttributeInt(
                         ExifInterface.TAG_ORIENTATION,
@@ -252,7 +291,7 @@ object ImageStorageUtils {
             if (uri.scheme == "file" || uri.scheme == null) {
                 val path = uri.path ?: uriString.removePrefix("file://")
                 val f = File(path)
-                f.exists() && f.length() > 0
+                f.exists() && f.isFile && f.length() > 0
             } else if (uri.scheme == "content") {
                 context.contentResolver.openInputStream(uri)?.use { true } ?: false
             } else {
@@ -285,7 +324,8 @@ object ImageStorageUtils {
                 return restoredUri
             }
         }
-        return localUri
+        return if (isLocalFileValid(context, localUri)) localUri else null
     }
 }
+
 

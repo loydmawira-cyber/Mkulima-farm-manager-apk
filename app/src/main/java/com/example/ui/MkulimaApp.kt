@@ -304,7 +304,7 @@ fun MkulimaAppContent(
             AddUnitDialog(
                 onDismiss = { showAddUnitDialog = false },
                 farmSettings = farmSettings,
-                onUnitCreated = { name, type, headCount, healthStatus, location, tagNumber, breed, dob, weightAtBirth, currentWeight, sire, dam, notes ->
+                onUnitCreated = { name, type, headCount, healthStatus, location, tagNumber, breed, dob, weightAtBirth, currentWeight, sire, dam, notes, photoUri ->
                     val isCattle = type.contains("cattle", ignoreCase = true) || type.contains("cow", ignoreCase = true)
                     viewModel.addNewUnit(
                         name = name,
@@ -320,6 +320,7 @@ fun MkulimaAppContent(
                         currentWeight = currentWeight,
                         sire = sire,
                         dam = dam,
+                        photoUri = photoUri,
                         notes = notes,
                         onCreated = { savedUnit ->
                             if (isCattle) {

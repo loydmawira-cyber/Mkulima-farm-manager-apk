@@ -278,7 +278,7 @@ fun EditAnimalDialog(
                                     ) {
                                         Icon(Icons.Filled.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Camera", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (photoUri.isNullOrBlank()) "Camera" else "Retake", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
 
                                     OutlinedButton(
@@ -290,23 +290,28 @@ fun EditAnimalDialog(
                                     ) {
                                         Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Gallery", fontSize = 12.sp, color = Color(0xFF475569))
+                                        Text(if (photoUri.isNullOrBlank()) "Gallery" else "Change", fontSize = 12.sp, color = Color(0xFF475569))
                                     }
                                 }
 
                                 if (!photoUri.isNullOrBlank()) {
-                                    Text(
-                                        text = "Remove Photo",
-                                        color = Color(0xFFDC2626),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
+                                    OutlinedButton(
+                                        onClick = { photoUri = null },
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                         modifier = Modifier
-                                            .clickable { photoUri = null }
-                                            .padding(top = 2.dp)
-                                    )
+                                            .height(30.dp)
+                                            .testTag("edit_animal_remove_photo_button")
+                                    ) {
+                                        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFDC2626))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Remove Photo", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                                    }
                                 } else {
                                     Text(
-                                        text = "No photo uploaded • Fallback icon active",
+                                        text = "No photo set • Using icon placeholder",
                                         color = Color(0xFF64748B),
                                         fontSize = 11.sp
                                     )

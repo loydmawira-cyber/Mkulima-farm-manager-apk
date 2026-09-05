@@ -637,6 +637,7 @@ class FarmViewModel(
         currentWeight: String = "",
         sire: String = "",
         dam: String = "",
+        photoUri: String? = null,
         notes: String = "",
         onCreated: (FarmUnit) -> Unit = {},
         onError: (String) -> Unit = {}
@@ -682,6 +683,7 @@ class FarmViewModel(
                     currentWeight = currentWeight,
                     sire = sire,
                     dam = dam,
+                    photoUri = photoUri,
                     notes = notes.trim()
                 )
                 val savedUnit = withContext(Dispatchers.IO) { repository.insertUnitAndReturnPrepared(newUnit) }

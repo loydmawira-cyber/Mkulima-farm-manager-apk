@@ -816,7 +816,7 @@ fun FlocksScreen(
             sire = sire,
             dam = dam,
             headCountInt = headCount,
-            photoUri = if (photoUri != null) photoUri else existing.photoUri,
+            photoUri = photoUri,
             notes = notes ?: existing.notes,
             lastMilk = if (category.equals("POULTRY", ignoreCase = true)) "$headCount Birds" else existing.lastMilk
         )
@@ -2498,15 +2498,40 @@ fun AnimalDetailsView(
             if (showPhotoSourceDialog) {
                 AlertDialog(
                     onDismissRequest = { showPhotoSourceDialog = false },
-                    title = { Text("Update Animal Photo", fontWeight = FontWeight.Bold, fontSize = 17.sp) },
-                    text = { Text("Choose a photo from your camera or gallery to identify ${animal.name}. If no photo is uploaded, a generic icon is displayed.") },
+                    title = { Text("Update Animal Photo", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "Choose a photo from your camera or gallery to identify ${animal.name}.",
+                                fontSize = 13.sp,
+                                color = Color(0xFF475569)
+                            )
+                            if (!animal.photoUri.isNullOrBlank()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        showPhotoSourceDialog = false
+                                        onUpdatePhoto(null)
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                                    modifier = Modifier.fillMaxWidth().testTag("dialog_remove_animal_photo_button")
+                                ) {
+                                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFDC2626))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Remove Current Photo", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                                }
+                            }
+                        }
+                    },
                     confirmButton = {
                         Button(
                             onClick = {
                                 showPhotoSourceDialog = false
                                 showCameraCaptureDialog = true
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Filled.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -2518,7 +2543,8 @@ fun AnimalDetailsView(
                             onClick = {
                                 showPhotoSourceDialog = false
                                 photoGalleryLauncher.launch("image/*")
-                            }
+                            },
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -4593,15 +4619,40 @@ fun FlockDetailsView(
                 if (showPhotoSourceDialog) {
                     AlertDialog(
                         onDismissRequest = { showPhotoSourceDialog = false },
-                        title = { Text("Update Flock Photo", fontWeight = FontWeight.Bold, fontSize = 17.sp) },
-                        text = { Text("Choose a photo from your camera or gallery to identify ${flock.name}. If no photo is uploaded, a generic chicken/egg icon is displayed.") },
+                        title = { Text("Update Flock Photo", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    text = "Choose a photo from your camera or gallery to identify ${flock.name}.",
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF475569)
+                                )
+                                if (!flock.photoUri.isNullOrBlank()) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            showPhotoSourceDialog = false
+                                            onUpdatePhoto(null)
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                                        modifier = Modifier.fillMaxWidth().testTag("dialog_remove_flock_photo_button")
+                                    ) {
+                                        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFDC2626))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Remove Current Photo", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                                    }
+                                }
+                            }
+                        },
                         confirmButton = {
                             Button(
                                 onClick = {
                                     showPhotoSourceDialog = false
                                     showCameraCaptureDialog = true
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Filled.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -4613,7 +4664,8 @@ fun FlockDetailsView(
                                 onClick = {
                                     showPhotoSourceDialog = false
                                     photoGalleryLauncher.launch("image/*")
-                                }
+                                },
+                                shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))

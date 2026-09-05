@@ -1,22 +1,31 @@
 package com.example.ui.components
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Egg
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.Button
@@ -37,13 +46,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import com.example.R
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.util.ImageStorageUtils
 
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -68,9 +84,11 @@ fun AddUnitDialog(
         currentWeight: String,
         sire: String,
         dam: String,
-        notes: String
+        notes: String,
+        photoUri: String?
     ) -> Unit
 ) {
+    val context = LocalContext.current
     val initialCategory = if (farmSettings?.farmType?.equals("Poultry Only", ignoreCase = true) == true) "POULTRY" else "CATTLE"
     var category by remember(farmSettings?.farmType) { mutableStateOf(initialCategory) }
 
@@ -78,6 +96,18 @@ fun AddUnitDialog(
 
     val todayFormatted = remember {
         SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+    }
+
+    // Photo state
+    var photoUri by remember { mutableStateOf<String?>(null) }
+    var showCameraDialog by remember { mutableStateOf(false) }
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val saved = ImageStorageUtils.saveImageToInternalStorage(context, uri, subDir = "animal_photos", prefix = "animal") ?: uri.toString()
+            photoUri = saved
+        }
     }
 
     // Common/Cattle state
@@ -170,6 +200,122 @@ fun AddUnitDialog(
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSelected) Color.White else Color(0xFF475569),
                                     fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ANIMAL PHOTO SECTION
+                Text(
+                    text = if (category == "CATTLE") "Animal Profile Photo (Optional)" else "Flock Photo (Optional)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Avatar display with Fallback
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (category == "CATTLE") Color(0xFFE8F5E9) else Color(0xFFFEF3C7))
+                                .border(
+                                    1.dp,
+                                    if (category == "CATTLE") ForestGreenPrimary.copy(alpha = 0.4f) else Color(0xFFF59E0B).copy(alpha = 0.4f),
+                                    RoundedCornerShape(14.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (!photoUri.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(photoUri)
+                                        .crossfade(true)
+                                        .placeholder(R.drawable.ic_livestock_placeholder)
+                                        .error(R.drawable.ic_livestock_placeholder)
+                                        .memoryCachePolicy(CachePolicy.ENABLED)
+                                        .diskCachePolicy(CachePolicy.ENABLED)
+                                        .build(),
+                                    contentDescription = "Animal Photo",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (category == "CATTLE") Icons.Filled.Pets else Icons.Filled.Egg,
+                                    contentDescription = null,
+                                    tint = if (category == "CATTLE") ForestGreenPrimary else Color(0xFFD97706),
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+                        }
+
+                        // Photo Action Buttons
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { showCameraDialog = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.testTag("add_unit_camera_button")
+                                ) {
+                                    Icon(Icons.Filled.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (photoUri.isNullOrBlank()) "Camera" else "Retake", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { galleryLauncher.launch("image/*") },
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.testTag("add_unit_gallery_button")
+                                ) {
+                                    Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (photoUri.isNullOrBlank()) "Gallery" else "Change", fontSize = 12.sp, color = Color(0xFF475569))
+                                }
+                            }
+
+                            if (!photoUri.isNullOrBlank()) {
+                                OutlinedButton(
+                                    onClick = { photoUri = null },
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier
+                                        .height(28.dp)
+                                        .testTag("add_unit_remove_photo_button")
+                                ) {
+                                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color(0xFFDC2626))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Remove Photo", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                                }
+                            } else {
+                                Text(
+                                    text = "No photo set • Using placeholder icon",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 11.sp
                                 )
                             }
                         }
@@ -473,7 +619,8 @@ fun AddUnitDialog(
                                     currentWeight,
                                     sire,
                                     dam,
-                                    notes.trim()
+                                    notes.trim(),
+                                    photoUri
                                 )
                             } else {
                                 val finalName = poultryName.ifBlank { "Poultry Flock" }
@@ -490,7 +637,8 @@ fun AddUnitDialog(
                                     "1.8kg avg",
                                     "N/A",
                                     "N/A",
-                                    notes.trim()
+                                    notes.trim(),
+                                    photoUri
                                 )
                             }
                         },
@@ -503,5 +651,16 @@ fun AddUnitDialog(
                 }
             }
         }
+    }
+
+    if (showCameraDialog) {
+        CameraCaptureDialog(
+            onDismiss = { showCameraDialog = false },
+            onPhotoCaptured = { uri ->
+                showCameraDialog = false
+                val saved = ImageStorageUtils.saveImageToInternalStorage(context, uri, subDir = "animal_photos", prefix = "animal") ?: uri.toString()
+                photoUri = saved
+            }
+        )
     }
 }

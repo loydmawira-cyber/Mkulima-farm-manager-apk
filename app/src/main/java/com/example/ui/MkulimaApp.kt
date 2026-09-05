@@ -867,6 +867,9 @@ fun MkulimaAppContent(
                                 addTaskInitialTargetUnit = fieldName
                                 showAddTaskDialog = true
                             },
+                            onAddFinanceRecord = { type, category, amount, description, date ->
+                                viewModel.addFinanceRecord(type, category, amount, description, date)
+                            },
                             livestock = {
                                 FlocksScreen(
                                     viewModel = viewModel,

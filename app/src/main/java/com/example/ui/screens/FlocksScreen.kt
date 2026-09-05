@@ -93,6 +93,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.LaunchedEffect
 import com.example.ui.FarmViewModel
 import com.example.ui.components.AddCattleEventDialog
+import com.example.ui.components.AddFinanceRecordDialog
 import com.example.ui.components.CalvingCalfInfo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
@@ -1809,6 +1810,10 @@ fun AnimalDetailsView(
     var eventToDelete by remember { mutableStateOf<CattleEventItem?>(null) }
     var showDeleteEventConfirmDialog by remember { mutableStateOf(false) }
     var selectedLogFilter by remember { mutableStateOf("ALL") } // ALL, CALVING, HEALTH, HEAT, PD, WEIGHT
+    var showRecordFinanceDialog by remember { mutableStateOf(false) }
+    var pendingFinanceCategory by remember { mutableStateOf("Vaccines & Vet") }
+    var pendingFinanceDescription by remember { mutableStateOf("") }
+    var pendingFinanceDate by remember { mutableStateOf("") }
 
     val sortedAnimalEvents = remember(animalEvents.toList()) {
         animalEvents.sortedWith(
@@ -3594,6 +3599,12 @@ fun AnimalDetailsView(
             unitId = unitId,
             initialCategory = cattleEventDialogCategory,
             onDismiss = { showAddCattleEventDialog = false },
+            onRequestRecordExpense = { expCategory, expDesc, expDate ->
+                pendingFinanceCategory = expCategory
+                pendingFinanceDescription = expDesc
+                pendingFinanceDate = expDate
+                showRecordFinanceDialog = true
+            },
             onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String, calfInfo: CalvingCalfInfo? ->
                 viewModel.addCattleEvent(
                     unitId = unitId,
@@ -3684,6 +3695,12 @@ fun AnimalDetailsView(
             initialNotes = ev.notes,
             initialMetricValue = ev.metricValue,
             onDismiss = { eventToEdit = null },
+            onRequestRecordExpense = { expCategory, expDesc, expDate ->
+                pendingFinanceCategory = expCategory
+                pendingFinanceDescription = expDesc
+                pendingFinanceDate = expDate
+                showRecordFinanceDialog = true
+            },
             onSaveEvent = { type: String, title: String, date: String, details: String, notes: String, metricValue: String, reminderText: String, _ ->
                 val evId = ev.id.toLongOrNull()
                 if (evId != null) {
@@ -3831,6 +3848,26 @@ fun AnimalDetailsView(
                 ) {
                     Text("Cancel", color = Color(0xFF475569))
                 }
+            }
+        )
+    }
+
+    if (showRecordFinanceDialog) {
+        AddFinanceRecordDialog(
+            initialType = FinanceType.EXPENSE,
+            initialCategory = pendingFinanceCategory,
+            initialDescription = pendingFinanceDescription,
+            initialDate = pendingFinanceDate,
+            userRole = userRole,
+            canEditPastDaysLogs = true,
+            onDismiss = { showRecordFinanceDialog = false },
+            onSaveRecordWithDate = { type, category, amount, description, date ->
+                viewModel.addFinanceRecord(type, category, amount, description, date)
+                showRecordFinanceDialog = false
+            },
+            onSaveRecord = { type, category, amount, description ->
+                viewModel.addFinanceRecord(type, category, amount, description, pendingFinanceDate)
+                showRecordFinanceDialog = false
             }
         )
     }

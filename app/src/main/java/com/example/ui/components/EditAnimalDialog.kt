@@ -72,6 +72,7 @@ import coil.request.CachePolicy
 import com.example.R
 import com.example.ui.screens.AnimalDetailData
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.util.ImageStorageUtils
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -128,7 +129,8 @@ fun EditAnimalDialog(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            photoUri = uri.toString()
+            val saved = ImageStorageUtils.saveImageToInternalStorage(context, uri, subDir = "animal_photos", prefix = "animal") ?: uri.toString()
+            photoUri = saved
         }
     }
 
@@ -783,7 +785,8 @@ fun EditAnimalDialog(
         CameraCaptureDialog(
             onDismiss = { showCameraDialog = false },
             onPhotoCaptured = { uri ->
-                photoUri = uri.toString()
+                val saved = ImageStorageUtils.saveImageToInternalStorage(context, uri, subDir = "animal_photos", prefix = "animal") ?: uri.toString()
+                photoUri = saved
                 showCameraDialog = false
             }
         )

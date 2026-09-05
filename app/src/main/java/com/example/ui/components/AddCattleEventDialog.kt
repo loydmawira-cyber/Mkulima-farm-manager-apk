@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -58,6 +59,17 @@ data class CalvingCalfInfo(
     val colostrumFed: String
 )
 
+private data class PendingCattleEventData(
+    val category: String,
+    val title: String,
+    val date: String,
+    val details: String,
+    val notes: String,
+    val metricValue: String,
+    val reminderText: String,
+    val calfInfo: CalvingCalfInfo?
+)
+
 @Composable
 fun AddCattleEventDialog(
     animalName: String,
@@ -70,6 +82,7 @@ fun AddCattleEventDialog(
     initialNotes: String? = null,
     initialMetricValue: String? = null,
     onDismiss: () -> Unit,
+    onRequestRecordExpense: ((category: String, description: String, date: String) -> Unit)? = null,
     onSaveEvent: (
         eventType: String,
         title: String,
@@ -82,6 +95,8 @@ fun AddCattleEventDialog(
     ) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf(initialCategory) } // PD, INSEMINATION, CALVING, DRY_OFF, ABORTED, HEAT, WEIGHT, HEALTH, OTHER
+    var showExpensePrompt by remember { mutableStateOf(false) }
+    var pendingEventToSave by remember { mutableStateOf<PendingCattleEventData?>(null) }
     var pdResult by remember {
         mutableStateOf(
             if (initialCategory == "PD" && (initialTitle?.contains("Negative", ignoreCase = true) == true || initialMetricValue?.contains("Negative", ignoreCase = true) == true))
@@ -857,16 +872,32 @@ fun AddCattleEventDialog(
                                 )
                             } else null
 
-                            onSaveEvent(
-                                selectedCategory,
-                                computedTitle,
-                                dateText,
-                                detailsText,
-                                notesText,
-                                metricText,
-                                reminderText,
-                                calfInfo
+                            val payload = PendingCattleEventData(
+                                category = selectedCategory,
+                                title = computedTitle,
+                                date = dateText,
+                                details = detailsText,
+                                notes = notesText,
+                                metricValue = metricText,
+                                reminderText = reminderText,
+                                calfInfo = calfInfo
                             )
+
+                            if (onRequestRecordExpense != null) {
+                                pendingEventToSave = payload
+                                showExpensePrompt = true
+                            } else {
+                                onSaveEvent(
+                                    payload.category,
+                                    payload.title,
+                                    payload.date,
+                                    payload.details,
+                                    payload.notes,
+                                    payload.metricValue,
+                                    payload.reminderText,
+                                    payload.calfInfo
+                                )
+                            }
                         },
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
@@ -876,5 +907,90 @@ fun AddCattleEventDialog(
                 }
             }
         }
+    }
+
+    if (showExpensePrompt && pendingEventToSave != null) {
+        val payload = pendingEventToSave!!
+        AlertDialog(
+            onDismissRequest = {
+                showExpensePrompt = false
+                onSaveEvent(
+                    payload.category,
+                    payload.title,
+                    payload.date,
+                    payload.details,
+                    payload.notes,
+                    payload.metricValue,
+                    payload.reminderText,
+                    payload.calfInfo
+                )
+            },
+            title = {
+                Text(
+                    text = "Record as Expense?",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+            },
+            text = {
+                Text(
+                    text = "do you want to add this as expense on income and expense",
+                    fontSize = 14.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExpensePrompt = false
+                        onSaveEvent(
+                            payload.category,
+                            payload.title,
+                            payload.date,
+                            payload.details,
+                            payload.notes,
+                            payload.metricValue,
+                            payload.reminderText,
+                            payload.calfInfo
+                        )
+                        val defaultExpenseCategory = when (payload.category.uppercase()) {
+                            "HEALTH" -> "Vaccines & Vet"
+                            "INSEMINATION" -> "Vaccines & Vet"
+                            "PD" -> "Vaccines & Vet"
+                            "CALVING" -> "Vaccines & Vet"
+                            else -> "Other Expense"
+                        }
+                        val defaultDesc = "${payload.title} - $animalName"
+                        onRequestRecordExpense?.invoke(defaultExpenseCategory, defaultDesc, payload.date)
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                ) {
+                    Text("Yes", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showExpensePrompt = false
+                        onSaveEvent(
+                            payload.category,
+                            payload.title,
+                            payload.date,
+                            payload.details,
+                            payload.notes,
+                            payload.metricValue,
+                            payload.reminderText,
+                            payload.calfInfo
+                        )
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                ) {
+                    Text("No", color = Color(0xFF475569))
+                }
+            }
+        )
     }
 }

@@ -56,22 +56,45 @@ fun AddFinanceRecordDialog(
     onSaveRecord: (type: FinanceType, category: String, amount: Double, description: String) -> Unit,
     onUpdateRecord: ((FinanceRecord) -> Unit)? = null,
     existing: FinanceRecord? = null,
+    initialType: FinanceType = FinanceType.INCOME,
+    initialCategory: String? = null,
+    initialAmount: Double? = null,
+    initialDescription: String? = null,
+    initialDate: String? = null,
     userRole: String = "OWNER",
-    canEditPastDaysLogs: Boolean = true
+    canEditPastDaysLogs: Boolean = true,
+    onSaveRecordWithDate: ((type: FinanceType, category: String, amount: Double, description: String, date: String) -> Unit)? = null
 ) {
     val isOwner = userRole.equals("OWNER", ignoreCase = true)
     val cannotEditPast = !isOwner && !canEditPastDaysLogs
-    var selectedType by remember { mutableStateOf(existing?.type ?: FinanceType.INCOME) }
+    val effectiveType = existing?.type ?: initialType
+    var selectedType by remember { mutableStateOf(effectiveType) }
     val incomeCategories = listOf("Milk Sales", "Egg Sales", "Cattle Sales", "Crop Harvest Sales", "Other Income")
     val expenseCategories = listOf("Feeds & Supplies", "Vaccines & Vet", "Equipment & Repairs", "Labor & Wages", "Other Expense")
     var categoryOptions by remember { mutableStateOf(if (selectedType == FinanceType.INCOME) incomeCategories else expenseCategories) }
 
     var expanded by remember { mutableStateOf(false) }
-    var selectedCategory by remember { mutableStateOf(existing?.category ?: categoryOptions.first()) }
-    var amountText by remember { mutableStateOf(existing?.amount?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: "") }
-    var descriptionText by remember { mutableStateOf(existing?.description ?: "") }
+    var selectedCategory by remember {
+        mutableStateOf(
+            existing?.category
+                ?: initialCategory?.takeIf { categoryOptions.contains(it) }
+                ?: categoryOptions.first()
+        )
+    }
+    var amountText by remember {
+        mutableStateOf(
+            existing?.amount?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }
+                ?: initialAmount?.takeIf { it > 0.0 }?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }
+                ?: ""
+        )
+    }
+    var descriptionText by remember { mutableStateOf(existing?.description ?: initialDescription ?: "") }
     var transactionDate by remember {
-        mutableStateOf(existing?.date ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
+        mutableStateOf(
+            existing?.date
+                ?: initialDate?.takeIf { it.isNotBlank() }
+                ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+        )
     }
     val transactionDateIsPastRestricted = cannotEditPast && com.example.util.DateValidationUtils.isPastDate(transactionDate)
 
@@ -243,6 +266,8 @@ fun AddFinanceRecordDialog(
                                     description = finalDescription,
                                     date = transactionDate
                                 ))
+                            } else if (onSaveRecordWithDate != null) {
+                                onSaveRecordWithDate(selectedType, selectedCategory, amt, finalDescription, transactionDate)
                             } else {
                                 onSaveRecord(selectedType, selectedCategory, amt, finalDescription)
                             }

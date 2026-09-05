@@ -17,6 +17,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import com.example.ui.util.ImageStorageUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -345,6 +346,44 @@ class FirestoreSyncEngine(
 
         // Trigger initial push of any offline/dirty changes
         triggerPush(farmId)
+
+        scope.launch {
+            ensureExistingPhotosBackedUp(farmId)
+        }
+    }
+
+    private suspend fun ensureExistingPhotosBackedUp(farmId: String) = withContext(Dispatchers.IO) {
+        val migrationKey = "photo_backup_migration_v1_$farmId"
+        if (prefs.getBoolean(migrationKey, false)) return@withContext
+        val db = getFirestore() ?: return@withContext
+        try {
+            val farmRef = db.collection("farms").document(farmId)
+            val units = farmDao.getUnitsSnapshotForFarm(farmId)
+            val tasks = farmDao.getTaskSnapshotForFarm(farmId)
+
+            for (unit in units) {
+                if (!unit.photoUri.isNullOrBlank() && ImageStorageUtils.isLocalFileValid(context, unit.photoUri)) {
+                    val base64 = ImageStorageUtils.uriToBase64(context, unit.photoUri, 640, 80)
+                    if (!base64.isNullOrBlank()) {
+                        farmRef.collection("units").document(unit.syncId)
+                            .set(mapOf("photoBase64" to base64, "photoUri" to unit.photoUri), SetOptions.merge())
+                    }
+                }
+            }
+
+            for (task in tasks) {
+                if (!task.proofPhotoUri.isNullOrBlank() && ImageStorageUtils.isLocalFileValid(context, task.proofPhotoUri)) {
+                    val base64 = ImageStorageUtils.uriToBase64(context, task.proofPhotoUri, 640, 80)
+                    if (!base64.isNullOrBlank()) {
+                        farmRef.collection("tasks").document(task.syncId)
+                            .set(mapOf("proofPhotoBase64" to base64, "proofPhotoUri" to task.proofPhotoUri), SetOptions.merge())
+                    }
+                }
+            }
+            prefs.edit().putBoolean(migrationKey, true).apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "Photo backup migration deferred: ${e.message}")
+        }
     }
 
     fun stopSync() {
@@ -415,6 +454,10 @@ class FirestoreSyncEngine(
             val dirtyTasks = farmDao.getDirtyTasks(farmId, lastTasksPush)
             var maxTaskUpdatedAt = lastTasksPush
             for (task in dirtyTasks) {
+                val proofPhotoBase64 = if (!task.proofPhotoUri.isNullOrBlank()) {
+                    ImageStorageUtils.uriToBase64(context, task.proofPhotoUri, 640, 80)
+                } else null
+
                 val data = hashMapOf<String, Any?>(
                     "syncId" to task.syncId,
                     "farmId" to farmId,
@@ -426,6 +469,7 @@ class FirestoreSyncEngine(
                     "isCompleted" to task.isCompleted,
                     "completedAt" to task.completedAt,
                     "proofPhotoUri" to task.proofPhotoUri,
+                    "proofPhotoBase64" to proofPhotoBase64,
                     "proofNotes" to task.proofNotes,
                     "assignedWorker" to task.assignedWorker,
                     "instructions" to task.instructions,
@@ -442,6 +486,10 @@ class FirestoreSyncEngine(
             val dirtyUnits = farmDao.getDirtyUnits(farmId, lastUnitsPush)
             var maxUnitUpdatedAt = lastUnitsPush
             for (unit in dirtyUnits) {
+                val photoBase64 = if (!unit.photoUri.isNullOrBlank()) {
+                    ImageStorageUtils.uriToBase64(context, unit.photoUri, 640, 80)
+                } else null
+
                 val data = hashMapOf<String, Any?>(
                     "syncId" to unit.syncId,
                     "farmId" to farmId,
@@ -460,6 +508,7 @@ class FirestoreSyncEngine(
                     "sire" to unit.sire,
                     "dam" to unit.dam,
                     "photoUri" to unit.photoUri,
+                    "photoBase64" to photoBase64,
                     "notes" to unit.notes,
                     "updatedAt" to unit.updatedAt,
                     "isDeleted" to unit.isDeleted
@@ -854,6 +903,16 @@ class FirestoreSyncEngine(
             val priorityStr = doc.getString("priority") ?: "MEDIUM"
             val priority = try { TaskPriority.valueOf(priorityStr) } catch (e: Exception) { TaskPriority.MEDIUM }
 
+            val rawProofPhotoUri = doc.getString("proofPhotoUri")
+            val proofPhotoBase64 = doc.getString("proofPhotoBase64")
+            val restoredProofPhotoUri = ImageStorageUtils.restoreImageIfNeeded(
+                context = context,
+                localUri = rawProofPhotoUri,
+                base64Data = proofPhotoBase64,
+                subDir = "task_proofs",
+                fileName = "proof_${syncId}"
+            )
+
             val task = FarmTask(
                 id = existing?.id ?: 0,
                 syncId = syncId,
@@ -865,7 +924,7 @@ class FirestoreSyncEngine(
                 scheduledTime = doc.getString("scheduledTime") ?: "Today",
                 isCompleted = doc.getBoolean("isCompleted") ?: false,
                 completedAt = doc.getString("completedAt"),
-                proofPhotoUri = doc.getString("proofPhotoUri"),
+                proofPhotoUri = restoredProofPhotoUri,
                 proofNotes = doc.getString("proofNotes"),
                 assignedWorker = doc.getString("assignedWorker") ?: "Lead Farm Operator",
                 instructions = doc.getString("instructions"),
@@ -884,6 +943,16 @@ class FirestoreSyncEngine(
         val existing = farmDao.getUnitBySyncId(syncId)
 
         if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
+            val rawPhotoUri = doc.getString("photoUri")
+            val photoBase64 = doc.getString("photoBase64")
+            val restoredPhotoUri = ImageStorageUtils.restoreImageIfNeeded(
+                context = context,
+                localUri = rawPhotoUri,
+                base64Data = photoBase64,
+                subDir = "animal_photos",
+                fileName = "animal_${syncId}"
+            )
+
             val unit = FarmUnit(
                 id = existing?.id ?: 0,
                 syncId = syncId,
@@ -902,7 +971,7 @@ class FirestoreSyncEngine(
                 currentWeight = doc.getString("currentWeight") ?: "",
                 sire = doc.getString("sire") ?: "",
                 dam = doc.getString("dam") ?: "",
-                photoUri = doc.getString("photoUri"),
+                photoUri = restoredPhotoUri,
                 notes = doc.getString("notes") ?: "",
                 updatedAt = remoteUpdatedAt,
                 isDeleted = isDeleted

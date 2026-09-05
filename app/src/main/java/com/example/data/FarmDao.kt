@@ -84,6 +84,9 @@ interface FarmDao {
     @Query("SELECT * FROM farm_units WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyUnits(farmId: String, since: Long): List<FarmUnit>
 
+    @Query("SELECT * FROM farm_units WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0")
+    suspend fun getUnitsSnapshotForFarm(farmId: String): List<FarmUnit>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUnit(unit: FarmUnit): Long
 

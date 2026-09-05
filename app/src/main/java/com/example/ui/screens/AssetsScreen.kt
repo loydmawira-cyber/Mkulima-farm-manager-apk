@@ -26,9 +26,11 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.FieldPlan
 import com.example.data.FeedPlan
 import com.example.data.FinanceRecord
+import com.example.data.FinanceType
 import com.example.data.FarmUnit
 import com.example.data.InventoryItem
 import com.example.data.InventoryMovement
+import com.example.ui.components.AddFinanceRecordDialog
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -57,6 +59,7 @@ fun AssetsScreen(
     onDeleteFeedPlan: (Long) -> Unit,
     onAutomaticFeedDeductionChanged: (Boolean) -> Unit,
     onLogCropActivity: ((activityType: String, fieldName: String) -> Unit)? = null,
+    onAddFinanceRecord: ((type: FinanceType, category: String, amount: Double, description: String, date: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isOwner = userRole.equals("OWNER", ignoreCase = true)
@@ -70,19 +73,38 @@ fun AssetsScreen(
     var inventoryDeleteTarget by remember { mutableStateOf<InventoryItem?>(null) }
     var fieldDeleteTarget by remember { mutableStateOf<FieldPlan?>(null) }
     var fieldToHarvest by remember { mutableStateOf<FieldPlan?>(null) }
+    var showRecordFinanceDialog by remember { mutableStateOf(false) }
+    var pendingFinanceCategory by remember { mutableStateOf("Feeds & Supplies") }
+    var pendingFinanceAmount by remember { mutableStateOf(0.0) }
+    var pendingFinanceDescription by remember { mutableStateOf("") }
+    var pendingFinanceDate by remember { mutableStateOf("") }
 
     if (showNewInventory) {
         InventoryEntryDialog(
             existing = null,
             onDismiss = { showNewInventory = false },
-            onSave = { onAddInventory(it); showNewInventory = false }
+            onSave = { onAddInventory(it); showNewInventory = false },
+            onRequestRecordExpense = { expCat, expAmt, expDesc, expDate ->
+                pendingFinanceCategory = expCat
+                pendingFinanceAmount = expAmt
+                pendingFinanceDescription = expDesc
+                pendingFinanceDate = expDate
+                showRecordFinanceDialog = true
+            }
         )
     }
     inventoryEditor?.let { existing ->
         InventoryEntryDialog(
             existing = existing,
             onDismiss = { inventoryEditor = null },
-            onSave = { onUpdateInventory(it); inventoryEditor = null }
+            onSave = { onUpdateInventory(it); inventoryEditor = null },
+            onRequestRecordExpense = { expCat, expAmt, expDesc, expDate ->
+                pendingFinanceCategory = expCat
+                pendingFinanceAmount = expAmt
+                pendingFinanceDescription = expDesc
+                pendingFinanceDate = expDate
+                showRecordFinanceDialog = true
+            }
         )
     }
     if (showNewField) {
@@ -104,6 +126,27 @@ fun AssetsScreen(
             onHarvest(field, outcome, quantityKg, sale, date)
             fieldToHarvest = null
         }
+    }
+
+    if (showRecordFinanceDialog && onAddFinanceRecord != null) {
+        AddFinanceRecordDialog(
+            initialType = FinanceType.EXPENSE,
+            initialCategory = pendingFinanceCategory,
+            initialAmount = pendingFinanceAmount,
+            initialDescription = pendingFinanceDescription,
+            initialDate = pendingFinanceDate,
+            userRole = userRole,
+            canEditPastDaysLogs = true,
+            onDismiss = { showRecordFinanceDialog = false },
+            onSaveRecordWithDate = { type, category, amount, description, date ->
+                onAddFinanceRecord(type, category, amount, description, date)
+                showRecordFinanceDialog = false
+            },
+            onSaveRecord = { type, category, amount, description ->
+                onAddFinanceRecord(type, category, amount, description, pendingFinanceDate)
+                showRecordFinanceDialog = false
+            }
+        )
     }
 
     inventoryActionTarget?.let { item ->
@@ -454,7 +497,12 @@ private fun EmptyState(title: String, body: String) {
 }
 
 @Composable
-private fun InventoryEntryDialog(existing: InventoryItem?, onDismiss: () -> Unit, onSave: (InventoryItem) -> Unit) {
+private fun InventoryEntryDialog(
+    existing: InventoryItem?,
+    onDismiss: () -> Unit,
+    onSave: (InventoryItem) -> Unit,
+    onRequestRecordExpense: ((category: String, amount: Double, description: String, date: String) -> Unit)? = null
+) {
     val isEdit = existing != null
     var itemName by remember(existing?.syncId) { mutableStateOf(existing?.itemName.orEmpty()) }
     var category by remember(existing?.syncId) { mutableStateOf(existing?.category ?: "Seeds") }
@@ -467,6 +515,8 @@ private fun InventoryEntryDialog(existing: InventoryItem?, onDismiss: () -> Unit
     var expiryDate by remember(existing?.syncId) { mutableStateOf(existing?.expirationDate.orEmpty()) }
     var cost by remember(existing?.syncId) { mutableStateOf(existing?.unitCost?.toString().orEmpty()) }
     var categoryMenu by remember { mutableStateOf(false) }
+    var showExpensePrompt by remember { mutableStateOf(false) }
+    var pendingItemToSave by remember { mutableStateOf<InventoryItem?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(18.dp)) {
@@ -507,7 +557,7 @@ private fun InventoryEntryDialog(existing: InventoryItem?, onDismiss: () -> Unit
                             if (itemName.isNotBlank() && parsedQuantity > 0.0) {
                                 val silage = category.equals("Silage", ignoreCase = true)
                                 val base = existing ?: InventoryItem(itemName = itemName, category = category)
-                                onSave(base.copy(
+                                val itemToSave = base.copy(
                                     itemName = itemName.trim(),
                                     category = category,
                                     skuOrBarcode = "",
@@ -521,7 +571,13 @@ private fun InventoryEntryDialog(existing: InventoryItem?, onDismiss: () -> Unit
                                     expirationDate = expiryDate,
                                     unitCost = if (silage) 0.0 else cost.toDoubleOrNull() ?: 0.0,
                                     isSilage = silage
-                                ))
+                                )
+                                if (onRequestRecordExpense != null) {
+                                    pendingItemToSave = itemToSave
+                                    showExpensePrompt = true
+                                } else {
+                                    onSave(itemToSave)
+                                }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
@@ -529,6 +585,66 @@ private fun InventoryEntryDialog(existing: InventoryItem?, onDismiss: () -> Unit
                 }
             }
         }
+    }
+
+    if (showExpensePrompt && pendingItemToSave != null) {
+        val item = pendingItemToSave!!
+        AlertDialog(
+            onDismissRequest = {
+                showExpensePrompt = false
+                onSave(item)
+            },
+            title = {
+                Text(
+                    text = "Record as Expense?",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+            },
+            text = {
+                Text(
+                    text = "do you want to add this as expense on income and expense",
+                    fontSize = 14.sp,
+                    color = Color(0xFF475569)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExpensePrompt = false
+                        onSave(item)
+                        val defaultExpenseCategory = when {
+                            item.category.contains("Feed", ignoreCase = true) || item.category.contains("Silage", ignoreCase = true) -> "Feeds & Supplies"
+                            item.category.contains("Fertilizer", ignoreCase = true) || item.category.contains("Pesticide", ignoreCase = true) || item.category.contains("Seed", ignoreCase = true) -> "Feeds & Supplies"
+                            item.category.contains("Tool", ignoreCase = true) || item.category.contains("Equipment", ignoreCase = true) -> "Equipment & Repairs"
+                            item.category.contains("Vaccine", ignoreCase = true) || item.category.contains("Medicine", ignoreCase = true) || item.category.contains("Vet", ignoreCase = true) -> "Vaccines & Vet"
+                            else -> "Feeds & Supplies"
+                        }
+                        val totalCost = item.quantityAvailable * item.unitCost
+                        val desc = "Inventory: ${item.itemName} (${item.quantityAvailable} ${item.unitOfMeasurement})"
+                        val pDate = item.purchaseDate.ifBlank { today() }
+                        onRequestRecordExpense?.invoke(defaultExpenseCategory, totalCost, desc, pDate)
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                ) {
+                    Text("Yes", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showExpensePrompt = false
+                        onSave(item)
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                ) {
+                    Text("No", color = Color(0xFF475569))
+                }
+            }
+        )
     }
 }
 

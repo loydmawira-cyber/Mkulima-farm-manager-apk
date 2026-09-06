@@ -540,23 +540,19 @@ fun EditAnimalDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            OutlinedTextField(
+                            AppDatePickerField(
                                 value = dob,
-                                onValueChange = {
-                                    dob = it
-                                    val calcAge = com.example.util.CattleLifecycleEngine.calculateAgeFromDob(it)
-                                    if (calcAge != it && calcAge.isNotBlank() && calcAge != "N/A") {
+                                onValueChange = { selectedDate ->
+                                    dob = selectedDate
+                                    val calcAge = com.example.util.CattleLifecycleEngine.calculateAgeFromDob(selectedDate)
+                                    if (calcAge.isNotBlank() && calcAge != "N/A") {
                                         ageText = calcAge
                                     }
                                 },
-                                label = { Text("Date of Birth") },
-                                placeholder = { Text("12 Apr 2021") },
+                                label = "Date of Birth",
+                                placeholder = "12 Apr 2021",
                                 modifier = Modifier.weight(1.1f),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true,
-                                trailingIcon = {
-                                    Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(20.dp))
-                                }
+                                testTag = "edit_cattle_dob_picker"
                             )
 
                             OutlinedTextField(

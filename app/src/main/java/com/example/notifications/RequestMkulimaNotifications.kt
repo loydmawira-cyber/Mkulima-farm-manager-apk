@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
+import com.example.util.NotificationHelper
 
 @Composable
 fun RequestMkulimaNotifications() {
@@ -19,10 +20,14 @@ fun RequestMkulimaNotifications() {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) FarmDeviceTokenRegistry.refreshRegisteredToken(context)
+        if (granted) {
+            NotificationHelper.createChannels(context)
+            FarmDeviceTokenRegistry.refreshRegisteredToken(context)
+        }
     }
 
     LaunchedEffect(Unit) {
+        NotificationHelper.createChannels(context)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             FarmDeviceTokenRegistry.refreshRegisteredToken(context)
             return@LaunchedEffect
@@ -39,3 +44,4 @@ fun RequestMkulimaNotifications() {
         }
     }
 }
+

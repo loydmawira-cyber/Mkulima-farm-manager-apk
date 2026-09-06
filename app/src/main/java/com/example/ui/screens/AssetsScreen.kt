@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Agriculture
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Inventory2
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -73,6 +75,7 @@ fun AssetsScreen(
     var inventoryDeleteTarget by remember { mutableStateOf<InventoryItem?>(null) }
     var fieldDeleteTarget by remember { mutableStateOf<FieldPlan?>(null) }
     var fieldToHarvest by remember { mutableStateOf<FieldPlan?>(null) }
+    var restockTemplate by remember { mutableStateOf<InventoryItem?>(null) }
     var showRecordFinanceDialog by remember { mutableStateOf(false) }
     var pendingFinanceCategory by remember { mutableStateOf("Feeds & Supplies") }
     var pendingFinanceAmount by remember { mutableStateOf(0.0) }
@@ -82,29 +85,40 @@ fun AssetsScreen(
     if (showNewInventory) {
         InventoryEntryDialog(
             existing = null,
+            prefillTemplate = null,
             onDismiss = { showNewInventory = false },
             onSave = { onAddInventory(it); showNewInventory = false },
-            onRequestRecordExpense = { expCat, expAmt, expDesc, expDate ->
-                pendingFinanceCategory = expCat
-                pendingFinanceAmount = expAmt
-                pendingFinanceDescription = expDesc
-                pendingFinanceDate = expDate
+            onRequestRecordExpense = if (onAddFinanceRecord != null) { cat, amount, desc, date ->
+                pendingFinanceCategory = cat
+                pendingFinanceAmount = amount
+                pendingFinanceDescription = desc
+                pendingFinanceDate = date
                 showRecordFinanceDialog = true
-            }
+            } else null
+        )
+    }
+    restockTemplate?.let { template ->
+        InventoryEntryDialog(
+            existing = null,
+            prefillTemplate = template,
+            onDismiss = { restockTemplate = null },
+            onSave = { onAddInventory(it); restockTemplate = null },
+            onRequestRecordExpense = if (onAddFinanceRecord != null) { cat, amount, desc, date ->
+                pendingFinanceCategory = cat
+                pendingFinanceAmount = amount
+                pendingFinanceDescription = desc
+                pendingFinanceDate = date
+                showRecordFinanceDialog = true
+            } else null
         )
     }
     inventoryEditor?.let { existing ->
         InventoryEntryDialog(
             existing = existing,
+            prefillTemplate = null,
             onDismiss = { inventoryEditor = null },
             onSave = { onUpdateInventory(it); inventoryEditor = null },
-            onRequestRecordExpense = { expCat, expAmt, expDesc, expDate ->
-                pendingFinanceCategory = expCat
-                pendingFinanceAmount = expAmt
-                pendingFinanceDescription = expDesc
-                pendingFinanceDate = expDate
-                showRecordFinanceDialog = true
-            }
+            onRequestRecordExpense = null
         )
     }
     if (showNewField) {
@@ -195,6 +209,9 @@ fun AssetsScreen(
                 0 -> livestock()
                 1 -> InventoryContent(
                     items = inventoryItems,
+                    onAddNewItem = if (isOwner) ({ showNewInventory = true }) else null,
+                    onRestock = { restockTemplate = it },
+                    onEdit = if (isOwner) ({ inventoryEditor = it }) else null,
                     onLongPress = if (isOwner) ({ inventoryActionTarget = it }) else null
                 )
                 2 -> FieldsContent(
@@ -229,16 +246,42 @@ fun AssetsScreen(
 }
 
 @Composable
-private fun InventoryContent(items: List<InventoryItem>, onLongPress: ((InventoryItem) -> Unit)?) {
+private fun InventoryContent(
+    items: List<InventoryItem>,
+    onAddNewItem: (() -> Unit)? = null,
+    onRestock: (InventoryItem) -> Unit,
+    onEdit: ((InventoryItem) -> Unit)? = null,
+    onLongPress: ((InventoryItem) -> Unit)? = null
+) {
     val lowStockItems = items.filter { it.minimumThreshold > 0 && it.quantityAvailable <= it.minimumThreshold }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("Farm Inventory", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("Stock, inputs, tools and harvested feed", color = Color.Gray)
-            Text("Long-press an item to edit or delete it.", color = Color(0xFF64748B), fontSize = 12.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Farm Inventory", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text("Stock, inputs, tools and harvested feed", color = Color.Gray, fontSize = 13.sp)
+                }
+                if (onAddNewItem != null) {
+                    Button(
+                        onClick = onAddNewItem,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add Item", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+            Text("Long-press an item to edit or delete it.", color = Color(0xFF64748B), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
             if (lowStockItems.isNotEmpty()) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
@@ -266,7 +309,7 @@ private fun InventoryContent(items: List<InventoryItem>, onLongPress: ((Inventor
                         lowStockItems.forEach { item ->
                             val isDepleted = item.quantityAvailable <= 0.0
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -276,26 +319,49 @@ private fun InventoryContent(items: List<InventoryItem>, onLongPress: ((Inventor
                                     color = Color(0xFF78350F),
                                     fontWeight = FontWeight.Medium
                                 )
-                                Text(
-                                    if (isDepleted) "Depleted (0 ${item.unitOfMeasurement})" else "Low: ${item.quantityAvailable}/${item.minimumThreshold} ${item.unitOfMeasurement}",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDepleted) Color(0xFFDC2626) else Color(0xFFB45309)
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        if (isDepleted) "Depleted (0 ${item.unitOfMeasurement})" else "Low: ${item.quantityAvailable}/${item.minimumThreshold} ${item.unitOfMeasurement}",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDepleted) Color(0xFFDC2626) else Color(0xFFB45309)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Button(
+                                        onClick = { onRestock(item) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Icon(Icons.Filled.AddShoppingCart, contentDescription = null, modifier = Modifier.size(13.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Restock", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        if (items.isEmpty()) item { EmptyState("No inventory yet", "Use + to record seed, fertiliser, tools, feed, harvest or silage.") }
+        if (items.isEmpty()) item { EmptyState("No inventory yet", "Use + or Add Item to record seed, fertiliser, tools, feed, harvest or silage.") }
         items(items, key = { it.syncId }) { item ->
             val lowStock = item.minimumThreshold > 0 && item.quantityAvailable <= item.minimumThreshold
             val isDepleted = item.minimumThreshold > 0 && item.quantityAvailable <= 0.0
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (onLongPress != null) Modifier.pointerInput(item.syncId) { detectTapGestures(onLongPress = { onLongPress(item) }) } else Modifier),
+                    .then(
+                        if (onLongPress != null || onEdit != null) {
+                            Modifier.pointerInput(item.syncId) {
+                                detectTapGestures(
+                                    onTap = { onEdit?.invoke(item) },
+                                    onLongPress = { onLongPress?.invoke(item) }
+                                )
+                            }
+                        } else Modifier
+                    ),
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (isDepleted) Color(0xFFFEF2F2) else if (lowStock) Color(0xFFFFFDF5) else Color.White
@@ -305,68 +371,111 @@ private fun InventoryContent(items: List<InventoryItem>, onLongPress: ((Inventor
                     if (isDepleted) Color(0xFFFCA5A5) else if (lowStock) Color(0xFFFCD34D) else Color(0xFFE2E8F0)
                 )
             ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isDepleted) Color(0xFFFEE2E2) else if (lowStock) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
-                        modifier = Modifier.size(42.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.Inventory2,
-                                contentDescription = null,
-                                tint = if (isDepleted) Color(0xFFDC2626) else if (lowStock) Color(0xFFD97706) else ForestGreenPrimary,
-                                modifier = Modifier.size(22.dp)
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isDepleted) Color(0xFFFEE2E2) else if (lowStock) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Inventory2,
+                                    contentDescription = null,
+                                    tint = if (isDepleted) Color(0xFFDC2626) else if (lowStock) Color(0xFFD97706) else ForestGreenPrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(item.itemName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            }
+                            Text(item.category, fontSize = 12.sp, color = Color.Gray)
+                            if (item.description.isNotBlank()) Text(item.description, fontSize = 11.sp, color = Color(0xFF64748B))
+                            if (item.expirationDate.isNotBlank()) Text("Expires: ${item.expirationDate}", fontSize = 11.sp, color = Color.Gray)
+                            if (item.minimumThreshold > 0) {
+                                Text("Min threshold: ${item.minimumThreshold} ${item.unitOfMeasurement}", fontSize = 11.sp, color = Color(0xFF64748B))
+                            }
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "${item.quantityAvailable} ${item.unitOfMeasurement}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = if (isDepleted) Color(0xFFDC2626) else if (lowStock) Color(0xFFD97706) else Color(0xFF14532D)
                             )
+                            if (isDepleted) {
+                                Spacer(Modifier.height(4.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFFEE2E2)
+                                ) {
+                                    Text(
+                                        "OUT OF STOCK",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFDC2626),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            } else if (lowStock) {
+                                Spacer(Modifier.height(4.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFFEF3C7)
+                                ) {
+                                    Text(
+                                        "LOW",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFB45309),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                         }
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(item.itemName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        }
-                        Text(item.category, fontSize = 12.sp, color = Color.Gray)
-                        if (item.description.isNotBlank()) Text(item.description, fontSize = 11.sp, color = Color(0xFF64748B))
-                        if (item.expirationDate.isNotBlank()) Text("Expires: ${item.expirationDate}", fontSize = 11.sp, color = Color.Gray)
-                        if (item.minimumThreshold > 0) {
-                            Text("Min threshold: ${item.minimumThreshold} ${item.unitOfMeasurement}", fontSize = 11.sp, color = Color(0xFF64748B))
-                        }
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
+
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
+                    Spacer(Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            "${item.quantityAvailable} ${item.unitOfMeasurement}",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = if (isDepleted) Color(0xFFDC2626) else if (lowStock) Color(0xFFD97706) else Color(0xFF14532D)
+                            text = if (item.batchOrLotNumber.isNotBlank()) "Batch: ${item.batchOrLotNumber}" else if (item.purchaseDate.isNotBlank()) "Logged: ${item.purchaseDate}" else "",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
                         )
-                        if (isDepleted) {
-                            Spacer(Modifier.height(4.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFFFEE2E2)
-                            ) {
-                                Text(
-                                    "OUT OF STOCK",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFDC2626),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        } else if (lowStock) {
-                            Spacer(Modifier.height(4.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFFFEF3C7)
-                            ) {
-                                Text(
-                                    "LOW",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFB45309),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
+
+                        Button(
+                            onClick = { onRestock(item) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ForestGreenPrimary,
+                                contentColor = Color.White
+                            ),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .testTag("restock_inventory_${item.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AddShoppingCart,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Restock",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -499,30 +608,75 @@ private fun EmptyState(title: String, body: String) {
 @Composable
 private fun InventoryEntryDialog(
     existing: InventoryItem?,
+    prefillTemplate: InventoryItem? = null,
     onDismiss: () -> Unit,
     onSave: (InventoryItem) -> Unit,
     onRequestRecordExpense: ((category: String, amount: Double, description: String, date: String) -> Unit)? = null
 ) {
     val isEdit = existing != null
-    var itemName by remember(existing?.syncId) { mutableStateOf(existing?.itemName.orEmpty()) }
-    var category by remember(existing?.syncId) { mutableStateOf(existing?.category ?: "Seeds") }
-    var description by remember(existing?.syncId) { mutableStateOf(existing?.description.orEmpty()) }
-    var quantity by remember(existing?.syncId) { mutableStateOf(existing?.quantityAvailable?.toString().orEmpty()) }
-    var unit by remember(existing?.syncId) { mutableStateOf(existing?.unitOfMeasurement ?: "kg") }
-    var minimum by remember(existing?.syncId) { mutableStateOf(existing?.minimumThreshold?.toString() ?: "0") }
-    var batch by remember(existing?.syncId) { mutableStateOf(existing?.batchOrLotNumber.orEmpty()) }
-    var purchaseDate by remember(existing?.syncId) { mutableStateOf(existing?.purchaseDate?.ifBlank { today() } ?: today()) }
-    var expiryDate by remember(existing?.syncId) { mutableStateOf(existing?.expirationDate.orEmpty()) }
-    var cost by remember(existing?.syncId) { mutableStateOf(existing?.unitCost?.toString().orEmpty()) }
+    val isRestock = !isEdit && prefillTemplate != null
+    val source = existing ?: prefillTemplate
+    val stateKey = existing?.syncId ?: prefillTemplate?.syncId ?: "new"
+    var itemName by remember(stateKey) { mutableStateOf(source?.itemName.orEmpty()) }
+    var category by remember(stateKey) { mutableStateOf(source?.category ?: "Seeds") }
+    var description by remember(stateKey) { mutableStateOf(source?.description.orEmpty()) }
+    var quantity by remember(stateKey) { mutableStateOf(if (isRestock) "" else existing?.quantityAvailable?.toString().orEmpty()) }
+    var unit by remember(stateKey) { mutableStateOf(source?.unitOfMeasurement ?: "kg") }
+    var minimum by remember(stateKey) { mutableStateOf(source?.minimumThreshold?.toString() ?: "0") }
+    var batch by remember(stateKey) { mutableStateOf(if (isRestock) "" else existing?.batchOrLotNumber.orEmpty()) }
+    var purchaseDate by remember(stateKey) { mutableStateOf(if (isRestock) today() else (existing?.purchaseDate?.ifBlank { today() } ?: today())) }
+    var expiryDate by remember(stateKey) { mutableStateOf(if (isRestock) "" else existing?.expirationDate.orEmpty()) }
     var categoryMenu by remember { mutableStateOf(false) }
-    var showExpensePrompt by remember { mutableStateOf(false) }
     var pendingItemToSave by remember { mutableStateOf<InventoryItem?>(null) }
+    var showExpensePrompt by remember { mutableStateOf(false) }
+
+    if (showExpensePrompt && pendingItemToSave != null) {
+        val item = pendingItemToSave!!
+        AlertDialog(
+            onDismissRequest = {
+                onSave(item)
+                showExpensePrompt = false
+            },
+            title = { Text("Record as Expense?", fontWeight = FontWeight.Bold) },
+            text = { Text("Do you want to add this as expense on income and expense?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val financeCat = when (item.category.lowercase()) {
+                            "feed", "silage" -> "Feeds & Supplies"
+                            "seeds", "harvested crops" -> "Seeds & Planting"
+                            "fertilizers", "pesticides" -> "Fertilizer & Chemicals"
+                            "tools" -> "Equipment & Maintenance"
+                            else -> "Feeds & Supplies"
+                        }
+                        val expDesc = "Inventory: ${item.itemName} (${item.quantityAvailable} ${item.unitOfMeasurement})"
+                        onSave(item)
+                        onRequestRecordExpense?.invoke(financeCat, 0.0, expDesc, item.purchaseDate.ifBlank { today() })
+                        showExpensePrompt = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                ) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        onSave(item)
+                        showExpensePrompt = false
+                    }
+                ) {
+                    Text("No")
+                }
+            }
+        )
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(18.dp).fillMaxWidth()) {
-                Text(if (isEdit) "Edit Inventory Item" else "Inventory Entry", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("SKU/barcode and storage location are not required. Silage is recorded in kilograms (kgs) without a cost or finance entry.", fontSize = 12.sp, color = Color.Gray)
+                Text(if (isEdit) "Edit Inventory Item" else if (isRestock) "Restock: ${source?.itemName}" else "Add Inventory Item", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(if (isRestock) "Enter the newly received quantity and batch details." else "Record quantity in stock, minimum alert threshold, and batch details.", fontSize = 12.sp, color = Color.Gray)
                 Input(itemName, { itemName = it }, "Item Name *")
                 Box {
                     OutlinedButton(onClick = { categoryMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Category: $category") }
@@ -540,7 +694,7 @@ private fun InventoryEntryDialog(
                 }
                 Input(description, { description = it }, "Description")
                 Row {
-                    Input(quantity, { quantity = it }, "Quantity *", Modifier.weight(1f), KeyboardType.Decimal)
+                    Input(quantity, { quantity = it }, if (isRestock) "Restock Quantity *" else "Quantity *", Modifier.weight(1f), KeyboardType.Decimal)
                     Spacer(Modifier.width(8.dp))
                     Input(unit, { unit = it }, "Unit", Modifier.weight(1f))
                 }
@@ -548,7 +702,6 @@ private fun InventoryEntryDialog(
                 Input(batch, { batch = it }, "Batch or Lot Number")
                 Input(purchaseDate, { purchaseDate = it }, "Purchase / Received Date")
                 Input(expiryDate, { expiryDate = it }, "Expiration Date (optional)")
-                if (!category.equals("Silage", ignoreCase = true)) Input(cost, { cost = it }, "Unit Cost (finance expense)", keyboard = KeyboardType.Decimal)
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
                     Button(
@@ -569,10 +722,10 @@ private fun InventoryEntryDialog(
                                     batchOrLotNumber = batch.trim(),
                                     purchaseDate = purchaseDate,
                                     expirationDate = expiryDate,
-                                    unitCost = if (silage) 0.0 else cost.toDoubleOrNull() ?: 0.0,
+                                    unitCost = 0.0,
                                     isSilage = silage
                                 )
-                                if (onRequestRecordExpense != null) {
+                                if (!isEdit && onRequestRecordExpense != null) {
                                     pendingItemToSave = itemToSave
                                     showExpensePrompt = true
                                 } else {
@@ -581,70 +734,10 @@ private fun InventoryEntryDialog(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                    ) { Text(if (isEdit) "Save Changes" else "Save Inventory") }
+                    ) { Text(if (isEdit) "Save Changes" else if (isRestock) "Confirm Restock" else "Add Item") }
                 }
             }
         }
-    }
-
-    if (showExpensePrompt && pendingItemToSave != null) {
-        val item = pendingItemToSave!!
-        AlertDialog(
-            onDismissRequest = {
-                showExpensePrompt = false
-                onSave(item)
-            },
-            title = {
-                Text(
-                    text = "Record as Expense?",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E293B)
-                )
-            },
-            text = {
-                Text(
-                    text = "do you want to add this as expense on income and expense",
-                    fontSize = 14.sp,
-                    color = Color(0xFF475569)
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showExpensePrompt = false
-                        onSave(item)
-                        val defaultExpenseCategory = when {
-                            item.category.contains("Feed", ignoreCase = true) || item.category.contains("Silage", ignoreCase = true) -> "Feeds & Supplies"
-                            item.category.contains("Fertilizer", ignoreCase = true) || item.category.contains("Pesticide", ignoreCase = true) || item.category.contains("Seed", ignoreCase = true) -> "Feeds & Supplies"
-                            item.category.contains("Tool", ignoreCase = true) || item.category.contains("Equipment", ignoreCase = true) -> "Equipment & Repairs"
-                            item.category.contains("Vaccine", ignoreCase = true) || item.category.contains("Medicine", ignoreCase = true) || item.category.contains("Vet", ignoreCase = true) -> "Vaccines & Vet"
-                            else -> "Feeds & Supplies"
-                        }
-                        val totalCost = item.quantityAvailable * item.unitCost
-                        val desc = "Inventory: ${item.itemName} (${item.quantityAvailable} ${item.unitOfMeasurement})"
-                        val pDate = item.purchaseDate.ifBlank { today() }
-                        onRequestRecordExpense?.invoke(defaultExpenseCategory, totalCost, desc, pDate)
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                ) {
-                    Text("Yes", fontWeight = FontWeight.Bold, color = Color.White)
-                }
-            },
-            dismissButton = {
-                OutlinedButton(
-                    onClick = {
-                        showExpensePrompt = false
-                        onSave(item)
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
-                ) {
-                    Text("No", color = Color(0xFF475569))
-                }
-            }
-        )
     }
 }
 

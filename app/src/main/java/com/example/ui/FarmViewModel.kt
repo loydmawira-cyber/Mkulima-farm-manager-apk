@@ -38,6 +38,8 @@ import com.example.data.WorkerAccount
 import com.example.data.WorkerPermissions
 import com.example.ui.util.ImageStorageUtils
 import com.example.util.DateValidationUtils
+import com.example.util.NotificationHelper
+import com.example.util.NotificationType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -244,13 +246,25 @@ class FarmViewModel(
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             repository.updateSettings(settings.copy(farmId = farmId))
+            NotificationHelper.notify(
+                type = NotificationType.ACCOUNT_CHANGE,
+                title = "⚙️ Settings Updated",
+                message = "Farm settings have been saved and synced."
+            )
         }
     }
 
     fun updateFarmName(farmName: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
             authManager.updateFarmName(farmName)
-                .onSuccess(onSuccess)
+                .onSuccess { msg ->
+                    NotificationHelper.notify(
+                        type = NotificationType.ACCOUNT_CHANGE,
+                        title = "🏷️ Farm Name Changed",
+                        message = "Farm name updated to '$farmName'."
+                    )
+                    onSuccess(msg)
+                }
                 .onFailure { onError(it.message ?: "Unable to update the farm name.") }
         }
     }
@@ -258,7 +272,14 @@ class FarmViewModel(
     fun updateRecoveryEmail(email: String, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
             authManager.updateRecoveryEmail(email)
-                .onSuccess(onSuccess)
+                .onSuccess { msg ->
+                    NotificationHelper.notify(
+                        type = NotificationType.ACCOUNT_CHANGE,
+                        title = "✉️ Recovery Email Updated",
+                        message = "Account recovery email updated to $email."
+                    )
+                    onSuccess(msg)
+                }
                 .onFailure { onError(it.message ?: "Unable to update the recovery email.") }
         }
     }
@@ -388,6 +409,11 @@ class FarmViewModel(
                 assignedWorker = assignedWorker?.ifBlank { "Lead Operator" } ?: "Lead Operator"
             )
             repository.insertTask(newTask)
+            NotificationHelper.notify(
+                type = NotificationType.NEW_ENTRY,
+                title = "📋 New Task Added",
+                message = "${newTask.title} scheduled for ${newTask.scheduledTime}"
+            )
         }
     }
 
@@ -619,6 +645,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.deleteTask(taskId)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Task Deleted",
+                message = "A farm task was deleted."
+            )
         }
     }
 
@@ -688,6 +719,11 @@ class FarmViewModel(
                 )
                 val savedUnit = withContext(Dispatchers.IO) { repository.insertUnitAndReturnPrepared(newUnit) }
                 if (isCattleUnit(savedUnit)) synchronizeDewormingTask(savedUnit)
+                NotificationHelper.notify(
+                    type = NotificationType.NEW_ENTRY,
+                    title = "🐄 New Animal/Flock Added",
+                    message = "${savedUnit.name} added to farm records."
+                )
                 savedUnit
             }.onSuccess(onCreated).onFailure { error ->
                 onError(error.message ?: "Unable to save the animal. Please try again.")
@@ -703,6 +739,11 @@ class FarmViewModel(
             if (isCattleUnit(unit) && previousDob != unit.dob) {
                 synchronizeDewormingTask(unit)
             }
+            NotificationHelper.notify(
+                type = NotificationType.ACCOUNT_CHANGE,
+                title = "✏️ Animal Profile Updated",
+                message = "${unit.name} details updated."
+            )
         }
     }
 
@@ -733,6 +774,11 @@ class FarmViewModel(
                     updatedAt = System.currentTimeMillis()
                 )
                 repository.updateUnit(updated)
+                NotificationHelper.notify(
+                    type = NotificationType.ACCOUNT_CHANGE,
+                    title = if (photoUri != null) "📸 Animal Photo Updated" else "🗑️ Animal Photo Removed",
+                    message = if (photoUri != null) "Profile photo updated for ${existing.name}." else "Profile photo removed for ${existing.name}."
+                )
             }
         }
     }
@@ -740,7 +786,13 @@ class FarmViewModel(
     fun deleteUnit(unitId: Long) {
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
+            val existing = allUnits.value.find { it.id == unitId }
             repository.deleteUnit(unitId)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Animal/Flock Deleted",
+                message = "${existing?.name ?: "Animal"} was deleted from farm records."
+            )
         }
     }
 
@@ -776,7 +828,13 @@ class FarmViewModel(
                     loggedAt = nowFormatted,
                     notes = notes
                 )
-                withContext(Dispatchers.IO) { repository.insertMilkLogAndReturn(log) }
+                val saved = withContext(Dispatchers.IO) { repository.insertMilkLogAndReturn(log) }
+                NotificationHelper.notify(
+                    type = NotificationType.MILK_LOG,
+                    title = "🥛 Milk Entry Logged",
+                    message = "${saved.litres}L recorded for ${saved.cowName} (${saved.session})."
+                )
+                saved
             }.onSuccess(onRecorded).onFailure { error ->
                 onError(error.message ?: "Unable to record milk. Please try again.")
             }
@@ -787,6 +845,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.deleteMilkLog(logId)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Milk Log Deleted",
+                message = "A milk production record was deleted."
+            )
         }
     }
 
@@ -815,7 +878,13 @@ class FarmViewModel(
                     litresHomeUse = litresHomeUse,
                     litresToCalves = litresToCalves
                 )
-                withContext(Dispatchers.IO) { repository.saveMilkUsageLog(usage) }
+                val saved = withContext(Dispatchers.IO) { repository.saveMilkUsageLog(usage) }
+                NotificationHelper.notify(
+                    type = NotificationType.MILK_LOG,
+                    title = "🥛 Milk Usage Logged",
+                    message = "Milk distribution for ${usage.date} (${usage.session}) was recorded."
+                )
+                saved
             }.onSuccess(onSaved).onFailure { error ->
                 onError(error.message ?: "Unable to save milk usage. Please try again.")
             }
@@ -826,6 +895,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.deleteMilkUsageLog(id)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Milk Usage Log Deleted",
+                message = "A milk distribution record was deleted."
+            )
         }
     }
 
@@ -843,9 +917,15 @@ class FarmViewModel(
                 return@launch
             }
             runCatching {
-                withContext(Dispatchers.IO) {
+                val saved = withContext(Dispatchers.IO) {
                     repository.editMilkUsageLog(id, litresToCooperative, litresHomeUse, litresToCalves)
                 }
+                NotificationHelper.notify(
+                    type = NotificationType.MILK_LOG,
+                    title = "🥛 Milk Usage Updated",
+                    message = "Milk distribution record updated."
+                )
+                saved
             }.onSuccess(onSaved).onFailure { error ->
                 onError(error.message ?: "Unable to update milk usage. Please try again.")
             }
@@ -874,6 +954,11 @@ class FarmViewModel(
                 notes = notes
             )
             repository.insertEggLog(log)
+            NotificationHelper.notify(
+                type = NotificationType.MILK_LOG,
+                title = "🥚 Egg Harvest Logged",
+                message = "${log.totalEggs} eggs collected from ${log.unitName}."
+            )
         }
     }
 
@@ -881,6 +966,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.deleteEggLog(logId)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Egg Log Deleted",
+                message = "An egg collection record was deleted."
+            )
         }
     }
 
@@ -891,13 +981,13 @@ class FarmViewModel(
             if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val isSilage = item.isSilage || item.category.equals("Silage", ignoreCase = true)
-            val prepared = item.copy(farmId = farmId, isSilage = isSilage, unitCost = if (isSilage) 0.0 else item.unitCost)
+            val prepared = item.copy(farmId = farmId, isSilage = isSilage, unitCost = 0.0)
             repository.insertInventoryItem(prepared)
-            val purchaseTotal = prepared.quantityAvailable * prepared.unitCost
-            if (!isSilage && purchaseTotal > 0.0) {
-                addFinanceRecord(FinanceType.EXPENSE, "Inventory Purchase", purchaseTotal,
-                    "${prepared.itemName}: ${prepared.quantityAvailable} ${prepared.unitOfMeasurement}", prepared.purchaseDate)
-            }
+            NotificationHelper.notify(
+                type = NotificationType.NEW_ENTRY,
+                title = "📦 Inventory Added",
+                message = "${prepared.itemName} (${prepared.quantityAvailable} ${prepared.unitOfMeasurement}) added."
+            )
         }
     }
 
@@ -905,6 +995,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.updateInventoryItem(item)
+            NotificationHelper.notify(
+                type = NotificationType.ACCOUNT_CHANGE,
+                title = "📦 Inventory Updated",
+                message = "${item.itemName} stock updated to ${item.quantityAvailable} ${item.unitOfMeasurement}."
+            )
         }
     }
 
@@ -912,6 +1007,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.deleteInventoryItem(item.id)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Inventory Deleted",
+                message = "${item.itemName} was deleted from inventory."
+            )
         }
     }
 
@@ -920,6 +1020,11 @@ class FarmViewModel(
             if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             repository.insertFieldPlan(field.copy(farmId = farmId))
+            NotificationHelper.notify(
+                type = NotificationType.NEW_ENTRY,
+                title = "🌱 New Field Plan",
+                message = "${field.fieldName} (${field.cropName}) added."
+            )
         }
     }
 
@@ -927,6 +1032,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.updateFieldPlan(field)
+            NotificationHelper.notify(
+                type = NotificationType.ACCOUNT_CHANGE,
+                title = "🌱 Field Plan Updated",
+                message = "${field.fieldName} details updated."
+            )
         }
     }
 
@@ -934,6 +1044,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             repository.deleteFieldPlan(field.id)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Field Plan Deleted",
+                message = "${field.fieldName} was deleted."
+            )
         }
     }
 
@@ -975,6 +1090,11 @@ class FarmViewModel(
                 description = description.ifBlank { "Farm transaction" }
             )
             repository.insertFinanceRecord(record)
+            NotificationHelper.notify(
+                type = NotificationType.NEW_ENTRY,
+                title = if (type == FinanceType.INCOME) "💰 Income Recorded" else "💸 Expense Recorded",
+                message = "${record.category}: KES ${record.amount} - ${record.description}"
+            )
         }
     }
 
@@ -982,6 +1102,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!subscriptionAccess.value.canUseFinance) return@launch
             repository.updateFinanceRecord(record)
+            NotificationHelper.notify(
+                type = NotificationType.ACCOUNT_CHANGE,
+                title = "💰 Financial Record Updated",
+                message = "${record.category} (${record.type}) updated."
+            )
         }
     }
 
@@ -989,6 +1114,11 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!subscriptionAccess.value.canUseFinance) return@launch
             repository.deleteFinanceRecord(recordId)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Financial Record Deleted",
+                message = "A financial entry was deleted."
+            )
         }
     }
 
@@ -1045,18 +1175,33 @@ class FarmViewModel(
     fun deleteWorker(workerId: String) {
         viewModelScope.launch {
             authManager.deleteWorker(workerId)
+            NotificationHelper.notify(
+                type = NotificationType.DELETION,
+                title = "🗑️ Worker Account Deleted",
+                message = "A worker account was removed."
+            )
         }
     }
 
     fun toggleWorkerRevoked(workerId: String, isRevoked: Boolean) {
         viewModelScope.launch {
             authManager.setWorkerRevoked(workerId, isRevoked)
+            NotificationHelper.notify(
+                type = NotificationType.ACCOUNT_CHANGE,
+                title = if (isRevoked) "🔒 Worker Access Revoked" else "🔓 Worker Access Restored",
+                message = "Worker permission status updated."
+            )
         }
     }
 
     fun updateWorker(worker: WorkerAccount) {
         viewModelScope.launch {
             authManager.updateWorker(worker)
+            NotificationHelper.notify(
+                type = NotificationType.ACCOUNT_CHANGE,
+                title = "👤 Worker Account Updated",
+                message = "${worker.name}'s account was updated."
+            )
         }
     }
 

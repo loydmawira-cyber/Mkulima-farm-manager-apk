@@ -14,8 +14,17 @@ import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.PersistentCacheSettings
 
 class MkulimaApplication : Application(), ImageLoaderFactory {
+
+    companion object {
+        lateinit var instance: MkulimaApplication
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
+        com.example.util.NotificationHelper.createChannels(this)
+        com.example.util.scheduleTaskReminders(this)
         initializeFirestoreOfflinePersistence()
     }
 

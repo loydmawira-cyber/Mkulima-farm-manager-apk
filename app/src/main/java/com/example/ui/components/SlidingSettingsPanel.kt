@@ -60,10 +60,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PostAdd
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Divider
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SwitchDefaults
+import android.Manifest
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import com.example.data.FarmSettings
 import com.example.data.UserSession
 import com.example.ui.theme.ForestGreenDark
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.util.NotificationHelper
 
 /** A full-height Settings surface that slides in from the left instead of appearing as a pop-up. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,6 +106,29 @@ fun SlidingSettingsPanel(
         mutableStateOf(settings.themeMode.ifBlank { "CLASSIC" }.uppercase())
     }
     var monthlyReportsEnabledDraft by remember(settings.monthlyReportsEnabled) { mutableStateOf(settings.monthlyReportsEnabled) }
+    var notificationsEnabledDraft by remember(settings.notificationsEnabled) { mutableStateOf(settings.notificationsEnabled) }
+    var notifyMilkLogsDraft by remember(settings.notifyMilkLogs) { mutableStateOf(settings.notifyMilkLogs) }
+    var notifyNewEntriesDraft by remember(settings.notifyNewEntries) { mutableStateOf(settings.notifyNewEntries) }
+    var notifyAccountChangesDraft by remember(settings.notifyAccountChanges) { mutableStateOf(settings.notifyAccountChanges) }
+    var notifyDeletionsDraft by remember(settings.notifyDeletions) { mutableStateOf(settings.notifyDeletions) }
+    var notifyRemindersDraft by remember(settings.notifyReminders) { mutableStateOf(settings.notifyReminders) }
+
+    val context = LocalContext.current
+    var hasSystemPermission by remember {
+        mutableStateOf(NotificationHelper.isSystemPermissionGranted(context))
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasSystemPermission = granted
+        if (granted) {
+            NotificationHelper.createChannels(context)
+            Toast.makeText(context, "System notification permission granted!", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "System notification permission was not granted.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val savedRecoveryEmail = userSession?.recoveryEmail.orEmpty().ifBlank {
         if (userSession?.emailOrPhone?.contains("@") == true) userSession.emailOrPhone else ""
     }
@@ -453,6 +492,304 @@ fun SlidingSettingsPanel(
                             }
                         }
 
+                        Spacer(Modifier.height(24.dp))
+                        Text("PUSH NOTIFICATIONS & ALERTS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                        Spacer(Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFF3F8F5),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (notificationsEnabledDraft) Color(0xFFDDF5E7) else Color(0xFFF1F5F9),
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = if (notificationsEnabledDraft) Icons.Filled.NotificationsActive else Icons.Filled.NotificationsOff,
+                                                contentDescription = null,
+                                                tint = if (notificationsEnabledDraft) ForestGreenPrimary else Color(0xFF64748B),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Enable Push Notifications",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF153E2D)
+                                        )
+                                        Text(
+                                            "Receive real-time alerts on your phone for farm activity",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                    Switch(
+                                        checked = notificationsEnabledDraft,
+                                        onCheckedChange = { enabled ->
+                                            notificationsEnabledDraft = enabled
+                                            val updated = settings.copy(
+                                                notificationsEnabled = enabled,
+                                                notifyMilkLogs = notifyMilkLogsDraft,
+                                                notifyNewEntries = notifyNewEntriesDraft,
+                                                notifyAccountChanges = notifyAccountChangesDraft,
+                                                notifyDeletions = notifyDeletionsDraft,
+                                                notifyReminders = notifyRemindersDraft
+                                            )
+                                            onSaveSettings(updated)
+                                            NotificationHelper.cacheNotificationPreferences(context, updated)
+
+                                            if (enabled && !hasSystemPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            }
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = ForestGreenPrimary
+                                        )
+                                    )
+                                }
+
+                                if (!hasSystemPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    Spacer(Modifier.height(12.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFFFFBEB),
+                                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Warning,
+                                                contentDescription = null,
+                                                tint = Color(0xFFD97706),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    "System Permission Required",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF92400E)
+                                                )
+                                                Text(
+                                                    "Notifications are currently blocked by Android system settings.",
+                                                    fontSize = 10.5.sp,
+                                                    color = Color(0xFFB45309)
+                                                )
+                                            }
+                                            Spacer(Modifier.width(6.dp))
+                                            Button(
+                                                onClick = {
+                                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                },
+                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+                                            ) {
+                                                Text("ALLOW", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (notificationsEnabledDraft) {
+                                    Spacer(Modifier.height(16.dp))
+                                    Divider(color = Color(0xFFE2E8F0))
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(
+                                        "SELECT NOTIFICATIONS TO RECEIVE",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF334155)
+                                    )
+                                    Text(
+                                        "Turn specific alert categories on or off:",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+
+                                    // Category 1: Milk Logs
+                                    NotificationCategoryRow(
+                                        title = "Milk & Production Logs",
+                                        description = "Milk entries, usage dispatch, and egg yields",
+                                        checked = notifyMilkLogsDraft,
+                                        onCheckedChange = { checked ->
+                                            notifyMilkLogsDraft = checked
+                                            val updated = settings.copy(
+                                                notificationsEnabled = notificationsEnabledDraft,
+                                                notifyMilkLogs = checked,
+                                                notifyNewEntries = notifyNewEntriesDraft,
+                                                notifyAccountChanges = notifyAccountChangesDraft,
+                                                notifyDeletions = notifyDeletionsDraft,
+                                                notifyReminders = notifyRemindersDraft
+                                            )
+                                            onSaveSettings(updated)
+                                            NotificationHelper.cacheNotificationPreferences(context, updated)
+                                        }
+                                    )
+
+                                    Spacer(Modifier.height(8.dp))
+
+                                    // Category 2: New Entries
+                                    NotificationCategoryRow(
+                                        title = "New Entries & Farm Activity",
+                                        description = "New livestock, flocks, tasks, finance records, and fields",
+                                        checked = notifyNewEntriesDraft,
+                                        onCheckedChange = { checked ->
+                                            notifyNewEntriesDraft = checked
+                                            val updated = settings.copy(
+                                                notificationsEnabled = notificationsEnabledDraft,
+                                                notifyMilkLogs = notifyMilkLogsDraft,
+                                                notifyNewEntries = checked,
+                                                notifyAccountChanges = notifyAccountChangesDraft,
+                                                notifyDeletions = notifyDeletionsDraft,
+                                                notifyReminders = notifyRemindersDraft
+                                            )
+                                            onSaveSettings(updated)
+                                            NotificationHelper.cacheNotificationPreferences(context, updated)
+                                        }
+                                    )
+
+                                    Spacer(Modifier.height(8.dp))
+
+                                    // Category 3: Account & Changes
+                                    NotificationCategoryRow(
+                                        title = "Edits & Account Changes",
+                                        description = "Farm profile, recovery email, animal profiles, and workers",
+                                        checked = notifyAccountChangesDraft,
+                                        onCheckedChange = { checked ->
+                                            notifyAccountChangesDraft = checked
+                                            val updated = settings.copy(
+                                                notificationsEnabled = notificationsEnabledDraft,
+                                                notifyMilkLogs = notifyMilkLogsDraft,
+                                                notifyNewEntries = notifyNewEntriesDraft,
+                                                notifyAccountChanges = checked,
+                                                notifyDeletions = notifyDeletionsDraft,
+                                                notifyReminders = notifyRemindersDraft
+                                            )
+                                            onSaveSettings(updated)
+                                            NotificationHelper.cacheNotificationPreferences(context, updated)
+                                        }
+                                    )
+
+                                    Spacer(Modifier.height(8.dp))
+
+                                    // Category 4: Deletions
+                                    NotificationCategoryRow(
+                                        title = "Deletions & Removals",
+                                        description = "High-priority alerts when animals, logs, or records are deleted",
+                                        checked = notifyDeletionsDraft,
+                                        onCheckedChange = { checked ->
+                                            notifyDeletionsDraft = checked
+                                            val updated = settings.copy(
+                                                notificationsEnabled = notificationsEnabledDraft,
+                                                notifyMilkLogs = notifyMilkLogsDraft,
+                                                notifyNewEntries = notifyNewEntriesDraft,
+                                                notifyAccountChanges = notifyAccountChangesDraft,
+                                                notifyDeletions = checked,
+                                                notifyReminders = notifyRemindersDraft
+                                            )
+                                            onSaveSettings(updated)
+                                            NotificationHelper.cacheNotificationPreferences(context, updated)
+                                        }
+                                    )
+
+                                    Spacer(Modifier.height(8.dp))
+
+                                    // Category 5: Reminders
+                                    NotificationCategoryRow(
+                                        title = "Task & Health Reminders",
+                                        description = "Upcoming tasks, vaccinations, breeding dates, and low feed alerts",
+                                        checked = notifyRemindersDraft,
+                                        onCheckedChange = { checked ->
+                                            notifyRemindersDraft = checked
+                                            val updated = settings.copy(
+                                                notificationsEnabled = notificationsEnabledDraft,
+                                                notifyMilkLogs = notifyMilkLogsDraft,
+                                                notifyNewEntries = notifyNewEntriesDraft,
+                                                notifyAccountChanges = notifyAccountChangesDraft,
+                                                notifyDeletions = notifyDeletionsDraft,
+                                                notifyReminders = checked
+                                            )
+                                            onSaveSettings(updated)
+                                            NotificationHelper.cacheNotificationPreferences(context, updated)
+                                        }
+                                    )
+
+                                    Spacer(Modifier.height(14.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                if (!hasSystemPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                } else {
+                                                    NotificationHelper.sendTestNotification(
+                                                        context = context,
+                                                        settings = settings.copy(
+                                                            notificationsEnabled = true,
+                                                            notifyMilkLogs = notifyMilkLogsDraft,
+                                                            notifyNewEntries = notifyNewEntriesDraft,
+                                                            notifyAccountChanges = notifyAccountChangesDraft,
+                                                            notifyDeletions = notifyDeletionsDraft,
+                                                            notifyReminders = notifyRemindersDraft
+                                                        )
+                                                    )
+                                                    Toast.makeText(context, "Test notification sent! Check your notification bar.", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("TEST ALERT", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                val updated = settings.copy(
+                                                    notificationsEnabled = notificationsEnabledDraft,
+                                                    notifyMilkLogs = notifyMilkLogsDraft,
+                                                    notifyNewEntries = notifyNewEntriesDraft,
+                                                    notifyAccountChanges = notifyAccountChangesDraft,
+                                                    notifyDeletions = notifyDeletionsDraft,
+                                                    notifyReminders = notifyRemindersDraft
+                                                )
+                                                onSaveSettings(updated)
+                                                NotificationHelper.cacheNotificationPreferences(context, updated)
+                                                Toast.makeText(context, "Notification preferences saved!", Toast.LENGTH_SHORT).show()
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("SAVE PREFS", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         }
                     }
                 }
@@ -460,3 +797,50 @@ fun SlidingSettingsPanel(
         }
     }
 }
+
+@Composable
+private fun NotificationCategoryRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, if (checked) Color(0xFFDDF5E7) else Color(0xFFE2E8F0)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1E293B)
+                )
+                Text(
+                    text = description,
+                    fontSize = 11.sp,
+                    color = Color(0xFF64748B),
+                    lineHeight = 14.sp
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = ForestGreenPrimary
+                )
+            )
+        }
+    }
+}
+

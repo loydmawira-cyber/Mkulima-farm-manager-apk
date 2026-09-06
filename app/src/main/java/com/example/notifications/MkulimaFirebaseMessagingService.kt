@@ -1,22 +1,14 @@
 package com.example.notifications
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import com.example.MainActivity
-import com.example.R
+import com.example.util.NotificationHelper
+import com.example.util.NotificationType
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
 class MkulimaFirebaseMessagingService : FirebaseMessagingService() {
     override fun onCreate() {
         super.onCreate()
-        createAlertChannel()
+        NotificationHelper.createChannels(this)
     }
 
     override fun onNewToken(token: String) {
@@ -26,42 +18,31 @@ class MkulimaFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        createAlertChannel()
+        NotificationHelper.createChannels(this)
+
         val title = message.notification?.title ?: message.data["title"] ?: "Mkulima alert"
         val body = message.notification?.body ?: message.data["body"] ?: "You have a new farm update."
-        val openAppIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
-        NotificationManagerCompat.from(this).notify(message.messageId?.hashCode() ?: System.currentTimeMillis().toInt(), notification)
-    }
+        val categoryKey = message.data["category"] ?: message.data["type"] ?: ""
 
-    private fun createAlertChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Farm alerts",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply { description = "Low-stock, monthly-report, and important farm alerts" }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val type = when {
+            categoryKey.contains("milk", ignoreCase = true) || title.contains("milk", ignoreCase = true) || body.contains("milk", ignoreCase = true) -> NotificationType.MILK_LOG
+            categoryKey.contains("delete", ignoreCase = true) || title.contains("delete", ignoreCase = true) || body.contains("deleted", ignoreCase = true) || body.contains("removed", ignoreCase = true) -> NotificationType.DELETION
+            categoryKey.contains("edit", ignoreCase = true) || categoryKey.contains("account", ignoreCase = true) || title.contains("change", ignoreCase = true) || title.contains("update", ignoreCase = true) -> NotificationType.ACCOUNT_CHANGE
+            categoryKey.contains("reminder", ignoreCase = true) || title.contains("reminder", ignoreCase = true) || body.contains("due", ignoreCase = true) -> NotificationType.REMINDER
+            categoryKey.contains("entry", ignoreCase = true) || title.contains("added", ignoreCase = true) || body.contains("registered", ignoreCase = true) -> NotificationType.NEW_ENTRY
+            else -> NotificationType.SYSTEM_ALERT
         }
-    }
 
-    companion object {
-        const val CHANNEL_ID = "farm_alerts"
+        if (NotificationHelper.canNotify(this, type)) {
+            val notificationId = message.messageId?.hashCode() ?: (System.currentTimeMillis() % 100000).toInt()
+            NotificationHelper.postNotification(
+                context = this,
+                type = type,
+                title = title,
+                message = body,
+                notificationId = notificationId
+            )
+        }
     }
 }
+

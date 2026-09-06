@@ -164,6 +164,17 @@ val MIGRATION_22_23 = object : Migration(22, 23) {
     }
 }
 
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `notificationsEnabled` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `notifyMilkLogs` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `notifyNewEntries` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `notifyAccountChanges` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `notifyDeletions` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `farm_settings` ADD COLUMN `notifyReminders` INTEGER NOT NULL DEFAULT 1")
+    }
+}
+
 @Database(
     entities = [
         FarmTask::class,
@@ -185,7 +196,7 @@ val MIGRATION_22_23 = object : Migration(22, 23) {
         InventoryMovement::class,
         MilkUsageLog::class
     ],
-    version = 23,
+    version = 24,
     exportSchema = false
 )
 abstract class MkulimaDatabase : RoomDatabase() {
@@ -202,7 +213,7 @@ abstract class MkulimaDatabase : RoomDatabase() {
                     MkulimaDatabase::class.java,
                     "mkulima_farm_db"
                 )
-                    .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
+                    .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .addCallback(MkulimaDatabaseCallback(scope))
                     .build()

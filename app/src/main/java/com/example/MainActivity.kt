@@ -14,9 +14,9 @@ class MainActivity : ComponentActivity() {
         // Install Android Splash Screen API before super.onCreate()
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        com.example.util.NotificationHelper.createChannels(this)
         if (FirebaseApp.getApps(this).isEmpty()) {
             FirebaseApp.initializeApp(this)
-            com.example.util.NotificationHelper.createChannel(this)
         }
         enableEdgeToEdge()
         setContent {

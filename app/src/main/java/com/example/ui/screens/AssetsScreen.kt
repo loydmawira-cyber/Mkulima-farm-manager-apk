@@ -102,7 +102,7 @@ fun AssetsScreen(
             existing = null,
             prefillTemplate = template,
             onDismiss = { restockTemplate = null },
-            onSave = { onAddInventory(it); restockTemplate = null },
+            onSave = { onUpdateInventory(it); restockTemplate = null },
             onRequestRecordExpense = if (onAddFinanceRecord != null) { cat, amount, desc, date ->
                 pendingFinanceCategory = cat
                 pendingFinanceAmount = amount
@@ -309,7 +309,7 @@ private fun InventoryContent(
                         lowStockItems.forEach { item ->
                             val isDepleted = item.quantityAvailable <= 0.0
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -319,26 +319,12 @@ private fun InventoryContent(
                                     color = Color(0xFF78350F),
                                     fontWeight = FontWeight.Medium
                                 )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        if (isDepleted) "Depleted (0 ${item.unitOfMeasurement})" else "Low: ${item.quantityAvailable}/${item.minimumThreshold} ${item.unitOfMeasurement}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isDepleted) Color(0xFFDC2626) else Color(0xFFB45309)
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Button(
-                                        onClick = { onRestock(item) },
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                        modifier = Modifier.height(28.dp)
-                                    ) {
-                                        Icon(Icons.Filled.AddShoppingCart, contentDescription = null, modifier = Modifier.size(13.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Restock", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
+                                Text(
+                                    if (isDepleted) "Depleted (0 ${item.unitOfMeasurement})" else "Low: ${item.quantityAvailable}/${item.minimumThreshold} ${item.unitOfMeasurement}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDepleted) Color(0xFFDC2626) else Color(0xFFB45309)
+                                )
                             }
                         }
                     }
@@ -628,6 +614,7 @@ private fun InventoryEntryDialog(
     var expiryDate by remember(stateKey) { mutableStateOf(if (isRestock) "" else existing?.expirationDate.orEmpty()) }
     var categoryMenu by remember { mutableStateOf(false) }
     var pendingItemToSave by remember { mutableStateOf<InventoryItem?>(null) }
+    var pendingRestockQty by remember { mutableStateOf(0.0) }
     var showExpensePrompt by remember { mutableStateOf(false) }
 
     if (showExpensePrompt && pendingItemToSave != null) {
@@ -649,7 +636,11 @@ private fun InventoryEntryDialog(
                             "tools" -> "Equipment & Maintenance"
                             else -> "Feeds & Supplies"
                         }
-                        val expDesc = "Inventory: ${item.itemName} (${item.quantityAvailable} ${item.unitOfMeasurement})"
+                        val expDesc = if (isRestock) {
+                            "Inventory Restock: ${item.itemName} (+${pendingRestockQty} ${item.unitOfMeasurement})"
+                        } else {
+                            "Inventory: ${item.itemName} (${item.quantityAvailable} ${item.unitOfMeasurement})"
+                        }
                         onSave(item)
                         onRequestRecordExpense?.invoke(financeCat, 0.0, expDesc, item.purchaseDate.ifBlank { today() })
                         showExpensePrompt = false
@@ -676,10 +667,21 @@ private fun InventoryEntryDialog(
         Surface(shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(18.dp).fillMaxWidth()) {
                 Text(if (isEdit) "Edit Inventory Item" else if (isRestock) "Restock: ${source?.itemName}" else "Add Inventory Item", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(if (isRestock) "Enter the newly received quantity and batch details." else "Record quantity in stock, minimum alert threshold, and batch details.", fontSize = 12.sp, color = Color.Gray)
+                if (isRestock && prefillTemplate != null) {
+                    Text(
+                        "Current in-stock: ${prefillTemplate.quantityAvailable} ${prefillTemplate.unitOfMeasurement}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ForestGreenPrimary,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    Text("Enter the new quantity to add to this item.", fontSize = 12.sp, color = Color.Gray)
+                } else {
+                    Text("Record quantity in stock, minimum alert threshold, and batch details.", fontSize = 12.sp, color = Color.Gray)
+                }
                 Input(itemName, { itemName = it }, "Item Name *")
                 Box {
-                    OutlinedButton(onClick = { categoryMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Category: $category") }
+                    OutlinedButton(onClick = { if (!isRestock) categoryMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Category: $category") }
                     DropdownMenu(expanded = categoryMenu, onDismissRequest = { categoryMenu = false }) {
                         listOf("Seeds", "Fertilizers", "Pesticides", "Tools", "Feed", "Harvested Crops", "Silage", "Other").forEach { choice ->
                             DropdownMenuItem(text = { Text(choice) }, onClick = {
@@ -694,7 +696,7 @@ private fun InventoryEntryDialog(
                 }
                 Input(description, { description = it }, "Description")
                 Row {
-                    Input(quantity, { quantity = it }, if (isRestock) "Restock Quantity *" else "Quantity *", Modifier.weight(1f), KeyboardType.Decimal)
+                    Input(quantity, { quantity = it }, if (isRestock) "Quantity to Add *" else "Quantity *", Modifier.weight(1f), KeyboardType.Decimal)
                     Spacer(Modifier.width(8.dp))
                     Input(unit, { unit = it }, "Unit", Modifier.weight(1f))
                 }
@@ -709,13 +711,18 @@ private fun InventoryEntryDialog(
                             val parsedQuantity = quantity.toDoubleOrNull() ?: 0.0
                             if (itemName.isNotBlank() && parsedQuantity > 0.0) {
                                 val silage = category.equals("Silage", ignoreCase = true)
-                                val base = existing ?: InventoryItem(itemName = itemName, category = category)
+                                val finalQuantity = if (isRestock) {
+                                    (prefillTemplate?.quantityAvailable ?: 0.0) + parsedQuantity
+                                } else {
+                                    parsedQuantity
+                                }
+                                val base = existing ?: prefillTemplate ?: InventoryItem(itemName = itemName, category = category)
                                 val itemToSave = base.copy(
                                     itemName = itemName.trim(),
                                     category = category,
                                     skuOrBarcode = "",
                                     description = description.trim(),
-                                    quantityAvailable = parsedQuantity,
+                                    quantityAvailable = finalQuantity,
                                     unitOfMeasurement = if (silage) "kgs" else unit.ifBlank { "kg" },
                                     minimumThreshold = minimum.toDoubleOrNull() ?: 0.0,
                                     storageLocation = "",
@@ -727,6 +734,7 @@ private fun InventoryEntryDialog(
                                 )
                                 if (!isEdit && onRequestRecordExpense != null) {
                                     pendingItemToSave = itemToSave
+                                    pendingRestockQty = parsedQuantity
                                     showExpensePrompt = true
                                 } else {
                                     onSave(itemToSave)

@@ -4890,9 +4890,9 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             listOf(
-                                "Starter (0-3 Wks)",
-                                "Grower (3-8 Wks)",
-                                "Layer/Finisher (8+ Wks)"
+                                "Starter (0-8 Wks)",
+                                "Grower (9-18 Wks)",
+                                "Layer/Finisher (19+ Wks)"
                             ).forEach { stage ->
                                 val isSelected = selectedStage.contains(stage.take(7), ignoreCase = true)
                                 Surface(

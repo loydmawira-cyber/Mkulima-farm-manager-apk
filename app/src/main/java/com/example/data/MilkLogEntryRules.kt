@@ -101,4 +101,46 @@ object MilkLogEntryRules {
         if (normalizedSession(first.session) != normalizedSession(secondSession)) return false
         return isSameCow(first.cowName, secondCowName)
     }
+
+    fun matchesCow(logCowName: String, targetCowName: String, targetTag: String = "", logNotes: String? = null): Boolean {
+        val cleanLog = logCowName.trim()
+        val cleanTarget = targetCowName.trim()
+        if (cleanLog.isBlank() && cleanTarget.isBlank()) return true
+        if (cleanLog.equals(cleanTarget, ignoreCase = true)) return true
+        if (isSameCow(cleanLog, cleanTarget)) return true
+
+        val cleanTag = targetTag.trim().replace("#", "").lowercase(Locale.US)
+        if (cleanTag.isNotEmpty()) {
+            val logLower = cleanLog.lowercase(Locale.US)
+            if (logLower.contains(cleanTag) || logLower.contains("#$cleanTag")) return true
+            if (logNotes?.lowercase(Locale.US)?.contains(cleanTag) == true) return true
+        }
+
+        val lowerLog = cleanLog.lowercase(Locale.US)
+        val lowerTarget = cleanTarget.lowercase(Locale.US)
+        if (lowerLog.isNotEmpty() && lowerTarget.isNotEmpty()) {
+            if (lowerLog.contains(lowerTarget) || lowerTarget.contains(lowerLog)) return true
+            val targetBase = lowerTarget.substringBefore(" (").substringBefore(" -").substringBefore("#").trim()
+            val logBase = lowerLog.substringBefore(" (").substringBefore(" -").substringBefore("#").trim()
+            if (targetBase.isNotEmpty() && logBase.isNotEmpty() && (targetBase == logBase || lowerLog.contains(targetBase) || lowerTarget.contains(logBase))) {
+                return true
+            }
+        }
+        return false
+    }
+
+    fun findLogsForCow(logs: List<MilkLog>, cowName: String, tagNumber: String = ""): List<MilkLog> {
+        return logs.filter { log -> matchesCow(log.cowName, cowName, tagNumber, log.notes) }
+            .sortedWith(
+                compareByDescending<MilkLog> { canonicalDateKey(it.date) ?: "1970-01-01" }
+                    .thenByDescending {
+                        when (it.session.trim().uppercase(Locale.US)) {
+                            "EVENING", "NIGHT" -> 3
+                            "MIDDAY", "AFTERNOON" -> 2
+                            else -> 1
+                        }
+                    }
+                    .thenByDescending { it.id }
+            )
+    }
 }

@@ -40,6 +40,10 @@ import com.example.ui.util.ImageStorageUtils
 import com.example.util.DateValidationUtils
 import com.example.util.NotificationHelper
 import com.example.util.NotificationType
+import com.example.util.TaskChecklistItem
+import com.example.util.TaskChecklistUtils
+import com.example.util.TaskRecurrenceInterval
+import com.example.util.TaskRecurrenceUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -393,11 +397,15 @@ class FarmViewModel(
         priority: TaskPriority,
         scheduledTime: String,
         instructions: String?,
-        assignedWorker: String?
+        assignedWorker: String?,
+        isRecurring: Boolean = false,
+        recurrenceInterval: String = "",
+        checklistItems: List<TaskChecklistItem> = emptyList()
     ) {
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+            val checklistJson = TaskChecklistUtils.serializeChecklist(checklistItems)
             val newTask = FarmTask(
                 farmId = farmId,
                 title = title.ifBlank { "Farm Maintenance Task" },
@@ -406,13 +414,17 @@ class FarmViewModel(
                 priority = priority,
                 scheduledTime = scheduledTime.ifBlank { "Today" },
                 instructions = instructions,
-                assignedWorker = assignedWorker?.ifBlank { "Lead Operator" } ?: "Lead Operator"
+                assignedWorker = assignedWorker?.ifBlank { "Lead Operator" } ?: "Lead Operator",
+                isRecurring = isRecurring,
+                recurrenceInterval = if (isRecurring) recurrenceInterval else "",
+                checklistJson = checklistJson
             )
             repository.insertTask(newTask)
+            val recurringSuffix = if (isRecurring) " (Repeats every ${TaskRecurrenceInterval.getDisplayLabel(recurrenceInterval)})" else ""
             NotificationHelper.notify(
                 type = NotificationType.NEW_ENTRY,
                 title = "📋 New Task Added",
-                message = "${newTask.title} scheduled for ${newTask.scheduledTime}"
+                message = "${newTask.title} scheduled for ${newTask.scheduledTime}$recurringSuffix"
             )
         }
     }
@@ -620,6 +632,49 @@ class FarmViewModel(
                     }
                 }
             }
+
+            // Reschedule next recurrence if this is a recurring task
+            if (existingTask.isRecurring && existingTask.recurrenceInterval.isNotBlank()) {
+                val nextScheduled = TaskRecurrenceUtils.calculateNextScheduledTime(
+                    existingTask.scheduledTime,
+                    existingTask.recurrenceInterval
+                )
+                val resetChecklist = TaskChecklistUtils.resetChecklist(existingTask.checklistJson)
+                val nextTask = FarmTask(
+                    farmId = farmId,
+                    title = existingTask.title,
+                    category = existingTask.category,
+                    targetUnit = existingTask.targetUnit,
+                    priority = existingTask.priority,
+                    scheduledTime = nextScheduled,
+                    instructions = existingTask.instructions,
+                    assignedWorker = existingTask.assignedWorker,
+                    isRecurring = true,
+                    recurrenceInterval = existingTask.recurrenceInterval,
+                    checklistJson = resetChecklist
+                )
+                repository.insertTask(nextTask)
+                NotificationHelper.notify(
+                    type = NotificationType.NEW_ENTRY,
+                    title = "🔄 Recurring Task Rescheduled",
+                    message = "${nextTask.title} rescheduled for $nextScheduled (${TaskRecurrenceInterval.getDisplayLabel(existingTask.recurrenceInterval)})"
+                )
+            }
+        }
+    }
+
+    fun toggleTaskChecklistItem(taskId: Long, itemId: String) {
+        viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
+            val task = repository.getTaskById(taskId) ?: return@launch
+            val checklist = TaskChecklistUtils.parseChecklist(task.checklistJson).map {
+                if (it.id == itemId) it.copy(isChecked = !it.isChecked) else it
+            }
+            val updatedTask = task.copy(
+                checklistJson = TaskChecklistUtils.serializeChecklist(checklist),
+                updatedAt = System.currentTimeMillis()
+            )
+            repository.updateTask(updatedTask)
         }
     }
 
@@ -1307,6 +1362,14 @@ class FarmViewModel(
                         }
                     }
                 }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            currentSession.collect { session ->
+                if (session != null) {
+                    val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                    repository.processAutomaticFeedDeductions(session.farmId, farmSettings.value, today)
+                }
+            }
         }
     }
 

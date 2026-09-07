@@ -148,6 +148,9 @@ data class FarmTask(
     val proofNotes: String? = null,              // Completion notes
     val assignedWorker: String? = "Lead Farm Operator",
     val instructions: String? = null,
+    val isRecurring: Boolean = false,
+    val recurrenceInterval: String = "",
+    val checklistJson: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
@@ -268,7 +271,7 @@ data class FarmSettings(
     val pregnancyCheckReminderDays: Int = 30,
     val dryingOffReminderDays: Int = 60,
     val themeMode: String = "CLASSIC", // matches the app's default palette, so the first frame (before settings load from Room) doesn't flash a different theme
-    val automaticFeedDeductionEnabled: Boolean = false,
+    val automaticFeedDeductionEnabled: Boolean = true,
     val feedDeductionLastRunDate: String = "",
     val monthlyReportsEnabled: Boolean = true,
     val notificationsEnabled: Boolean = true,

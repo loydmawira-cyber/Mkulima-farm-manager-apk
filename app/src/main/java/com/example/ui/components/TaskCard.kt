@@ -20,12 +20,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Agriculture
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Egg
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.CheckCircleOutline
@@ -37,6 +39,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -53,7 +56,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,6 +76,8 @@ import com.example.ui.theme.HarvestAmber
 import com.example.ui.theme.HarvestAmberLight
 import com.example.ui.theme.StatusCompleted
 import com.example.ui.theme.StatusUrgent
+import com.example.util.TaskChecklistUtils
+import com.example.util.TaskRecurrenceInterval
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -127,6 +134,7 @@ fun TaskCard(
     onDeleteClick: (FarmTask) -> Unit,
     canCompleteTask: Boolean = true,
     canDeleteTask: Boolean = true,
+    onToggleChecklistItem: ((Long, String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -219,6 +227,34 @@ fun TaskCard(
                             color = priorityColor,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                         )
+                    }
+
+                    if (task.isRecurring) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFEFF6FF),
+                            border = BorderStroke(1.dp, Color(0xFFBFDBFE))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Repeat,
+                                    contentDescription = "Recurring Task",
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = TaskRecurrenceInterval.getDisplayLabel(task.recurrenceInterval),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1D4ED8)
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -407,6 +443,101 @@ fun TaskCard(
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         )
+                    }
+                }
+            }
+
+            // Task Checklist Section
+            val checklistItems = remember(task.checklistJson) {
+                TaskChecklistUtils.parseChecklist(task.checklistJson)
+            }
+            if (checklistItems.isNotEmpty()) {
+                val completedCount = checklistItems.count { it.isChecked }
+                val totalCount = checklistItems.size
+                val progressFraction = if (totalCount > 0) completedCount.toFloat() / totalCount.toFloat() else 0f
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Checklist,
+                                    contentDescription = null,
+                                    tint = ForestGreenPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Checklist Steps",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B)
+                                )
+                            }
+                            Text(
+                                text = "$completedCount of $totalCount done",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (completedCount == totalCount) ForestGreenPrimary else Color(0xFF64748B)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        LinearProgressIndicator(
+                            progress = { progressFraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = if (completedCount == totalCount) ForestGreenPrimary else Color(0xFF3B82F6),
+                            trackColor = Color(0xFFE2E8F0),
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            checklistItems.forEach { item ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable(enabled = !task.isCompleted && canCompleteTask) {
+                                            onToggleChecklistItem?.invoke(task.id, item.id)
+                                        }
+                                        .padding(vertical = 4.dp, horizontal = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (item.isChecked || task.isCompleted) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircleOutline,
+                                        contentDescription = if (item.isChecked) "Checked" else "Unchecked",
+                                        tint = if (item.isChecked || task.isCompleted) ForestGreenPrimary else Color(0xFF94A3B8),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = item.text,
+                                        fontSize = 12.sp,
+                                        color = if (item.isChecked || task.isCompleted) Color(0xFF64748B) else Color(0xFF1E293B),
+                                        style = if (item.isChecked || task.isCompleted) {
+                                            TextStyle(textDecoration = TextDecoration.LineThrough)
+                                        } else {
+                                            TextStyle()
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

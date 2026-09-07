@@ -94,6 +94,7 @@ fun ApprovalRequestsScreen(
     onViewProofClick: (FarmTask) -> Unit = {},
     onDeleteTaskClick: (FarmTask) -> Unit = {},
     onAddTaskClick: () -> Unit = {},
+    onToggleChecklistItem: (Long, String) -> Unit = { _, _ -> },
     onUpdateRequestStatus: (EmployeeRequest, String) -> Unit,
     currency: String,
     modifier: Modifier = Modifier,
@@ -465,7 +466,8 @@ fun ApprovalRequestsScreen(
                             onViewProofClick = onViewProofClick,
                             onDeleteClick = onDeleteTaskClick,
                             canCompleteTask = effectiveCanCompleteTasks,
-                            canDeleteTask = effectiveCanDeleteTasks
+                            canDeleteTask = effectiveCanDeleteTasks,
+                            onToggleChecklistItem = onToggleChecklistItem
                         )
                     }
                 }

@@ -283,8 +283,19 @@ fun MkulimaAppContent(
                     addTaskInitialCategory = null
                     addTaskInitialTargetUnit = null
                 },
-                onTaskCreated = { title, category, targetUnit, priority, scheduledTime, instructions, worker ->
-                    viewModel.addNewTask(title, category, targetUnit, priority, scheduledTime, instructions, worker)
+                onTaskCreated = { title, category, targetUnit, priority, scheduledTime, instructions, worker, isRecurring, interval, checklist ->
+                    viewModel.addNewTask(
+                        title = title,
+                        category = category,
+                        targetUnit = targetUnit,
+                        priority = priority,
+                        scheduledTime = scheduledTime,
+                        instructions = instructions,
+                        assignedWorker = worker,
+                        isRecurring = isRecurring,
+                        recurrenceInterval = interval,
+                        checklistItems = checklist
+                    )
                     showAddTaskDialog = false
                     addTaskInitialCategory = null
                     addTaskInitialTargetUnit = null
@@ -1011,6 +1022,9 @@ fun MkulimaAppContent(
                             onViewProofClick = { proofModalTaskTarget = it },
                             onDeleteTaskClick = { viewModel.deleteTask(it.id) },
                             onAddTaskClick = { showAddTaskDialog = true },
+                            onToggleChecklistItem = { taskId, itemId ->
+                                viewModel.toggleTaskChecklistItem(taskId, itemId)
+                            },
                             onUpdateRequestStatus = { req, statusString ->
                                 val requestStatus = when (statusString) {
                                     "APPROVED" -> RequestStatus.APPROVED

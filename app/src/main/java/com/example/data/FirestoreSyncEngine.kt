@@ -502,6 +502,9 @@ class FirestoreSyncEngine(
                     "proofNotes" to task.proofNotes,
                     "assignedWorker" to task.assignedWorker,
                     "instructions" to task.instructions,
+                    "isRecurring" to task.isRecurring,
+                    "recurrenceInterval" to task.recurrenceInterval,
+                    "checklistJson" to task.checklistJson,
                     "createdAt" to task.createdAt,
                     "updatedAt" to task.updatedAt,
                     "isDeleted" to task.isDeleted
@@ -893,7 +896,7 @@ class FirestoreSyncEngine(
                 pregnancyCheckReminderDays = doc.getLong("pregnancyCheckReminderDays")?.toInt() ?: 30,
                 dryingOffReminderDays = doc.getLong("dryingOffReminderDays")?.toInt() ?: 60,
                 themeMode = doc.getString("themeMode") ?: "SYSTEM",
-                automaticFeedDeductionEnabled = doc.getBoolean("automaticFeedDeductionEnabled") ?: false,
+                automaticFeedDeductionEnabled = doc.getBoolean("automaticFeedDeductionEnabled") ?: true,
                 feedDeductionLastRunDate = doc.getString("feedDeductionLastRunDate") ?: "",
                 monthlyReportsEnabled = doc.getBoolean("monthlyReportsEnabled") ?: true,
                 notificationsEnabled = doc.getBoolean("notificationsEnabled") ?: true,
@@ -963,6 +966,9 @@ class FirestoreSyncEngine(
                 proofNotes = doc.getString("proofNotes"),
                 assignedWorker = doc.getString("assignedWorker") ?: "Lead Farm Operator",
                 instructions = doc.getString("instructions"),
+                isRecurring = doc.getBoolean("isRecurring") ?: false,
+                recurrenceInterval = doc.getString("recurrenceInterval") ?: "",
+                checklistJson = doc.getString("checklistJson") ?: "",
                 createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis(),
                 updatedAt = remoteUpdatedAt,
                 isDeleted = isDeleted

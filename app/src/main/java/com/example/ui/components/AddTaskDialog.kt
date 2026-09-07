@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -16,8 +17,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.PostAdd
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -30,6 +35,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,6 +58,8 @@ import com.example.data.TaskCategory
 import com.example.data.TaskPriority
 import com.example.ui.theme.FarmGreenPrimary
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.util.TaskChecklistItem
+import com.example.util.TaskRecurrenceInterval
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -69,7 +78,10 @@ fun AddTaskDialog(
         priority: TaskPriority,
         scheduledTime: String,
         instructions: String,
-        assignedWorker: String
+        assignedWorker: String,
+        isRecurring: Boolean,
+        recurrenceInterval: String,
+        checklistItems: List<TaskChecklistItem>
     ) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
@@ -88,6 +100,12 @@ fun AddTaskDialog(
     var scheduledTimeText by remember { mutableStateOf("09:00 AM") }
     var instructions by remember { mutableStateOf("") }
     var assignedWorker by remember { mutableStateOf("Lead Farm Hand") }
+
+    // Recurring & Checklist state
+    var isRecurring by remember { mutableStateOf(false) }
+    var recurrenceInterval by remember { mutableStateOf("7days") }
+    var checklistItems by remember { mutableStateOf<List<TaskChecklistItem>>(emptyList()) }
+    var newChecklistText by remember { mutableStateOf("") }
 
     var categoryDropdownExpanded by remember { mutableStateOf(false) }
     var priorityDropdownExpanded by remember { mutableStateOf(false) }
@@ -316,7 +334,323 @@ fun AddTaskDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Recurring Task Configuration Card
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isRecurring) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, if (isRecurring) ForestGreenPrimary else Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Repeat,
+                                    contentDescription = null,
+                                    tint = if (isRecurring) ForestGreenPrimary else Color(0xFF64748B)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Recurring Task",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isRecurring) ForestGreenPrimary else Color(0xFF1E293B)
+                                    )
+                                    Text(
+                                        text = "Automatically reschedule when completed",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = isRecurring,
+                                onCheckedChange = { isRecurring = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = ForestGreenPrimary
+                                ),
+                                modifier = Modifier.testTag("recurring_task_switch")
+                            )
+                        }
+
+                        if (isRecurring) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Select Recurrence Interval:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF334155)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            val intervals = listOf(
+                                TaskRecurrenceInterval.ONE_DAY,
+                                TaskRecurrenceInterval.SEVEN_DAYS,
+                                TaskRecurrenceInterval.THIRTY_DAYS,
+                                TaskRecurrenceInterval.THREE_MONTHS,
+                                TaskRecurrenceInterval.SIX_MONTHS,
+                                TaskRecurrenceInterval.ONE_YEAR
+                            )
+
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    intervals.take(3).forEach { interval ->
+                                        val isSelected = recurrenceInterval == interval.code
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { recurrenceInterval = interval.code }
+                                                .testTag("interval_chip_${interval.code}"),
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) ForestGreenPrimary else Color.White,
+                                            border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFCBD5E1))
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = interval.label,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) Color.White else Color(0xFF1E293B)
+                                                )
+                                                Text(
+                                                    text = interval.shortLabel,
+                                                    fontSize = 10.sp,
+                                                    color = if (isSelected) Color(0xFFDCFCE7) else Color(0xFF64748B)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    intervals.drop(3).forEach { interval ->
+                                        val isSelected = recurrenceInterval == interval.code
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { recurrenceInterval = interval.code }
+                                                .testTag("interval_chip_${interval.code}"),
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) ForestGreenPrimary else Color.White,
+                                            border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFCBD5E1))
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = interval.label,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) Color.White else Color(0xFF1E293B)
+                                                )
+                                                Text(
+                                                    text = interval.shortLabel,
+                                                    fontSize = 10.sp,
+                                                    color = if (isSelected) Color(0xFFDCFCE7) else Color(0xFF64748B)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Task Checklist / Subtasks Section
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Checklist,
+                                    contentDescription = null,
+                                    tint = FarmGreenPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Task Checklist Steps",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1E293B)
+                                    )
+                                    Text(
+                                        text = if (checklistItems.isEmpty()) "Add step-by-step checklist items" else "${checklistItems.size} items added",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Checklist Input Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = newChecklistText,
+                                onValueChange = { newChecklistText = it },
+                                placeholder = { Text("e.g. Inspect water nipples", fontSize = 12.sp) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("checklist_item_input"),
+                                shape = RoundedCornerShape(10.dp),
+                                singleLine = true,
+                                trailingIcon = {
+                                    if (newChecklistText.isNotBlank()) {
+                                        IconButton(onClick = { newChecklistText = "" }) {
+                                            Icon(Icons.Filled.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                            )
+
+                            Button(
+                                onClick = {
+                                    if (newChecklistText.isNotBlank()) {
+                                        checklistItems = checklistItems + TaskChecklistItem(text = newChecklistText.trim())
+                                        newChecklistText = ""
+                                    }
+                                },
+                                enabled = newChecklistText.isNotBlank(),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = FarmGreenPrimary),
+                                modifier = Modifier.testTag("add_checklist_item_button")
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = "Add Step", modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Add", fontSize = 12.sp)
+                            }
+                        }
+
+                        // Quick checklist templates
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Checklist Templates:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF64748B)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val templates = listOf(
+                                "Daily Feeding" to listOf("Inspect feed trough", "Refill fresh feed", "Check clean water supply"),
+                                "Vaccination" to listOf("Sanitize needles & syringes", "Check expiry & dosage", "Administer dose", "Record ear tag number"),
+                                "Barn Maintenance" to listOf("Clear manure & soiled bedding", "Disinfect floors", "Verify ventilation fans")
+                            )
+                            items(templates) { (templateTitle, steps) ->
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFE2E8F0),
+                                    modifier = Modifier.clickable {
+                                        val newItems = steps.map { TaskChecklistItem(text = it) }
+                                        checklistItems = checklistItems + newItems
+                                    }
+                                ) {
+                                    Text(
+                                        text = "+ $templateTitle",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF334155),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Render added items list
+                        if (checklistItems.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                checklistItems.forEachIndexed { index, item ->
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color.White,
+                                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(
+                                                    text = "${index + 1}.",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = FarmGreenPrimary
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = item.text,
+                                                    fontSize = 13.sp,
+                                                    color = Color(0xFF1E293B)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    checklistItems = checklistItems.filterNot { it.id == item.id }
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.DeleteOutline,
+                                                    contentDescription = "Remove",
+                                                    tint = Color(0xFFEF4444),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Assigned Worker
                 OutlinedTextField(
@@ -368,7 +702,10 @@ fun AddTaskDialog(
                                     priority,
                                     "$scheduledDate at $scheduledTimeText",
                                     instructions,
-                                    assignedWorker
+                                    assignedWorker,
+                                    isRecurring,
+                                    recurrenceInterval,
+                                    checklistItems
                                 )
                             }
                         },

@@ -1451,15 +1451,24 @@ fun MilkLogScreen(
                                 (usage.date.contains(selectedUsageMonth, ignoreCase = true) || usage.date.contains(shortMonthLabel, ignoreCase = true)) &&
                                     usage.date.contains(targetYearInt.toString())
                             }
-                            else -> if (c != null) {
+                            "YEAR" -> if (c != null) {
                                 c.get(java.util.Calendar.YEAR) == targetYearInt
                             } else {
                                 usage.date.contains(targetYearInt.toString())
                             }
+                            else -> true // "ALL" timeframe
                         }
                     }.sortedByDescending {
                         parseMilkLogCalendar(it.date)?.timeInMillis ?: 0L
                     }
+                }
+
+                val logsByDate = remember(filteredUsageLogs) {
+                    val map = LinkedHashMap<String, MutableList<MilkUsageLog>>()
+                    filteredUsageLogs.forEach { log ->
+                        map.getOrPut(log.date) { mutableListOf() }.add(log)
+                    }
+                    map
                 }
 
                 Card(
@@ -1476,7 +1485,7 @@ fun MilkLogScreen(
                             color = Color(0xFF1E293B)
                         )
                         Text(
-                            text = "Daily breakdown of where milk went",
+                            text = "Daily breakdown and subtotals of where milk went",
                             fontSize = 11.5.sp,
                             color = Color(0xFF64748B)
                         )
@@ -1484,7 +1493,7 @@ fun MilkLogScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             // 1. TODAY TAB
                             val isUsageTodaySelected = usageTimeframe == "TODAY"
@@ -1493,17 +1502,17 @@ fun MilkLogScreen(
                                 color = if (isUsageTodaySelected) ForestGreenPrimary else Color(0xFFF1F5F9),
                                 border = if (isUsageTodaySelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(0.9f)
                                     .clickable { usageTimeframe = "TODAY" }
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = "Today",
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isUsageTodaySelected) Color.White else Color(0xFF334155)
                                     )
@@ -1525,23 +1534,23 @@ fun MilkLogScreen(
                                         }
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
                                         horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = selectedUsageMonth,
-                                            fontSize = 12.sp,
+                                            fontSize = 11.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isUsageMonthSelected) Color.White else Color(0xFF334155),
                                             maxLines = 1
                                         )
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Spacer(modifier = Modifier.width(2.dp))
                                         Icon(
                                             imageVector = Icons.Filled.ArrowDropDown,
                                             contentDescription = "Select Month",
                                             tint = if (isUsageMonthSelected) Color.White else Color(0xFF64748B),
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(15.dp)
                                         )
                                     }
                                 }
@@ -1582,7 +1591,7 @@ fun MilkLogScreen(
 
                             // 3. YEAR TAB
                             val isUsageYearSelected = usageTimeframe == "YEAR"
-                            Box(modifier = Modifier.weight(1.1f)) {
+                            Box(modifier = Modifier.weight(1f)) {
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
                                     color = if (isUsageYearSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
@@ -1595,23 +1604,23 @@ fun MilkLogScreen(
                                         }
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
                                         horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = selectedUsageYear,
-                                            fontSize = 12.sp,
+                                            fontSize = 11.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isUsageYearSelected) Color.White else Color(0xFF334155),
                                             maxLines = 1
                                         )
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Spacer(modifier = Modifier.width(2.dp))
                                         Icon(
                                             imageVector = Icons.Filled.ArrowDropDown,
                                             contentDescription = "Select Year",
                                             tint = if (isUsageYearSelected) Color.White else Color(0xFF64748B),
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(15.dp)
                                         )
                                     }
                                 }
@@ -1649,6 +1658,30 @@ fun MilkLogScreen(
                                     }
                                 }
                             }
+
+                            // 4. ALL TAB
+                            val isUsageAllSelected = usageTimeframe == "ALL"
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isUsageAllSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                                border = if (isUsageAllSelected) null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier
+                                    .weight(0.8f)
+                                    .clickable { usageTimeframe = "ALL" }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "All",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isUsageAllSelected) Color.White else Color(0xFF334155)
+                                    )
+                                }
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
@@ -1658,64 +1691,231 @@ fun MilkLogScreen(
                                 text = "No milk usage records for this period yet.",
                                 fontSize = 12.5.sp,
                                 color = Color(0xFF94A3B8),
-                                modifier = Modifier.padding(vertical = 12.dp)
+                                modifier = Modifier.padding(vertical = 16.dp)
                             )
                         } else {
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                Text("DATE", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B), modifier = Modifier.weight(1.1f))
-                                Text("TOTAL", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                Text("CALVES", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                Text("HOME", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                Text("COOP", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 2.dp)
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                logsByDate.forEach { (dateKey, dayLogs) ->
+                                    val dayTotal = dayLogs.sumOf { it.totalAllocated }
+                                    val dayCalves = dayLogs.sumOf { it.litresToCalves }
+                                    val dayHome = dayLogs.sumOf { it.litresHomeUse }
+                                    val dayCoop = dayLogs.sumOf { it.litresToCooperative }
 
-                            filteredUsageLogs.forEach { usage ->
-                                val canModifyThisUsage = isOwner || (canEditLogs && (canEditPastDaysLogs || com.example.util.DateValidationUtils.isTodayOrFuture(usage.date, usage.updatedAt)))
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .pointerInput(usage.id, canModifyThisUsage) {
-                                            detectTapGestures(
-                                                onLongPress = {
-                                                    if (canModifyThisUsage) {
-                                                        longPressedUsageLog = usage
-                                                    } else {
-                                                        android.widget.Toast.makeText(context, "Editing or deleting records for previous days is disabled for worker accounts.", android.widget.Toast.LENGTH_SHORT).show()
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color(0xFFFFFFFF),
+                                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                        shadowElevation = 0.5.dp
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            // 1. Day Box Header Bar
+                                            Surface(
+                                                shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
+                                                color = Color(0xFFF8FAFC),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.CalendarToday,
+                                                            contentDescription = null,
+                                                            tint = ForestGreenPrimary,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = dateKey,
+                                                            fontSize = 12.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF1E293B)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Surface(
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            color = Color(0xFFE2E8F0)
+                                                        ) {
+                                                            Text(
+                                                                text = "${dayLogs.size} ${if (dayLogs.size == 1) "entry" else "entries"}",
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = Color(0xFF475569),
+                                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = Color(0xFFDCFCE7),
+                                                        border = BorderStroke(1.dp, Color(0xFF86EFAC))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text(
+                                                                text = "Day: ",
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Medium,
+                                                                color = Color(0xFF166534)
+                                                            )
+                                                            Text(
+                                                                text = "%.1fL".format(dayTotal),
+                                                                fontSize = 11.5.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = Color(0xFF14532D)
+                                                            )
+                                                        }
                                                     }
                                                 }
-                                            )
-                                        }
-                                        .padding(vertical = 10.dp)
-                                ) {
-                                    Column(modifier = Modifier.weight(1.1f)) {
-                                        Text(usage.date, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                                        Text(
-                                            text = MilkLogEntryRules.normalizedSession(usage.session).lowercase().replaceFirstChar { it.uppercase() },
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF94A3B8)
-                                        )
-                                    }
-                                    Text("%.1fL".format(usage.totalAllocated), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                    Text("%.1fL".format(usage.litresToCalves), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                    Text("%.1fL".format(usage.litresHomeUse), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                    Text("%.1fL".format(usage.litresToCooperative), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                }
-                                HorizontalDivider(color = Color(0xFFF8FAFC), thickness = 1.dp)
-                            }
+                                            }
 
-                            val totalAll = filteredUsageLogs.sumOf { it.totalAllocated }
-                            val totalCalves = filteredUsageLogs.sumOf { it.litresToCalves }
-                            val totalHome = filteredUsageLogs.sumOf { it.litresHomeUse }
-                            val totalCoop = filteredUsageLogs.sumOf { it.litresToCooperative }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                Text("TOTAL", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(1.1f))
-                                Text("%.1fL".format(totalAll), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                Text("%.1fL".format(totalCalves), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                Text("%.1fL".format(totalHome), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
-                                Text("%.1fL".format(totalCoop), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                            // 2. Table Column Header inside Day Box
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(Color(0xFFF1F5F9))
+                                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("SESSION", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B), modifier = Modifier.weight(1.1f))
+                                                Text("TOTAL", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                Text("CALVES", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                Text("HOME", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                Text("COOP", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                            }
+                                            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.8.dp)
+
+                                            // 3. Individual Session Rows
+                                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)) {
+                                                dayLogs.forEachIndexed { index, usage ->
+                                                    val canModifyThisUsage = isOwner || (canEditLogs && (canEditPastDaysLogs || com.example.util.DateValidationUtils.isTodayOrFuture(usage.date, usage.updatedAt)))
+                                                    val sessionLabel = MilkLogEntryRules.normalizedSession(usage.session)
+                                                    val sessionIcon = when (sessionLabel.uppercase()) {
+                                                        "MORNING" -> Icons.Filled.WbSunny
+                                                        "AFTERNOON", "MIDDAY" -> Icons.Filled.WbCloudy
+                                                        else -> Icons.Filled.NightsStay
+                                                    }
+                                                    val sessionColor = when (sessionLabel.uppercase()) {
+                                                        "MORNING" -> Color(0xFFEA580C)
+                                                        "AFTERNOON", "MIDDAY" -> Color(0xFF0284C7)
+                                                        else -> Color(0xFF6366F1)
+                                                    }
+
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .pointerInput(usage.id, canModifyThisUsage) {
+                                                                detectTapGestures(
+                                                                    onLongPress = {
+                                                                        if (canModifyThisUsage) {
+                                                                            longPressedUsageLog = usage
+                                                                        } else {
+                                                                            android.widget.Toast.makeText(context, "Editing or deleting records for previous days is disabled for worker accounts.", android.widget.Toast.LENGTH_SHORT).show()
+                                                                        }
+                                                                    }
+                                                                )
+                                                            }
+                                                            .padding(horizontal = 4.dp, vertical = 7.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.weight(1.1f),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = sessionIcon,
+                                                                contentDescription = null,
+                                                                tint = sessionColor,
+                                                                modifier = Modifier.size(13.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(5.dp))
+                                                            Text(
+                                                                text = sessionLabel.lowercase().replaceFirstChar { it.uppercase() },
+                                                                fontSize = 11.5.sp,
+                                                                fontWeight = FontWeight.Medium,
+                                                                color = Color(0xFF1E293B)
+                                                            )
+                                                        }
+                                                        Text("%.1fL".format(usage.totalAllocated), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                        Text("%.1fL".format(usage.litresToCalves), fontSize = 11.5.sp, fontWeight = FontWeight.Normal, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                        Text("%.1fL".format(usage.litresHomeUse), fontSize = 11.5.sp, fontWeight = FontWeight.Normal, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                        Text("%.1fL".format(usage.litresToCooperative), fontSize = 11.5.sp, fontWeight = FontWeight.Normal, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                    }
+
+                                                    if (index < dayLogs.size - 1) {
+                                                        HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.8.dp)
+                                                    }
+                                                }
+                                            }
+
+                                            // 4. Day Subtotal Footer inside the Box
+                                            Surface(
+                                                shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp),
+                                                color = Color(0xFFF8FAFC),
+                                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "Day Subtotal",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF334155),
+                                                        modifier = Modifier.weight(1.1f)
+                                                    )
+                                                    Text("%.1fL".format(dayTotal), fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF0F172A), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                    Text("%.1fL".format(dayCalves), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                    Text("%.1fL".format(dayHome), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                    Text("%.1fL".format(dayCoop), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                val totalAll = filteredUsageLogs.sumOf { it.totalAllocated }
+                                val totalCalves = filteredUsageLogs.sumOf { it.litresToCalves }
+                                val totalHome = filteredUsageLogs.sumOf { it.litresHomeUse }
+                                val totalCoop = filteredUsageLogs.sumOf { it.litresToCooperative }
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF0F172A),
+                                    shadowElevation = 1.dp,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 11.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("PERIOD TOTAL", fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1.1f))
+                                        Text("%.1fL".format(totalAll), fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                        Text("%.1fL".format(totalCalves), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFBBF24), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                        Text("%.1fL".format(totalHome), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                        Text("%.1fL".format(totalCoop), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4ADE80), modifier = Modifier.weight(0.9f), textAlign = TextAlign.End)
+                                    }
+                                }
                             }
                         }
                     }

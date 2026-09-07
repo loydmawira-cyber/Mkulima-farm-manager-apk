@@ -123,10 +123,13 @@ import com.example.data.FarmUnit
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.MilkLog
+import com.example.data.FarmTask
+import com.example.data.MilkLogEntryRules
 import com.example.data.PoultryLog
 import com.example.data.RequestStatus
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import com.example.ui.theme.TagLivestockBg
@@ -180,10 +183,318 @@ data class UpcomingCattleNotification(
     val id: String,
     val title: String,
     val dueDate: String,
-    val category: String, // "HEAT_CHECK", "INSEMINATION_PD", "WEIGHT", "HEALTH"
+    val category: String, // "HEAT_CHECK", "INSEMINATION_PD", "WEIGHT", "HEALTH", "CALVING", "DRY_OFF", "POULTRY_VACCINE", "TASK"
     val badgeColor: Color,
-    val badgeTextColor: Color
+    val badgeTextColor: Color,
+    val details: String = "",
+    val urgencyLabel: String = "SCHEDULED",
+    val actionCategory: String? = null,
+    val daysRemaining: Int = 999
 )
+
+fun generateAnimalUpcomingEvents(
+    animal: AnimalDetailData,
+    cattleEval: CattleStageEvaluation?,
+    animalEvents: List<CattleEventItem>,
+    tasks: List<com.example.data.FarmTask> = emptyList(),
+    eggLogs: List<EggLog> = emptyList(),
+    isPoultry: Boolean = false
+): List<UpcomingCattleNotification> {
+    val list = mutableListOf<UpcomingCattleNotification>()
+    val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+    val today = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    fun parseDate(dStr: String?): Date? {
+        if (dStr.isNullOrBlank()) return null
+        return CattleLifecycleEngine.parseDateOrNull(dStr)
+    }
+
+    fun getDaysDifference(targetDate: Date): Int {
+        val targetCal = Calendar.getInstance().apply {
+            time = targetDate
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val diffMs = targetCal.timeInMillis - today.timeInMillis
+        return (diffMs / (1000 * 60 * 60 * 24)).toInt()
+    }
+
+    fun addDaysToDate(baseDate: Date, days: Int): Date {
+        return Calendar.getInstance().apply {
+            time = baseDate
+            add(Calendar.DAY_OF_YEAR, days)
+        }.time
+    }
+
+    if (isPoultry) {
+        val flockAgeInfo = CattleLifecycleEngine.calculateAgeFromDob(animal.dateOfBirth)
+        val dobDate = parseDate(animal.dateOfBirth) ?: today.time
+        val totalFlockDays = ((today.timeInMillis - dobDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+
+        // Routine Deworming (every 8 weeks / 56 days)
+        val dewormDueDays = (56 - (totalFlockDays % 56)).coerceIn(-10, 56)
+        val dewormDate = addDaysToDate(today.time, dewormDueDays)
+        list.add(
+            UpcomingCattleNotification(
+                id = "poultry_deworm_${animal.id}",
+                title = "Flock Routine Deworming",
+                dueDate = sdf.format(dewormDate),
+                category = "HEALTH",
+                badgeColor = if (dewormDueDays <= 0) Color(0xFFFEE2E2) else Color(0xFFDCFCE7),
+                badgeTextColor = if (dewormDueDays <= 0) Color(0xFFB91C1C) else Color(0xFF15803D),
+                details = "Periodic internal parasite & worm control for ${animal.name} ($flockAgeInfo).",
+                urgencyLabel = if (dewormDueDays <= 0) "DUE NOW" else if (dewormDueDays <= 7) "DUE SOON" else "SCHEDULED",
+                actionCategory = "HEALTH",
+                daysRemaining = dewormDueDays
+            )
+        )
+
+        // Newcastle / Gumboro Booster
+        val vacDueDays = (90 - (totalFlockDays % 90)).coerceIn(-10, 90)
+        val vacDate = addDaysToDate(today.time, vacDueDays)
+        list.add(
+            UpcomingCattleNotification(
+                id = "poultry_vac_${animal.id}",
+                title = "Newcastle / Gumboro Booster",
+                dueDate = sdf.format(vacDate),
+                category = "POULTRY_VACCINE",
+                badgeColor = Color(0xFFFEF3C7),
+                badgeTextColor = Color(0xFFB45309),
+                details = "Immunization booster via drinking water or eye drop to sustain flock immunity.",
+                urgencyLabel = if (vacDueDays <= 0) "DUE NOW" else if (vacDueDays <= 7) "DUE SOON" else "SCHEDULED",
+                actionCategory = "HEALTH",
+                daysRemaining = vacDueDays
+            )
+        )
+    } else {
+        // Cattle Dynamic Lifecycle Events & Reminders
+
+        // 1. Expected Calving Date
+        if (cattleEval?.expectedCalvingDate != null) {
+            val calvDate = parseDate(cattleEval.expectedCalvingDate)
+            val daysLeft = if (calvDate != null) getDaysDifference(calvDate) else (283 - (cattleEval.gestationDays ?: 200))
+            val (urgency, bColor, tColor) = when {
+                daysLeft <= 0 -> Triple("DUE / IMMINENT", Color(0xFFFEE2E2), Color(0xFFB91C1C))
+                daysLeft <= 14 -> Triple("DUE SOON", Color(0xFFFEF3C7), Color(0xFFB45309))
+                else -> Triple("EXPECTED", Color(0xFFFEF3C7), Color(0xFFB45309))
+            }
+            list.add(
+                UpcomingCattleNotification(
+                    id = "notif_calving_${animal.id}",
+                    title = "Expected Calving — ${animal.name}",
+                    dueDate = cattleEval.expectedCalvingDate,
+                    category = "CALVING",
+                    badgeColor = bColor,
+                    badgeTextColor = tColor,
+                    details = when {
+                        daysLeft <= 0 -> "Calving due date reached! Monitor closely for labor signs (water bag, restlessness, udder distension)."
+                        daysLeft <= 14 -> "Imminent calving window (${daysLeft} days remaining). Move to clean maternity pen & provide steam-up ration."
+                        daysLeft <= 30 -> "Late gestation (Day ${cattleEval.gestationDays ?: 253} of 283). Prepare maternity pen and mineral lick."
+                        else -> "Gestation in progress (Day ${cattleEval.gestationDays ?: 150} of 283). Expected delivery on ${cattleEval.expectedCalvingDate}."
+                    },
+                    urgencyLabel = urgency,
+                    actionCategory = "CALVING",
+                    daysRemaining = daysLeft
+                )
+            )
+
+            // 2. Target Dry-Off Date (Rest Period - 60 days before calving)
+            if (cattleEval.isMilking && cattleEval.dryOffTargetDate != null && !cattleEval.isDriedOff) {
+                val dryDate = parseDate(cattleEval.dryOffTargetDate)
+                val dryDaysLeft = if (dryDate != null) getDaysDifference(dryDate) else (daysLeft - 60)
+                list.add(
+                    UpcomingCattleNotification(
+                        id = "notif_dry_${animal.id}",
+                        title = "Target Dry-Off (Udder Rest Period)",
+                        dueDate = cattleEval.dryOffTargetDate,
+                        category = "DRY_OFF",
+                        badgeColor = if (dryDaysLeft <= 7) Color(0xFFFEE2E2) else Color(0xFFDCFCE7),
+                        badgeTextColor = if (dryDaysLeft <= 7) Color(0xFFB91C1C) else Color(0xFF15803D),
+                        details = "Cease daily milking, infuse dry cow intramammary antibiotic & teat sealant for 60-day involution.",
+                        urgencyLabel = if (dryDaysLeft <= 0) "DUE NOW" else if (dryDaysLeft <= 14) "DUE SOON" else "SCHEDULED",
+                        actionCategory = "HEALTH",
+                        daysRemaining = dryDaysLeft
+                    )
+                )
+            }
+        }
+
+        // 3. Insemination Follow-ups (Repeat Heat & PD Check)
+        if (cattleEval?.lastInseminationDate != null && !cattleEval.isInCalf) {
+            val aiDate = parseDate(cattleEval.lastInseminationDate)
+            if (aiDate != null) {
+                val daysPostAi = ((today.timeInMillis - aiDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+
+                // Repeat Heat Check (Day 18-24)
+                val heatDueDays = 21 - daysPostAi
+                val heatDateStr = sdf.format(addDaysToDate(aiDate, 21))
+                if (daysPostAi <= 28) {
+                    list.add(
+                        UpcomingCattleNotification(
+                            id = "notif_repeat_heat_${animal.id}",
+                            title = "Repeat Heat Observation (18-24d post AI)",
+                            dueDate = heatDateStr,
+                            category = "HEAT_CHECK",
+                            badgeColor = if (heatDueDays in -2..2) Color(0xFFEDE9FE) else Color(0xFFF1F5F9),
+                            badgeTextColor = if (heatDueDays in -2..2) Color(0xFF6D28D9) else Color(0xFF475569),
+                            details = "Monitor for standing heat signs (mucus, mounting). If in estrus, serve repeat AI immediately.",
+                            urgencyLabel = if (heatDueDays in -2..2) "ACTIVE WINDOW" else if (heatDueDays < -2) "WINDOW PASSED" else "UPCOMING",
+                            actionCategory = "HEAT",
+                            daysRemaining = heatDueDays
+                        )
+                    )
+                }
+
+                // 60-Day Pregnancy Diagnosis (PD) Check
+                val pdDueDays = 60 - daysPostAi
+                val pdDateStr = sdf.format(addDaysToDate(aiDate, 60))
+                list.add(
+                    UpcomingCattleNotification(
+                        id = "notif_pd_check_${animal.id}",
+                        title = "Pregnancy Diagnosis (PD) Check",
+                        dueDate = pdDateStr,
+                        category = "INSEMINATION_PD",
+                        badgeColor = if (pdDueDays <= 7) Color(0xFFE0F2FE) else Color(0xFFF0FDF4),
+                        badgeTextColor = if (pdDueDays <= 7) Color(0xFF0369A1) else Color(0xFF15803D),
+                        details = "60-Day post-AI veterinary rectal palpation or ultrasound to confirm conception.",
+                        urgencyLabel = if (pdDueDays <= 0) "DUE NOW" else if (pdDueDays <= 14) "DUE SOON" else "SCHEDULED",
+                        actionCategory = "PD",
+                        daysRemaining = pdDueDays
+                    )
+                )
+
+                // Projected Calving Date (if conceived)
+                val estCalvingDate = addDaysToDate(aiDate, 283)
+                val estDaysLeft = getDaysDifference(estCalvingDate)
+                list.add(
+                    UpcomingCattleNotification(
+                        id = "notif_projected_calving_${animal.id}",
+                        title = "Projected Calving (If Conceived)",
+                        dueDate = sdf.format(estCalvingDate),
+                        category = "CALVING",
+                        badgeColor = Color(0xFFFEF3C7),
+                        badgeTextColor = Color(0xFFB45309),
+                        details = "283-day gestation projection from AI service on ${cattleEval.lastInseminationDate}.",
+                        urgencyLabel = "PROJECTED",
+                        actionCategory = "CALVING",
+                        daysRemaining = estDaysLeft
+                    )
+                )
+            }
+        }
+
+        // 4. Post-Calving Milestones (Uterine Check & Voluntary Waiting Period)
+        if (cattleEval?.lastCalvingDate != null && cattleEval.lastInseminationDate == null && !cattleEval.isInCalf) {
+            val calvingDate = parseDate(cattleEval.lastCalvingDate)
+            if (calvingDate != null) {
+                val daysPostCalving = ((today.timeInMillis - calvingDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+
+                // Voluntary Waiting Period / Breeding Window (Day 60)
+                val vwpDueDays = 60 - daysPostCalving
+                val vwpDateStr = sdf.format(addDaysToDate(calvingDate, 60))
+                list.add(
+                    UpcomingCattleNotification(
+                        id = "notif_vwp_${animal.id}",
+                        title = "Breeding Window Opens (60d Post-Calving)",
+                        dueDate = vwpDateStr,
+                        category = "INSEMINATION_PD",
+                        badgeColor = Color(0xFFDCFCE7),
+                        badgeTextColor = Color(0xFF15803D),
+                        details = "Voluntary waiting period ends. Cow is eligible for heat detection and first AI service.",
+                        urgencyLabel = if (vwpDueDays <= 0) "OPEN FOR BREEDING" else "UPCOMING",
+                        actionCategory = "INSEMINATION",
+                        daysRemaining = vwpDueDays
+                    )
+                )
+            }
+        }
+
+        // 5. Health & Maintenance Reminders (Deworming, Vaccination, Weight)
+        val sortedEvents = animalEvents.sortedByDescending { parseDate(it.date)?.time ?: 0L }
+        val latestDeworm = sortedEvents.firstOrNull { it.category.equals("DEWORMING", ignoreCase = true) || it.title.contains("Deworm", ignoreCase = true) }
+        val dewormBaseDate = parseDate(latestDeworm?.date) ?: parseDate(animal.dateOfBirth) ?: today.time
+        val daysSinceDeworm = ((today.timeInMillis - dewormBaseDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+        val nextDewormDueDays = (90 - (daysSinceDeworm % 90)).coerceIn(-15, 90)
+        val nextDewormDateStr = sdf.format(addDaysToDate(today.time, nextDewormDueDays))
+
+        list.add(
+            UpcomingCattleNotification(
+                id = "notif_deworm_${animal.id}",
+                title = "Routine Quarterly Deworming",
+                dueDate = nextDewormDateStr,
+                category = "HEALTH",
+                badgeColor = if (nextDewormDueDays <= 0) Color(0xFFFEE2E2) else Color(0xFFF1F5F9),
+                badgeTextColor = if (nextDewormDueDays <= 0) Color(0xFFB91C1C) else Color(0xFF334155),
+                details = "Administer Albendazole or Ivermectin for internal parasite and liver fluke control.",
+                urgencyLabel = if (nextDewormDueDays <= 0) "DUE NOW" else if (nextDewormDueDays <= 7) "DUE SOON" else "SCHEDULED",
+                actionCategory = "HEALTH",
+                daysRemaining = nextDewormDueDays
+            )
+        )
+
+        val latestVac = sortedEvents.firstOrNull { it.category.equals("VACCINATION", ignoreCase = true) || it.title.contains("Vaccin", ignoreCase = true) }
+        val vacBaseDate = parseDate(latestVac?.date) ?: parseDate(animal.dateOfBirth) ?: today.time
+        val daysSinceVac = ((today.timeInMillis - vacBaseDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+        val nextVacDueDays = (180 - (daysSinceVac % 180)).coerceIn(-15, 180)
+        val nextVacDateStr = sdf.format(addDaysToDate(today.time, nextVacDueDays))
+
+        list.add(
+            UpcomingCattleNotification(
+                id = "notif_vac_${animal.id}",
+                title = "Livestock Booster Vaccination",
+                dueDate = nextVacDateStr,
+                category = "HEALTH",
+                badgeColor = Color(0xFFFEF3C7),
+                badgeTextColor = Color(0xFFB45309),
+                details = "Scheduled herd immunization booster to maintain protective immunity against endemic diseases.",
+                urgencyLabel = if (nextVacDueDays <= 0) "DUE NOW" else if (nextVacDueDays <= 14) "DUE SOON" else "SCHEDULED",
+                actionCategory = "HEALTH",
+                daysRemaining = nextVacDueDays
+            )
+        )
+    }
+
+    // Pending Farm Tasks matching this unit/animal
+    tasks.filter { !it.isCompleted &&
+        (it.targetUnit.isNotBlank() && (it.targetUnit.contains(animal.name, ignoreCase = true) || (animal.tagNumber.isNotBlank() && it.targetUnit.contains(animal.tagNumber.replace("#", ""), ignoreCase = true))))
+    }.forEach { task ->
+        val taskDate = parseDate(task.scheduledTime)
+        val taskDaysLeft = if (taskDate != null) getDaysDifference(taskDate) else 0
+        list.add(
+            UpcomingCattleNotification(
+                id = "task_${task.id}",
+                title = "Task: ${task.title}",
+                dueDate = task.scheduledTime,
+                category = "TASK",
+                badgeColor = if (taskDaysLeft <= 0) Color(0xFFFEE2E2) else Color(0xFFE0F2FE),
+                badgeTextColor = if (taskDaysLeft <= 0) Color(0xFFB91C1C) else Color(0xFF0369A1),
+                details = task.instructions?.ifBlank { "Assigned task for ${animal.name}." } ?: "Assigned task for ${animal.name}.",
+                urgencyLabel = if (taskDaysLeft <= 0) "OVERDUE" else if (taskDaysLeft <= 2) "DUE SOON" else "ASSIGNED",
+                actionCategory = "HEALTH",
+                daysRemaining = taskDaysLeft
+            )
+        )
+    }
+
+    return list.distinctBy { it.id }.sortedWith(
+        compareBy<UpcomingCattleNotification> {
+            when (it.urgencyLabel) {
+                "DUE / IMMINENT", "DUE NOW", "OVERDUE" -> 1
+                "DUE SOON", "ACTIVE WINDOW" -> 2
+                "OPEN FOR BREEDING" -> 3
+                "EXPECTED", "PROJECTED" -> 4
+                else -> 5
+            }
+        }.thenBy { it.daysRemaining }
+    )
+}
 
 
 data class AnimalDetailData(
@@ -712,13 +1023,15 @@ fun FlocksScreen(
             }
         }
     }
-    val roomAnimals = remember(units, milkLogsByCow, cattleEventsByUnit) {
+    val roomAnimals = remember(units, milkLogs, cattleEventsByUnit, eggLogs) {
         units.map { unit ->
             val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true)
-            val cowLogs = milkLogsByCow[unit.name.trim().lowercase()].orEmpty()
+            val cowLogs = MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
             val unitDbEvents = cattleEventsByUnit[unit.id].orEmpty()
             val lastMilkStr = if (isPoultry) {
-                "${unit.headCount} Birds"
+                val poultryEggLogs = eggLogs.filter { it.unitName.equals(unit.name, ignoreCase = true) || it.unitName.contains(unit.name, ignoreCase = true) }
+                    .sortedByDescending { it.id }
+                if (poultryEggLogs.isNotEmpty()) "${poultryEggLogs.first().totalEggs} Eggs" else "${unit.headCount} Birds"
             } else if (cowLogs.isNotEmpty()) {
                 "${"%.1f".format(cowLogs.first().litres)}L"
             } else {
@@ -2090,60 +2403,37 @@ fun AnimalDetailsView(
         }
     }
 
-    // Initialize events
-    val cattleNotifications = remember(cattleEval, animalEvents.toList()) {
-        val list = mutableListOf<UpcomingCattleNotification>()
-        if (cattleEval != null) {
-            if (cattleEval.expectedCalvingDate != null) {
-                list.add(
-                    UpcomingCattleNotification(
-                        id = "notif_calving",
-                        title = "Expected Calving Date",
-                        dueDate = cattleEval.expectedCalvingDate,
-                        category = "CALVING",
-                        badgeColor = Color(0xFFFEF3C7),
-                        badgeTextColor = Color(0xFFB45309)
-                    )
-                )
-            }
-            if (cattleEval.dryOffTargetDate != null) {
-                list.add(
-                    UpcomingCattleNotification(
-                        id = "notif_dry",
-                        title = "Target Dry Off Date (Rest Period)",
-                        dueDate = cattleEval.dryOffTargetDate,
-                        category = "DRY_OFF",
-                        badgeColor = Color(0xFFDCFCE7),
-                        badgeTextColor = Color(0xFF15803D)
-                    )
-                )
-            }
-            if (cattleEval.stage == CattleStage.INCALF || cattleEval.stage == CattleStage.INCALF_MILKING) {
-                list.add(
-                    UpcomingCattleNotification(
-                        id = "notif_pd",
-                        title = "Routine Pregnancy Check / Vet Follow-up",
-                        dueDate = "Next Vet Visit",
-                        category = "INSEMINATION_PD",
-                        badgeColor = Color(0xFFE0F2FE),
-                        badgeTextColor = Color(0xFF0369A1)
-                    )
-                )
-            }
+    val tasks by viewModel.rawTasks.collectAsStateWithLifecycle(initialValue = emptyList<com.example.data.FarmTask>())
+
+    val cowMilkLogs = remember(animal.name, animal.tagNumber, milkLogs) {
+        MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
+    }
+    val latestMilkLog = cowMilkLogs.firstOrNull()
+
+    val displayLastMilk = remember(latestMilkLog, eggLogs, animal.lastMilk, isPoultry) {
+        if (isPoultry) {
+            val poultryEggLogs = eggLogs.filter { it.unitName.equals(animal.name, ignoreCase = true) || it.unitName.contains(animal.name, ignoreCase = true) }
+                .sortedByDescending { it.id }
+            if (poultryEggLogs.isNotEmpty()) "${poultryEggLogs.first().totalEggs} Eggs" else if (animal.headCountInt > 0) "${animal.headCountInt} Birds" else animal.lastMilk
+        } else if (latestMilkLog != null) {
+            "${"%.1f".format(latestMilkLog.litres)}L"
+        } else if (animal.lastMilk.isNotBlank() && animal.lastMilk != "No data yet") {
+            animal.lastMilk
+        } else {
+            "No data yet"
         }
-        if (list.isEmpty()) {
-            list.add(
-                UpcomingCattleNotification(
-                    id = "notif_default_1",
-                    title = "Monthly Weight & Deworming Check",
-                    dueDate = "Aug 28, 2026",
-                    category = "WEIGHT",
-                    badgeColor = Color(0xFFDCFCE7),
-                    badgeTextColor = Color(0xFF15803D)
-                )
-            )
-        }
-        list
+    }
+
+    // Initialize events & alerts dynamically
+    val cattleNotifications = remember(cattleEval, animalEvents.toList(), tasks, eggLogs, isPoultry) {
+        generateAnimalUpcomingEvents(
+            animal = animal,
+            cattleEval = cattleEval,
+            animalEvents = animalEvents.toList(),
+            tasks = tasks,
+            eggLogs = eggLogs,
+            isPoultry = isPoultry
+        )
     }
 
     LazyColumn(
@@ -2645,7 +2935,14 @@ fun AnimalDetailsView(
                         }
                         Column {
                             Text(if (isPoultry) "Daily Egg Yield" else "Last Milk", fontSize = 11.sp, color = Color(0xFF64748B))
-                            Text(animal.lastMilk, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                            Text(displayLastMilk, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                            if (latestMilkLog != null && !isPoultry) {
+                                Text(
+                                    text = "${latestMilkLog.session.lowercase().replaceFirstChar { it.uppercase() }} (${latestMilkLog.date})",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
                         }
                     }
                 }
@@ -2715,54 +3012,97 @@ fun AnimalDetailsView(
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFEF3C7))
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Notifications, contentDescription = null, tint = Color(0xFFD97706))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Upcoming Events & Alerts",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E293B)
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Notifications, contentDescription = null, tint = Color(0xFFD97706))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Upcoming Events & Alerts",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B)
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFFEF3C7)
+                            ) {
+                                Text(
+                                    text = "${cattleNotifications.size} Active",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB45309)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
 
                         cattleNotifications.forEach { note ->
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = note.badgeColor,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, note.badgeTextColor.copy(alpha = 0.2f)),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
+                                    .clickable {
+                                        if (note.actionCategory != null && isCattle) {
+                                            cattleEventDialogCategory = note.actionCategory
+                                            showAddCattleEventDialog = true
+                                        }
+                                    }
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .padding(12.dp)
-                                        .fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = note.badgeTextColor
+                                            ) {
+                                                Text(
+                                                    text = note.urgencyLabel,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = note.title,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = note.badgeTextColor
+                                            )
+                                        }
                                         Text(
-                                            text = note.title,
+                                            text = note.dueDate,
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
                                             color = note.badgeTextColor
                                         )
+                                    }
+                                    if (note.details.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "DUE: ${note.dueDate}",
+                                            text = note.details,
                                             fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = note.badgeTextColor.copy(alpha = 0.8f)
+                                            color = note.badgeTextColor.copy(alpha = 0.9f)
                                         )
                                     }
-                                    Icon(
-                                        Icons.Filled.Event,
-                                        contentDescription = null,
-                                        tint = note.badgeTextColor,
-                                        modifier = Modifier.size(18.dp)
-                                    )
                                 }
                             }
                         }
@@ -3510,25 +3850,25 @@ fun AnimalDetailsView(
                 val shortDayFormat = remember { SimpleDateFormat("EEE", Locale.getDefault()) }
 
                 val last7DaysData = remember(animal, milkLogs, eggLogs, isPoultry) {
+                    val calKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                     (6 downTo 0).map { dayOffset ->
                         val c = java.util.Calendar.getInstance()
                         c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
                         val fullDate = dateFormat.format(c.time)
+                        val targetKey = calKeyFormat.format(c.time)
                         val dayName = shortDayFormat.format(c.time)
 
                         val yieldVal = if (isPoultry) {
                             val matched = eggLogs.filter { log ->
                                 (log.unitName.equals(animal.name, ignoreCase = true) || log.unitName.contains(animal.name, ignoreCase = true) || animal.name.contains(log.unitName, ignoreCase = true)) &&
-                                (log.loggedAt.contains(fullDate, ignoreCase = true) || log.loggedAt.contains(dayName, ignoreCase = true))
+                                (log.loggedAt.contains(fullDate, ignoreCase = true) || log.loggedAt.contains(targetKey) || log.loggedAt.contains(dayName, ignoreCase = true))
                             }
                             matched.sumOf { it.totalEggs }.toFloat()
                         } else {
-                            val cleanAnimal = animal.name.lowercase()
-                            val cleanTag = animal.tagNumber.lowercase().replace("#", "").trim()
-                            val matched = milkLogs.filter { log ->
-                                val logName = log.cowName.lowercase()
-                                (logName.contains(cleanAnimal) || cleanAnimal.contains(logName) || (cleanTag.isNotEmpty() && logName.contains(cleanTag))) &&
-                                (log.date.equals(fullDate, ignoreCase = true) || log.date.contains(fullDate, ignoreCase = true))
+                            val cowLogs = MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
+                            val matched = cowLogs.filter { log ->
+                                val logKey = MilkLogEntryRules.canonicalDateKey(log.date)
+                                logKey == targetKey || log.date.equals(fullDate, ignoreCase = true)
                             }
                             matched.sumOf { it.litres }.toFloat()
                         }

@@ -47,7 +47,7 @@ fun AddEggLogDialog(
     userRole: String = "OWNER",
     canEditPastDaysLogs: Boolean = true,
     onDismiss: () -> Unit,
-    onSaveEggLog: (unitName: String, totalEggs: Int, damagedEggs: Int, grade: String, notes: String?) -> Unit
+    onSaveEggLog: (unitName: String, totalEggs: Int, damagedEggs: Int, grade: String, date: String, notes: String?) -> Unit
 ) {
     val isOwner = userRole.equals("OWNER", ignoreCase = true)
     val cannotEditPast = !isOwner && !canEditPastDaysLogs
@@ -235,8 +235,8 @@ fun AddEggLogDialog(
                             val total = totalText.toIntOrNull() ?: 0
                             val damaged = damagedText.toIntOrNull() ?: 0
                             if (total <= 0 || damaged < 0 || damaged > total || eggDateIsPastRestricted) return@Button
-                            val fullNote = if (notesText.isNotBlank()) "[$collectionDate] $notesText" else "[$collectionDate]"
-                            onSaveEggLog(selected.name, total, damaged, selectedGrade, fullNote)
+                            val fullNote = notesText.ifBlank { null }
+                            onSaveEggLog(selected.name, total, damaged, selectedGrade, collectionDate, fullNote)
                         },
                         shape = RoundedCornerShape(100.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),

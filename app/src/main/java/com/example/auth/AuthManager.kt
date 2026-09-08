@@ -294,7 +294,10 @@ class AuthManager(
         CoroutineScope(Dispatchers.IO).launch {
             firebaseAuth = getFirebaseAuth()
             firestore = getFirestore()
-            _currentSession.value?.let { cached -> repository.syncEngine?.startSync(cached.farmId) }
+            _currentSession.value?.let { cached ->
+                repository.reassignDefaultDataToFarm(cached.farmId)
+                repository.syncEngine?.startSync(cached.farmId)
+            }
             checkAndRestoreFirebaseAuthSession()
         }
     }
@@ -632,7 +635,10 @@ class AuthManager(
         }
         FarmDeviceTokenRegistry.registerOwnerDevice(context, session)
         _currentSession.value = session
-        repository.syncEngine?.startSync(session.farmId)
+        CoroutineScope(Dispatchers.IO).launch {
+            repository.reassignDefaultDataToFarm(session.farmId)
+            repository.syncEngine?.startSync(session.farmId)
+        }
     }
 
     fun generateUniqueFarmId(): String {

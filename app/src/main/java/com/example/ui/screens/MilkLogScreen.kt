@@ -221,6 +221,14 @@ fun isLogForCow(log: MilkLog, cow: AnimalCowItem): Boolean {
 
 fun parseMilkLogCalendar(dateStr: String): java.util.Calendar? {
     val clean = dateStr.trim()
+    val parsedDate = DateValidationUtils.parseDate(clean)
+    if (parsedDate != null) {
+        val cal = java.util.Calendar.getInstance().apply { time = parsedDate }
+        if (cal.get(java.util.Calendar.YEAR) < 2000) {
+            cal.set(java.util.Calendar.YEAR, java.util.Calendar.getInstance().get(java.util.Calendar.YEAR))
+        }
+        return cal
+    }
     val formats = arrayOf(
         "dd MMM yyyy",
         "d MMM yyyy",
@@ -3810,41 +3818,20 @@ fun MilkLogScreen(
     } else {
             // --- EGG PRODUCTION LOGS & ANALYTICS VIEW ---
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column {
-                        Text(
-                            text = "Egg Yield Log",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B)
-                        )
-                        Text(
-                            text = "Flock egg totals, tray analytics & quick collection entry",
-                            fontSize = 12.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-
-                    val totalEggsVal = eggLogs.sumOf { it.totalEggs }
-                    val totalTraysVal = totalEggsVal / 30
-                    val remainingEggsVal = totalEggsVal % 30
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFFEF3C7)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("🥚", fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("$totalEggsVal Eggs ($totalTraysVal Trays + $remainingEggsVal)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF92400E))
-                        }
-                    }
+                    Text(
+                        text = "Egg Yield Log",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1E293B)
+                    )
+                    Text(
+                        text = "Flock egg totals, tray analytics & quick collection entry",
+                        fontSize = 12.sp,
+                        color = Color(0xFF64748B)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -3858,8 +3845,7 @@ fun MilkLogScreen(
                         listOf(
                             "EGG_OVERVIEW" to "📊 Flock Analytics",
                             "EGG_QUICK_LOG" to "⚡ Quick Egg Entry",
-                            "EGG_HISTORY" to "📋 Collection History",
-                            "EGG_ALL" to "🌐 All Views"
+                            "EGG_HISTORY" to "📋 Collection History"
                         )
                     ) { (key, label) ->
                         val isSel = eggActiveViewTab == key

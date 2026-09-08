@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.util.DateValidationUtils
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -233,46 +235,100 @@ fun generateAnimalUpcomingEvents(
         }.time
     }
 
+    val matchingTasks = tasks.filter { !it.isCompleted &&
+        (it.targetUnit.isNotBlank() && (it.targetUnit.contains(animal.name, ignoreCase = true) || (animal.tagNumber.isNotBlank() && it.targetUnit.contains(animal.tagNumber.replace("#", ""), ignoreCase = true))))
+    }
+    val hasAssignedDewormTask = matchingTasks.any { 
+        it.title.contains("deworm", ignoreCase = true) || 
+        it.category.name.contains("DEWORM", ignoreCase = true) 
+    }
+    val hasAssignedVaccineTask = matchingTasks.any { 
+        it.title.contains("vaccin", ignoreCase = true) || 
+        it.title.contains("immuniz", ignoreCase = true) || 
+        it.category.name.contains("VACCIN", ignoreCase = true) 
+    }
+
     if (isPoultry) {
         val flockAgeInfo = CattleLifecycleEngine.calculateAgeFromDob(animal.dateOfBirth)
         val dobDate = parseDate(animal.dateOfBirth) ?: today.time
         val totalFlockDays = ((today.timeInMillis - dobDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
 
-        // Routine Deworming (every 8 weeks / 56 days)
-        val dewormDueDays = (56 - (totalFlockDays % 56)).coerceIn(-10, 56)
-        val dewormDate = addDaysToDate(today.time, dewormDueDays)
-        list.add(
-            UpcomingCattleNotification(
-                id = "poultry_deworm_${animal.id}",
-                title = "Flock Routine Deworming",
-                dueDate = sdf.format(dewormDate),
-                category = "HEALTH",
-                badgeColor = if (dewormDueDays <= 0) Color(0xFFFEE2E2) else Color(0xFFDCFCE7),
-                badgeTextColor = if (dewormDueDays <= 0) Color(0xFFB91C1C) else Color(0xFF15803D),
-                details = "Periodic internal parasite & worm control for ${animal.name} ($flockAgeInfo).",
-                urgencyLabel = if (dewormDueDays <= 0) "DUE NOW" else if (dewormDueDays <= 7) "DUE SOON" else "SCHEDULED",
-                actionCategory = "HEALTH",
-                daysRemaining = dewormDueDays
+        // Feed Transition Reminders (Week 8 & Week 18)
+        if (totalFlockDays in 50..56) {
+            val daysUntilGrower = 57 - totalFlockDays
+            val transitionDate = addDaysToDate(today.time, daysUntilGrower)
+            list.add(
+                UpcomingCattleNotification(
+                    id = "poultry_feed_grower_${animal.id}",
+                    title = "Feed Transition: Introduce Growers",
+                    dueDate = sdf.format(transitionDate),
+                    category = "FEED_TRANSITION",
+                    badgeColor = Color(0xFFFEF3C7),
+                    badgeTextColor = Color(0xFFB45309),
+                    details = "Start introducing growers feed gradually (Week 8 transition phase for ${animal.name}).",
+                    urgencyLabel = if (daysUntilGrower <= 1) "DUE NOW" else "DUE SOON",
+                    actionCategory = "FEED",
+                    daysRemaining = daysUntilGrower
+                )
             )
-        )
+        } else if (totalFlockDays in 120..126) {
+            val daysUntilLayer = 127 - totalFlockDays
+            val transitionDate = addDaysToDate(today.time, daysUntilLayer)
+            list.add(
+                UpcomingCattleNotification(
+                    id = "poultry_feed_layer_${animal.id}",
+                    title = "Feed Transition: Introduce Layers",
+                    dueDate = sdf.format(transitionDate),
+                    category = "FEED_TRANSITION",
+                    badgeColor = Color(0xFFFEF3C7),
+                    badgeTextColor = Color(0xFFB45309),
+                    details = "Start introducing layers feed gradually (Week 18 transition phase for ${animal.name}).",
+                    urgencyLabel = if (daysUntilLayer <= 1) "DUE NOW" else "DUE SOON",
+                    actionCategory = "FEED",
+                    daysRemaining = daysUntilLayer
+                )
+            )
+        }
 
-        // Newcastle / Gumboro Booster
-        val vacDueDays = (90 - (totalFlockDays % 90)).coerceIn(-10, 90)
-        val vacDate = addDaysToDate(today.time, vacDueDays)
-        list.add(
-            UpcomingCattleNotification(
-                id = "poultry_vac_${animal.id}",
-                title = "Newcastle / Gumboro Booster",
-                dueDate = sdf.format(vacDate),
-                category = "POULTRY_VACCINE",
-                badgeColor = Color(0xFFFEF3C7),
-                badgeTextColor = Color(0xFFB45309),
-                details = "Immunization booster via drinking water or eye drop to sustain flock immunity.",
-                urgencyLabel = if (vacDueDays <= 0) "DUE NOW" else if (vacDueDays <= 7) "DUE SOON" else "SCHEDULED",
-                actionCategory = "HEALTH",
-                daysRemaining = vacDueDays
+        // Routine Deworming (every 8 weeks / 56 days) - only add if no explicit task assigned
+        if (!hasAssignedDewormTask) {
+            val dewormDueDays = (56 - (totalFlockDays % 56)).coerceIn(-10, 56)
+            val dewormDate = addDaysToDate(today.time, dewormDueDays)
+            list.add(
+                UpcomingCattleNotification(
+                    id = "poultry_deworm_${animal.id}",
+                    title = "Flock Routine Deworming",
+                    dueDate = sdf.format(dewormDate),
+                    category = "HEALTH",
+                    badgeColor = if (dewormDueDays <= 0) Color(0xFFFEE2E2) else Color(0xFFDCFCE7),
+                    badgeTextColor = if (dewormDueDays <= 0) Color(0xFFB91C1C) else Color(0xFF15803D),
+                    details = "Periodic internal parasite & worm control for ${animal.name} ($flockAgeInfo).",
+                    urgencyLabel = if (dewormDueDays <= 0) "DUE NOW" else if (dewormDueDays <= 7) "DUE SOON" else "SCHEDULED",
+                    actionCategory = "HEALTH",
+                    daysRemaining = dewormDueDays
+                )
             )
-        )
+        }
+
+        // Newcastle / Gumboro Booster - only add if no explicit task assigned
+        if (!hasAssignedVaccineTask) {
+            val vacDueDays = (90 - (totalFlockDays % 90)).coerceIn(-10, 90)
+            val vacDate = addDaysToDate(today.time, vacDueDays)
+            list.add(
+                UpcomingCattleNotification(
+                    id = "poultry_vac_${animal.id}",
+                    title = "Newcastle / Gumboro Booster",
+                    dueDate = sdf.format(vacDate),
+                    category = "POULTRY_VACCINE",
+                    badgeColor = Color(0xFFFEF3C7),
+                    badgeTextColor = Color(0xFFB45309),
+                    details = "Immunization booster via drinking water or eye drop to sustain flock immunity.",
+                    urgencyLabel = if (vacDueDays <= 0) "DUE NOW" else if (vacDueDays <= 7) "DUE SOON" else "SCHEDULED",
+                    actionCategory = "HEALTH",
+                    daysRemaining = vacDueDays
+                )
+            )
+        }
     } else {
         // Cattle Dynamic Lifecycle Events & Reminders
 
@@ -417,48 +473,53 @@ fun generateAnimalUpcomingEvents(
         }
 
         // 5. Health & Maintenance Reminders (Deworming, Vaccination, Weight)
-        val sortedEvents = animalEvents.sortedByDescending { parseDate(it.date)?.time ?: 0L }
-        val latestDeworm = sortedEvents.firstOrNull { it.category.equals("DEWORMING", ignoreCase = true) || it.title.contains("Deworm", ignoreCase = true) }
-        val dewormBaseDate = parseDate(latestDeworm?.date) ?: parseDate(animal.dateOfBirth) ?: today.time
-        val daysSinceDeworm = ((today.timeInMillis - dewormBaseDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
-        val nextDewormDueDays = (90 - (daysSinceDeworm % 90)).coerceIn(-15, 90)
-        val nextDewormDateStr = sdf.format(addDaysToDate(today.time, nextDewormDueDays))
+        if (!hasAssignedDewormTask) {
+            val sortedEvents = animalEvents.sortedByDescending { parseDate(it.date)?.time ?: 0L }
+            val latestDeworm = sortedEvents.firstOrNull { it.category.equals("DEWORMING", ignoreCase = true) || it.title.contains("Deworm", ignoreCase = true) }
+            val dewormBaseDate = parseDate(latestDeworm?.date) ?: parseDate(animal.dateOfBirth) ?: today.time
+            val daysSinceDeworm = ((today.timeInMillis - dewormBaseDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+            val nextDewormDueDays = (90 - (daysSinceDeworm % 90)).coerceIn(-15, 90)
+            val nextDewormDateStr = sdf.format(addDaysToDate(today.time, nextDewormDueDays))
 
-        list.add(
-            UpcomingCattleNotification(
-                id = "notif_deworm_${animal.id}",
-                title = "Routine Quarterly Deworming",
-                dueDate = nextDewormDateStr,
-                category = "HEALTH",
-                badgeColor = if (nextDewormDueDays <= 0) Color(0xFFFEE2E2) else Color(0xFFF1F5F9),
-                badgeTextColor = if (nextDewormDueDays <= 0) Color(0xFFB91C1C) else Color(0xFF334155),
-                details = "Administer Albendazole or Ivermectin for internal parasite and liver fluke control.",
-                urgencyLabel = if (nextDewormDueDays <= 0) "DUE NOW" else if (nextDewormDueDays <= 7) "DUE SOON" else "SCHEDULED",
-                actionCategory = "HEALTH",
-                daysRemaining = nextDewormDueDays
+            list.add(
+                UpcomingCattleNotification(
+                    id = "notif_deworm_${animal.id}",
+                    title = "Routine Quarterly Deworming",
+                    dueDate = nextDewormDateStr,
+                    category = "HEALTH",
+                    badgeColor = if (nextDewormDueDays <= 0) Color(0xFFFEE2E2) else Color(0xFFF1F5F9),
+                    badgeTextColor = if (nextDewormDueDays <= 0) Color(0xFFB91C1C) else Color(0xFF334155),
+                    details = "Administer Albendazole or Ivermectin for internal parasite and liver fluke control.",
+                    urgencyLabel = if (nextDewormDueDays <= 0) "DUE NOW" else if (nextDewormDueDays <= 7) "DUE SOON" else "SCHEDULED",
+                    actionCategory = "HEALTH",
+                    daysRemaining = nextDewormDueDays
+                )
             )
-        )
+        }
 
-        val latestVac = sortedEvents.firstOrNull { it.category.equals("VACCINATION", ignoreCase = true) || it.title.contains("Vaccin", ignoreCase = true) }
-        val vacBaseDate = parseDate(latestVac?.date) ?: parseDate(animal.dateOfBirth) ?: today.time
-        val daysSinceVac = ((today.timeInMillis - vacBaseDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
-        val nextVacDueDays = (180 - (daysSinceVac % 180)).coerceIn(-15, 180)
-        val nextVacDateStr = sdf.format(addDaysToDate(today.time, nextVacDueDays))
+        if (!hasAssignedVaccineTask) {
+            val sortedEvents = animalEvents.sortedByDescending { parseDate(it.date)?.time ?: 0L }
+            val latestVac = sortedEvents.firstOrNull { it.category.equals("VACCINATION", ignoreCase = true) || it.title.contains("Vaccin", ignoreCase = true) }
+            val vacBaseDate = parseDate(latestVac?.date) ?: parseDate(animal.dateOfBirth) ?: today.time
+            val daysSinceVac = ((today.timeInMillis - vacBaseDate.time) / (1000 * 60 * 60 * 24)).toInt().coerceAtLeast(0)
+            val nextVacDueDays = (180 - (daysSinceVac % 180)).coerceIn(-15, 180)
+            val nextVacDateStr = sdf.format(addDaysToDate(today.time, nextVacDueDays))
 
-        list.add(
-            UpcomingCattleNotification(
-                id = "notif_vac_${animal.id}",
-                title = "Livestock Booster Vaccination",
-                dueDate = nextVacDateStr,
-                category = "HEALTH",
-                badgeColor = Color(0xFFFEF3C7),
-                badgeTextColor = Color(0xFFB45309),
-                details = "Scheduled herd immunization booster to maintain protective immunity against endemic diseases.",
-                urgencyLabel = if (nextVacDueDays <= 0) "DUE NOW" else if (nextVacDueDays <= 14) "DUE SOON" else "SCHEDULED",
-                actionCategory = "HEALTH",
-                daysRemaining = nextVacDueDays
+            list.add(
+                UpcomingCattleNotification(
+                    id = "notif_vac_${animal.id}",
+                    title = "Livestock Booster Vaccination",
+                    dueDate = nextVacDateStr,
+                    category = "HEALTH",
+                    badgeColor = Color(0xFFFEF3C7),
+                    badgeTextColor = Color(0xFFB45309),
+                    details = "Scheduled herd immunization booster to maintain protective immunity against endemic diseases.",
+                    urgencyLabel = if (nextVacDueDays <= 0) "DUE NOW" else if (nextVacDueDays <= 14) "DUE SOON" else "SCHEDULED",
+                    actionCategory = "HEALTH",
+                    daysRemaining = nextVacDueDays
+                )
             )
-        )
+        }
     }
 
     // Pending Farm Tasks matching this unit/animal
@@ -3860,8 +3921,25 @@ fun AnimalDetailsView(
 
                         val yieldVal = if (isPoultry) {
                             val matched = eggLogs.filter { log ->
-                                (log.unitName.equals(animal.name, ignoreCase = true) || log.unitName.contains(animal.name, ignoreCase = true) || animal.name.contains(log.unitName, ignoreCase = true)) &&
-                                (log.loggedAt.contains(fullDate, ignoreCase = true) || log.loggedAt.contains(targetKey) || log.loggedAt.contains(dayName, ignoreCase = true))
+                                val flockMatches = log.unitName.equals(animal.name, ignoreCase = true) ||
+                                    log.unitName.contains(animal.name, ignoreCase = true) ||
+                                    animal.name.contains(log.unitName, ignoreCase = true)
+                                if (!flockMatches) return@filter false
+
+                                val parsedDate = DateValidationUtils.parseDate(log.loggedAt)
+                                    ?: log.notes?.let { n -> DateValidationUtils.parseDate(n.substringAfter("[", "").substringBefore("]", "")) }
+
+                                if (parsedDate != null) {
+                                    val logCal = java.util.Calendar.getInstance().apply { time = parsedDate }
+                                    val sameYear = logCal.get(java.util.Calendar.YEAR) == c.get(java.util.Calendar.YEAR) ||
+                                        logCal.get(java.util.Calendar.YEAR) < 2000
+                                    sameYear && logCal.get(java.util.Calendar.DAY_OF_YEAR) == c.get(java.util.Calendar.DAY_OF_YEAR)
+                                } else {
+                                    val shortDay = SimpleDateFormat("dd MMM", Locale.getDefault()).format(c.time)
+                                    log.loggedAt.contains(fullDate, ignoreCase = true) ||
+                                    log.loggedAt.contains(targetKey) ||
+                                    log.loggedAt.contains(shortDay, ignoreCase = true)
+                                }
                             }
                             matched.sumOf { it.totalEggs }.toFloat()
                         } else {
@@ -5221,7 +5299,7 @@ fun FlockDetailsView(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Stage Pill Chip Selector (Starter 0-3w, Grower 3-8w, Layer/Finisher 8+w)
+                        // Stage Pill Chip Selector (Starter Week 1-8, Grower Week 9-18, Layer/Finisher 18+ Wks)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -5230,11 +5308,11 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             listOf(
-                                "Starter (0-8 Wks)",
-                                "Grower (9-18 Wks)",
-                                "Layer/Finisher (19+ Wks)"
+                                "Starter (Wk 1-8)",
+                                "Grower (Wk 9-18)",
+                                "Layer/Finisher (18+ Wks)"
                             ).forEach { stage ->
-                                val isSelected = selectedStage.contains(stage.take(7), ignoreCase = true)
+                                val isSelected = selectedStage.contains(stage.take(6), ignoreCase = true)
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = if (isSelected) ForestGreenPrimary else Color.Transparent,
@@ -5303,29 +5381,14 @@ fun FlockDetailsView(
                     border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Feed Stage Formulation", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-
-                            Button(
-                                onClick = { showFeedDialog = true },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text("+ LOG FEED", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
+                        Text("Feed Stage Formulation", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
 
                         Spacer(modifier = Modifier.height(12.dp))
 
                         val stageFeedInfo = when {
-                            selectedStage.contains("Starter", ignoreCase = true) -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(10)
-                            selectedStage.contains("Grower", ignoreCase = true) -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(30)
-                            else -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(70)
+                            selectedStage.contains("Starter", ignoreCase = true) -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(28)
+                            selectedStage.contains("Grower", ignoreCase = true) -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(84)
+                            else -> PoultryAgeAndVaccinationUtils.getFlockFeedStage(140)
                         }
 
                         Surface(
@@ -5729,7 +5792,7 @@ fun FlockDetailsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(" ï¸ Mortality & Health Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text(" Mortality & Health Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                             Button(
                                 onClick = { showMortalityDialog = true },
                                 shape = RoundedCornerShape(10.dp),
@@ -5777,87 +5840,7 @@ fun FlockDetailsView(
                 }
             }
 
-            // 5. Egg Sales History Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFBBF7D0))
-                ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Egg Sales Log", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                            if (canEdit) {
-                                Button(
-                                    onClick = { showEggSaleDialog = true },
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text("+ LOG SALE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        if (eggSaleLogs.isEmpty()) {
-                            Text("No egg-sale records yet for this flock.", fontSize = 13.sp, color = Color(0xFF64748B))
-                        } else {
-                            eggSaleLogs.forEach { sale ->
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFF0FDF4),
-                                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(bottom = 6.dp)
-                                        .combinedClickable(
-                                            enabled = canEdit,
-                                            onClick = {},
-                                            onLongClick = {
-                                                poultryLogForOptions = PoultryLogAction.EggSale(sale)
-                                            }
-                                        )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "${sale.traysSold} trays • ${sale.buyer.ifBlank { "No buyer recorded" }}",
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF166534)
-                                            )
-                                            Text(
-                                                text = "Date: ${sale.date} • KSh ${"%.2f".format(sale.pricePerTray)} per tray",
-                                                fontSize = 12.sp,
-                                                color = Color(0xFF15803D)
-                                            )
-                                        }
-                                        Text(
-                                            text = "KSh ${"%.2f".format(sale.totalRevenue)}",
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF15803D)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 6. Flock Sales & Disposals History Card
+            // 5. Flock Sales & Disposals History Card
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -5959,6 +5942,7 @@ fun FlockDetailsView(
     // Dialog 1: Feed Consumption
     if (showFeedDialog) {
         Dialog(onDismissRequest = { showFeedDialog = false }) {
+            var feedDate by remember { mutableStateOf(PoultryAgeAndVaccinationUtils.formatDate(Date())) }
             var feedType by remember { mutableStateOf(flockAgeInfo.feedStage.feedType) }
             var qtyText by remember { mutableStateOf("50") }
             var costText by remember { mutableStateOf("22.50") }
@@ -5971,6 +5955,13 @@ fun FlockDetailsView(
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text("Log Feed Consumption", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
+                    AppDatePickerField(
+                        label = "Feed Date",
+                        value = feedDate,
+                        onValueChange = { feedDate = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(value = feedType, onValueChange = { feedType = it }, label = { Text("Feed Type") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(value = qtyText, onValueChange = { qtyText = it }, label = { Text("Quantity (Kg)") }, modifier = Modifier.fillMaxWidth())
@@ -5989,7 +5980,7 @@ fun FlockDetailsView(
                                         PoultryLog(
                                             unitId = unitId,
                                             logType = "FEED",
-                                            date = PoultryAgeAndVaccinationUtils.formatDate(Date()),
+                                            date = feedDate.ifBlank { PoultryAgeAndVaccinationUtils.formatDate(Date()) },
                                             feedType = feedType.trim(),
                                             quantityKg = qty.coerceAtLeast(0.0),
                                             costAmount = cost.coerceAtLeast(0.0),
@@ -6010,6 +6001,7 @@ fun FlockDetailsView(
     // Dialog 2: Mortality Record
     if (showMortalityDialog) {
         Dialog(onDismissRequest = { showMortalityDialog = false }) {
+            var mortalityDate by remember { mutableStateOf(PoultryAgeAndVaccinationUtils.formatDate(Date())) }
             var deathCountText by remember { mutableStateOf("1") }
             var causeText by remember { mutableStateOf("Heat Stress") }
             var notesText by remember { mutableStateOf("High afternoon humidity") }
@@ -6020,9 +6012,16 @@ fun FlockDetailsView(
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text(" ï¸ Record Bird Mortality", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                    Text("⚠️ Record Bird Mortality", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
                     Text("Deducts death count automatically from live flock head count.", fontSize = 12.sp, color = Color(0xFF64748B))
                     Spacer(modifier = Modifier.height(12.dp))
+                    AppDatePickerField(
+                        label = "Date of Incident",
+                        value = mortalityDate,
+                        onValueChange = { mortalityDate = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(value = deathCountText, onValueChange = { deathCountText = it }, label = { Text("Number of Bird Deaths") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(value = causeText, onValueChange = { causeText = it }, label = { Text("Cause / Reason") }, modifier = Modifier.fillMaxWidth())
@@ -6041,7 +6040,7 @@ fun FlockDetailsView(
                                         PoultryLog(
                                             unitId = unitId,
                                             logType = "MORTALITY",
-                                            date = PoultryAgeAndVaccinationUtils.formatDate(Date()),
+                                            date = mortalityDate.ifBlank { PoultryAgeAndVaccinationUtils.formatDate(Date()) },
                                             birdCount = safeCount,
                                             cause = causeText.trim(),
                                             notes = notesText.trim()
@@ -6063,6 +6062,7 @@ fun FlockDetailsView(
     // Dialog 3: Egg Sales
     if (showEggSaleDialog) {
         Dialog(onDismissRequest = { showEggSaleDialog = false }) {
+            var saleDate by remember { mutableStateOf(PoultryAgeAndVaccinationUtils.formatDate(Date())) }
             var traysText by remember { mutableStateOf("10") }
             var priceText by remember { mutableStateOf("4.50") }
             var buyerText by remember { mutableStateOf("Local Supermarket") }
@@ -6075,6 +6075,13 @@ fun FlockDetailsView(
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text("Log Egg Sales Revenue", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
                     Spacer(modifier = Modifier.height(12.dp))
+                    AppDatePickerField(
+                        label = "Sale Date",
+                        value = saleDate,
+                        onValueChange = { saleDate = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(value = traysText, onValueChange = { traysText = it }, label = { Text("Number of Trays Sold") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(value = priceText, onValueChange = { priceText = it }, label = { Text("Price per Tray ($)") }, modifier = Modifier.fillMaxWidth())
@@ -6094,7 +6101,7 @@ fun FlockDetailsView(
                                         PoultryLog(
                                             unitId = unitId,
                                             logType = "EGG_SALE",
-                                            date = PoultryAgeAndVaccinationUtils.formatDate(Date()),
+                                            date = saleDate.ifBlank { PoultryAgeAndVaccinationUtils.formatDate(Date()) },
                                             traysSold = trays.coerceAtLeast(0),
                                             pricePerTray = price.coerceAtLeast(0.0),
                                             totalRevenue = total.coerceAtLeast(0.0),

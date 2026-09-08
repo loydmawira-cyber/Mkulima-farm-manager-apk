@@ -12,6 +12,10 @@ import java.util.Locale
 
 object DateValidationUtils {
     private val dateFormats = listOf(
+        "dd MMM yyyy, hh:mm a",
+        "dd MMM yyyy, HH:mm",
+        "d MMM yyyy, hh:mm a",
+        "d MMM yyyy, HH:mm",
         "yyyy-MM-dd",
         "dd MMM yyyy",
         "d MMM yyyy",
@@ -290,6 +294,11 @@ object DateValidationUtils {
                 applyTimeToCalendar(timePart, cal)
                 return cal.timeInMillis
             }
+        }
+        val noteDate = log.notes?.substringAfter("[", "")?.substringBefore("]", "")?.trim()
+        if (!noteDate.isNullOrBlank()) {
+            val parsedNoteDate = parseDate(noteDate)
+            if (parsedNoteDate != null) return parsedNoteDate.time
         }
         return if (log.updatedAt > 0L) log.updatedAt else log.id
     }

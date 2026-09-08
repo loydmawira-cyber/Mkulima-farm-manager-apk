@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -137,15 +138,16 @@ fun AddUnitDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.88f)
                 .clip(RoundedCornerShape(24.dp))
                 .testTag("add_unit_dialog"),
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(
                 modifier = Modifier
+                    .fillMaxSize()
                     .padding(20.dp)
-                    .verticalScroll(rememberScrollState())
             ) {
                 // Dialog Title Bar
                 Row(
@@ -173,40 +175,46 @@ fun AddUnitDialog(
                     }
                 }
 
-                if (showCategoryToggle) {
-                    Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                    // Category Selection Bar: [ 🐄 CATTLE ]  [ 🐔 POULTRY ]
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf("CATTLE" to "🐄 Cattle", "POULTRY" to "🐔 Poultry").forEach { (catKey, catLabel) ->
-                            val isSelected = category == catKey
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(40.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) ForestGreenPrimary else Color.Transparent)
-                                    .clickable { category = catKey },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = catLabel,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Color.White else Color(0xFF475569),
-                                    fontSize = 14.sp
-                                )
+                // Scrollable Form Body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (showCategoryToggle) {
+                        // Category Selection Bar: [ 🐄 CATTLE ]  [ 🐔 POULTRY ]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("CATTLE" to "🐄 Cattle", "POULTRY" to "🐔 Poultry").forEach { (catKey, catLabel) ->
+                                val isSelected = category == catKey
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) ForestGreenPrimary else Color.Transparent)
+                                        .clickable { category = catKey },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = catLabel,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else Color(0xFF475569),
+                                        fontSize = 14.sp
+                                    )
+                                }
                             }
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
 
                 // ANIMAL PHOTO SECTION
                 Text(
@@ -586,69 +594,73 @@ fun AddUnitDialog(
                     minLines = 3
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+            } // End of scrollable form body
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Action Buttons pinned at bottom
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
-                    ) {
-                        Text("Cancel", color = Color(0xFF475569))
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Button(
-                        onClick = {
-                            if (category == "CATTLE") {
-                                val finalName = name.ifBlank { "Cattle Animal" }
-                                onUnitCreated(
-                                    finalName,
-                                    "CATTLE",
-                                    1,
-                                    status,
-                                    location,
-                                    tagNumber.ifBlank { "#${(100..999).random()}" },
-                                    breed,
-                                    dob,
-                                    weightAtBirth,
-                                    currentWeight,
-                                    sire,
-                                    dam,
-                                    notes.trim(),
-                                    photoUri
-                                )
-                            } else {
-                                val finalName = poultryName.ifBlank { "Poultry Flock" }
-                                onUnitCreated(
-                                    finalName,
-                                    "POULTRY",
-                                    headCountText.toIntOrNull() ?: 100,
-                                    poultryStatus,
-                                    poultryLocation,
-                                    "Count: ${headCountText.toIntOrNull() ?: 100}",
-                                    poultryBreed,
-                                    poultryDateAdded,
-                                    "N/A",
-                                    "1.8kg avg",
-                                    "N/A",
-                                    "N/A",
-                                    notes.trim(),
-                                    photoUri
-                                )
-                            }
-                        },
-                        modifier = Modifier.testTag("save_unit_button"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                    ) {
-                        Text("SAVE ANIMAL", fontWeight = FontWeight.Bold, color = Color.White)
-                    }
+                    Text("Cancel", color = Color(0xFF475569))
                 }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Button(
+                    onClick = {
+                        if (category == "CATTLE") {
+                            val finalName = name.ifBlank { "Cattle Animal" }
+                            onUnitCreated(
+                                finalName,
+                                "CATTLE",
+                                1,
+                                status,
+                                location,
+                                tagNumber.ifBlank { "#${(100..999).random()}" },
+                                breed,
+                                dob,
+                                weightAtBirth,
+                                currentWeight,
+                                sire,
+                                dam,
+                                notes.trim(),
+                                photoUri
+                            )
+                        } else {
+                            val finalName = poultryName.ifBlank { "Poultry Flock" }
+                            onUnitCreated(
+                                finalName,
+                                "POULTRY",
+                                headCountText.toIntOrNull() ?: 100,
+                                poultryStatus,
+                                poultryLocation,
+                                "Count: ${headCountText.toIntOrNull() ?: 100}",
+                                poultryBreed,
+                                poultryDateAdded,
+                                "N/A",
+                                "1.8kg avg",
+                                "N/A",
+                                "N/A",
+                                notes.trim(),
+                                photoUri
+                            )
+                        }
+                    },
+                    modifier = Modifier.testTag("save_unit_button"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                ) {
+                    Text("SAVE ANIMAL", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
             }
         }
     }

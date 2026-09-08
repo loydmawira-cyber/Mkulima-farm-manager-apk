@@ -195,6 +195,15 @@ fun FarmRemindersDialog(
                         )
                     )
                     FilterChip(
+                        selected = selectedFilter == ReminderType.FEED_TRANSITION,
+                        onClick = { selectedFilter = ReminderType.FEED_TRANSITION },
+                        label = { Text("🌾 Feed Transition", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = ForestGreenPrimary,
+                            selectedLabelColor = Color.White
+                        )
+                    )
+                    FilterChip(
                         selected = selectedFilter == ReminderType.CALVING,
                         onClick = { selectedFilter = ReminderType.CALVING },
                         label = { Text("🍼 Calvings", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },

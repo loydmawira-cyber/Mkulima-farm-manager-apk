@@ -32,13 +32,15 @@ fun RequestNotificationPermission() {
 }
 
 fun scheduleTaskReminders(context: Context) {
-    val request = PeriodicWorkRequestBuilder<TaskReminderWorker>(
-        6, TimeUnit.HOURS
-    ).build()
+    runCatching {
+        val request = PeriodicWorkRequestBuilder<TaskReminderWorker>(
+            6, TimeUnit.HOURS
+        ).build()
 
-    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-        "task_reminder_check",
-        ExistingPeriodicWorkPolicy.KEEP,
-        request
-    )
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            "task_reminder_check",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
 }

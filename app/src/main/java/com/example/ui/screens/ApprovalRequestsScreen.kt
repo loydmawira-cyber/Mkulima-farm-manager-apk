@@ -112,7 +112,7 @@ fun ApprovalRequestsScreen(
     val effectiveCanCreateTasks = isOwner || canCreateTasks
     val effectiveCanSubmitRequests = isOwner || canSubmitRequests
     val effectiveCanCompleteTasks = isOwner || canCompleteTasks
-    val effectiveCanDeleteTasks = isOwner
+    val effectiveCanDeleteTasks = isOwner || canCreateTasks
 
     var primarySectionIndex by remember(effectiveCanViewTasks, effectiveCanViewRequests) {
         mutableIntStateOf(if (effectiveCanViewTasks) 0 else 1)

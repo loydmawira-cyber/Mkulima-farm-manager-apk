@@ -215,52 +215,54 @@ object PoultryAgeAndVaccinationUtils {
 
     /**
      * Determines feed stage:
-     * - 0 - 3 weeks (0 - 21 days): Starter Feed
-     * - 3 - 8 weeks (22 - 56 days): Grower Feed
-     * - After 8 weeks (> 56 days): Layer / Finisher Feed
+     * - Week 1 - 8 (0 - 56 days): Starter Feed
+     * - Week 9 - 18 (57 - 126 days): Grower Feed
+     * - 18+ Weeks (> 126 days): Layer / Finisher Feed
      */
     fun getFlockFeedStage(totalDays: Int): PoultryFeedStageInfo {
         return when {
-            totalDays <= 21 -> {
-                val daysUntilTransition = 22 - totalDays
-                val hasAlert = daysUntilTransition in 0..2
-                val alertMsg = if (hasAlert) {
-                    if (daysUntilTransition == 0) "⚠️ Feed Transition Today: Switch flock from Starter to Grower Feed!"
-                    else "⚠️ Feed Transition in $daysUntilTransition days: Prepare to switch to Grower Feed at Day 22 (3 Weeks)!"
+            totalDays <= 56 -> {
+                // Last week of Starter feeds is Week 8 (Day 50 to 56)
+                val isLastWeekOfStarter = totalDays in 50..56
+                val daysUntilTransition = 57 - totalDays
+                val alertMsg = if (isLastWeekOfStarter) {
+                    if (daysUntilTransition <= 1) "⚠️ Final Starter Day: Start introducing growers feed gradually!"
+                    else "⚠️ Week 8 Alert: Start introducing growers feed gradually ($daysUntilTransition days until Week 9 Grower stage)!"
                 } else null
 
                 PoultryFeedStageInfo(
-                    stageName = "Starter Feed (0 - 3 Weeks)",
+                    stageName = "Starter Feed (Week 1 - 8)",
                     feedType = "Chick Starter Mash / Crumbs (20–22% CP)",
                     purpose = "High protein & amino acids for bone, organ, and early immune development",
-                    dailyRationPerBird = "~20 – 45g / bird / day",
-                    hasTransitionAlert = hasAlert,
+                    dailyRationPerBird = "~20 – 60g / bird / day",
+                    hasTransitionAlert = isLastWeekOfStarter,
                     transitionAlertMessage = alertMsg
                 )
             }
-            totalDays in 22..56 -> {
-                val daysUntilTransition = 57 - totalDays
-                val hasAlert = daysUntilTransition in 0..2
-                val alertMsg = if (hasAlert) {
-                    if (daysUntilTransition == 0) "⚠️ Feed Transition Today: Switch flock from Grower to Layer/Finisher Feed!"
-                    else "⚠️ Feed Transition in $daysUntilTransition days: Prepare to switch to Layer/Finisher Feed at Day 57 (8 Weeks)!"
+            totalDays in 57..126 -> {
+                // Last week of Grower feeds is Week 18 (Day 120 to 126)
+                val isLastWeekOfGrower = totalDays in 120..126
+                val daysUntilTransition = 127 - totalDays
+                val alertMsg = if (isLastWeekOfGrower) {
+                    if (daysUntilTransition <= 1) "⚠️ Final Grower Day: Start introducing layers feed gradually!"
+                    else "⚠️ Week 18 Alert: Start introducing layers feed gradually ($daysUntilTransition days until 18+ Weeks Layer/Finisher stage)!"
                 } else null
 
                 PoultryFeedStageInfo(
-                    stageName = "Grower Feed (3 - 8 Weeks)",
+                    stageName = "Grower Feed (Week 9 - 18)",
                     feedType = "Grower Mash / Pellets (15–17% CP)",
                     purpose = "Balanced steady growth without excessive early fat deposition prior to maturity",
-                    dailyRationPerBird = "~60 – 90g / bird / day",
-                    hasTransitionAlert = hasAlert,
+                    dailyRationPerBird = "~65 – 95g / bird / day",
+                    hasTransitionAlert = isLastWeekOfGrower,
                     transitionAlertMessage = alertMsg
                 )
             }
             else -> {
                 PoultryFeedStageInfo(
-                    stageName = "Layer / Finisher Feed (8+ Weeks)",
+                    stageName = "Layer / Finisher Feed (18+ Weeks)",
                     feedType = "High-Yield Layer Mash (16–18% CP + 3.8% Ca) / Finisher Pellets",
                     purpose = "High calcium and minerals for peak egg production & maximum shell strength",
-                    dailyRationPerBird = "~110 – 130g / bird / day",
+                    dailyRationPerBird = "~110 – 135g / bird / day",
                     hasTransitionAlert = false,
                     transitionAlertMessage = null
                 )

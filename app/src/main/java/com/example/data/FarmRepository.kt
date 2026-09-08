@@ -739,4 +739,23 @@ class FarmRepository(
         syncEngine?.triggerPush(farmId)
     }
 
+    suspend fun reassignDefaultDataToFarm(farmId: String) {
+        if (farmId.isBlank() || farmId == "FARM-DEFAULT") return
+        val now = System.currentTimeMillis()
+        farmDao.reassignDefaultUnits(farmId, now)
+        farmDao.reassignDefaultEggLogs(farmId, now)
+        farmDao.reassignDefaultPoultryLogs(farmId, now)
+        farmDao.reassignDefaultTasks(farmId, now)
+        farmDao.reassignDefaultMilkLogs(farmId, now)
+        farmDao.reassignDefaultMilkUsageLogs(farmId, now)
+        farmDao.reassignDefaultFinanceRecords(farmId, now)
+        farmDao.reassignDefaultCattleEvents(farmId, now)
+        farmDao.reassignDefaultFeedPlans(farmId, now)
+        farmDao.reassignDefaultFieldPlans(farmId, now)
+        farmDao.reassignDefaultInventoryItems(farmId, now)
+        farmDao.reassignDefaultInventoryMovements(farmId, now)
+        farmDao.reassignDefaultReminderCompletions(farmId, now)
+        syncEngine?.triggerPush(farmId)
+    }
+
 }

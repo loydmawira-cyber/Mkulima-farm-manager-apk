@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -116,15 +118,16 @@ fun AddTaskDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.88f)
                 .clip(RoundedCornerShape(24.dp))
                 .testTag("add_task_dialog"),
             color = MaterialTheme.colorScheme.surface
         ) {
             Column(
                 modifier = Modifier
+                    .fillMaxSize()
                     .padding(20.dp)
-                    .verticalScroll(rememberScrollState())
             ) {
                 // Dialog Header
                 Row(
@@ -155,15 +158,22 @@ fun AddTaskDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Quick Activity Presets for Crops & Farm Management
-                Text(
-                    text = "Quick Task Templates",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF64748B)
-                )
+                // Scrollable content body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    // Quick Activity Presets for Crops & Farm Management
+                    Text(
+                        text = "Quick Task Templates",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF64748B)
+                    )
                 Spacer(modifier = Modifier.height(6.dp))
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -676,46 +686,49 @@ fun AddTaskDialog(
                     maxLines = 3
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+            } // End of scrollable content Column
 
-                // Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Action Buttons (fixed at dialog bottom)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel")
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Button(
-                        onClick = {
-                            if (title.isNotBlank()) {
-                                onTaskCreated(
-                                    title,
-                                    selectedCategory,
-                                    targetUnit,
-                                    priority,
-                                    "$scheduledDate at $scheduledTimeText",
-                                    instructions,
-                                    assignedWorker,
-                                    isRecurring,
-                                    recurrenceInterval,
-                                    checklistItems
-                                )
-                            }
-                        },
-                        modifier = Modifier.testTag("save_task_button"),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                    ) {
-                        Text("Create Task", fontWeight = FontWeight.Bold)
-                    }
+                    Text("Cancel")
                 }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Button(
+                    onClick = {
+                        if (title.isNotBlank()) {
+                            onTaskCreated(
+                                title,
+                                selectedCategory,
+                                targetUnit,
+                                priority,
+                                "$scheduledDate at $scheduledTimeText",
+                                instructions,
+                                assignedWorker,
+                                isRecurring,
+                                recurrenceInterval,
+                                checklistItems
+                            )
+                        }
+                    },
+                    modifier = Modifier.testTag("save_task_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                ) {
+                    Text("Create Task", fontWeight = FontWeight.Bold)
+                }
+            }
             }
         }
     }

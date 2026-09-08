@@ -569,4 +569,44 @@ interface FarmDao {
 
     @Query("DELETE FROM reminder_completions")
     suspend fun deleteAllReminderCompletions()
+
+    // ================= Migration / Reassign Default Data =================
+    @Query("UPDATE farm_units SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultUnits(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE egg_logs SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultEggLogs(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE poultry_logs SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultPoultryLogs(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE farm_tasks SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultTasks(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE milk_logs SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultMilkLogs(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE milk_usage_logs SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultMilkUsageLogs(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE finance_records SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultFinanceRecords(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE cattle_events SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultCattleEvents(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE feed_plans SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultFeedPlans(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE field_plans SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultFieldPlans(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE inventory_items SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultInventoryItems(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE inventory_movements SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultInventoryMovements(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE reminder_completions SET farmId = :newFarmId, updatedAt = :updatedAt WHERE farmId = 'FARM-DEFAULT'")
+    suspend fun reassignDefaultReminderCompletions(newFarmId: String, updatedAt: Long = System.currentTimeMillis())
 }

@@ -344,10 +344,10 @@ fun TaskCard(
                                     Text(
                                         "Delete Task",
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else Color(0xFFDC2626)
+                                        color = Color(0xFFDC2626)
                                     )
                                 },
-                                enabled = !isLockedForFutureDueDate,
+                                enabled = true,
                                 onClick = {
                                     taskMenuExpanded = false
                                     onDeleteClick(task)
@@ -355,8 +355,8 @@ fun TaskCard(
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
-                                        contentDescription = null,
-                                        tint = if (isLockedForFutureDueDate) Color(0xFFA1A1AA) else Color(0xFFDC2626),
+                                        contentDescription = "Delete Task",
+                                        tint = Color(0xFFDC2626),
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -657,6 +657,30 @@ fun TaskCard(
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text("Mark Incomplete / Reopen", fontSize = 12.sp)
+                        }
+                    }
+
+                    if (canDeleteTask) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { onDeleteClick(task) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("delete_button_${task.id}"),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFDC2626)
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFFDC2626)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Delete Task", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }

@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -45,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -251,10 +254,14 @@ fun AddCattleEventDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.88f)
                 .padding(4.dp)
                 .testTag("add_cattle_event_dialog"),
             shape = RoundedCornerShape(20.dp),
@@ -262,8 +269,8 @@ fun AddCattleEventDialog(
         ) {
             Column(
                 modifier = Modifier
+                    .fillMaxSize()
                     .padding(18.dp)
-                    .verticalScroll(rememberScrollState())
             ) {
                 // Title Row
                 Row(
@@ -300,13 +307,20 @@ fun AddCattleEventDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Automatic stage info card
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFF0FDF4),
-                    border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.3f)),
-                    modifier = Modifier.fillMaxWidth()
+                // Scrollable Form Body
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
                 ) {
+                    // Automatic stage info card
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFF0FDF4),
+                        border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                     Row(
                         modifier = Modifier.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -826,85 +840,88 @@ fun AddCattleEventDialog(
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+            } // End of scrollable form body
 
-                // Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Action Buttons pinned at bottom
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
-                    ) {
-                        Text("Cancel", color = Color(0xFF475569))
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Button(
-                        onClick = {
-                            val computedTitle = if (isEditing && !initialTitle.isNullOrBlank() && selectedCategory == initialCategory) {
-                                initialTitle
-                            } else {
-                                when (selectedCategory) {
-                                    "PD" -> if (pdResult == "CONFIRMED_POSITIVE") "Pregnancy Diagnosis (PD) - Positive" else "Pregnancy Diagnosis (PD) - Negative"
-                                    "INSEMINATION" -> "Artificial Insemination (AI)"
-                                    "CALVING" -> "Calving & Calf Delivery"
-                                    "DRY_OFF" -> "Dry Off"
-                                    "ABORTED" -> "Pregnancy Loss / Abortion"
-                                    "HEAT" -> "Estrus (Heat Period) Observed"
-                                    "WEIGHT" -> "Weight Measurement"
-                                    "HEALTH" -> "Health & Treatment"
-                                    "OTHER" -> "Other Cattle Event"
-                                    else -> selectedCategory.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
-                                }
-                            }
-                            val calfInfo = if (selectedCategory == "CALVING") {
-                                CalvingCalfInfo(
-                                    calfName = calfName.trim(),
-                                    calfTag = calfTag.trim(),
-                                    calfGender = calfGender.trim(),
-                                    birthWeight = calfBirthWeight.trim(),
-                                    calvingEase = calvingEase.trim(),
-                                    colostrumFed = colostrumFed.trim()
-                                )
-                            } else null
-
-                            val payload = PendingCattleEventData(
-                                category = selectedCategory,
-                                title = computedTitle,
-                                date = dateText,
-                                details = detailsText,
-                                notes = notesText,
-                                metricValue = metricText,
-                                reminderText = reminderText,
-                                calfInfo = calfInfo
-                            )
-
-                            if (onRequestRecordExpense != null) {
-                                pendingEventToSave = payload
-                                showExpensePrompt = true
-                            } else {
-                                onSaveEvent(
-                                    payload.category,
-                                    payload.title,
-                                    payload.date,
-                                    payload.details,
-                                    payload.notes,
-                                    payload.metricValue,
-                                    payload.reminderText,
-                                    payload.calfInfo
-                                )
-                            }
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                    ) {
-                        Text(if (isEditing) "UPDATE EVENT" else "SAVE EVENT LOG", fontWeight = FontWeight.Bold, color = Color.White)
-                    }
+                    Text("Cancel", color = Color(0xFF475569))
                 }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Button(
+                    onClick = {
+                        val computedTitle = if (isEditing && !initialTitle.isNullOrBlank() && selectedCategory == initialCategory) {
+                            initialTitle
+                        } else {
+                            when (selectedCategory) {
+                                "PD" -> if (pdResult == "CONFIRMED_POSITIVE") "Pregnancy Diagnosis (PD) - Positive" else "Pregnancy Diagnosis (PD) - Negative"
+                                "INSEMINATION" -> "Artificial Insemination (AI)"
+                                "CALVING" -> "Calving & Calf Delivery"
+                                "DRY_OFF" -> "Dry Off"
+                                "ABORTED" -> "Pregnancy Loss / Abortion"
+                                "HEAT" -> "Estrus (Heat Period) Observed"
+                                "WEIGHT" -> "Weight Measurement"
+                                "HEALTH" -> "Health & Treatment"
+                                "OTHER" -> "Other Cattle Event"
+                                else -> selectedCategory.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+                            }
+                        }
+                        val calfInfo = if (selectedCategory == "CALVING") {
+                            CalvingCalfInfo(
+                                calfName = calfName.trim(),
+                                calfTag = calfTag.trim(),
+                                calfGender = calfGender.trim(),
+                                birthWeight = calfBirthWeight.trim(),
+                                calvingEase = calvingEase.trim(),
+                                colostrumFed = colostrumFed.trim()
+                            )
+                        } else null
+
+                        val payload = PendingCattleEventData(
+                            category = selectedCategory,
+                            title = computedTitle,
+                            date = dateText,
+                            details = detailsText,
+                            notes = notesText,
+                            metricValue = metricText,
+                            reminderText = reminderText,
+                            calfInfo = calfInfo
+                        )
+
+                        if (onRequestRecordExpense != null) {
+                            pendingEventToSave = payload
+                            showExpensePrompt = true
+                        } else {
+                            onSaveEvent(
+                                payload.category,
+                                payload.title,
+                                payload.date,
+                                payload.details,
+                                payload.notes,
+                                payload.metricValue,
+                                payload.reminderText,
+                                payload.calfInfo
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+                ) {
+                    Text(if (isEditing) "UPDATE EVENT" else "SAVE EVENT LOG", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
             }
         }
     }

@@ -17,6 +17,7 @@ import java.util.Locale
 enum class ReminderType(val displayName: String, val emoji: String) {
     VACCINATION("Vaccination", "💉"),
     DEWORMING("Deworming", "💊"),
+    FEED_TRANSITION("Feed Transition", "🌾"),
     CALVING("Expected Calving", "🍼"),
     DRY_OFF("Dry-Off Milestone", "🍂"),
     PREGNANCY_CHECK("Pregnancy Check (PD)", "🤰"),
@@ -165,6 +166,59 @@ object FarmReminderEngine {
                                 details = "Periodic internal parasite & worm control for ${unit.name} (${ageInfo.formattedAge}).",
                                 recommendation = "Administer Piperazine or Levamisole in drinking water for 1-2 days.",
                                 actionLabel = "Log Deworming",
+                                unitId = unit.id
+                            )
+                        )
+                    }
+                }
+
+                // POULTRY FEED TRANSITION REMINDERS (Specific Flocks)
+                // 1. Last week of Starter feeds (Week 8: Days 50 to 56): "start introducing growers feed gradually"
+                if (ageInfo.totalDays in 50..56) {
+                    val daysUntilGrower = 57 - ageInfo.totalDays
+                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, daysUntilGrower) }
+                    val targetDateStr = dateFormat.format(cal.time)
+                    val reminderRuleKey = "poultry_feed_grower_${unit.id}"
+                    if (!isSuppressedByCompletion(reminderRuleKey, 14, completedRuleKeys, today)) {
+                        reminders.add(
+                            FarmReminder(
+                                id = reminderRuleKey,
+                                type = ReminderType.FEED_TRANSITION,
+                                title = "Introduce Growers Feed Gradually",
+                                targetName = unit.name,
+                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else "${unit.headCount} birds (${ageInfo.shortAgeLabel})",
+                                dueDateStr = targetDateStr,
+                                daysRemaining = daysUntilGrower,
+                                urgency = if (daysUntilGrower <= 1) ReminderUrgency.TODAY else ReminderUrgency.DUE_SOON,
+                                details = "Flock is on the last week of Starter feeds (Week 8). Start introducing growers feed gradually.",
+                                recommendation = "Mix feed progressively: 75% starter + 25% grower (days 1-2), 50/50 (days 3-4), 25% starter + 75% grower (days 5-6), 100% grower on Day 57 (Week 9).",
+                                actionLabel = "View Flock Feed",
+                                unitId = unit.id
+                            )
+                        )
+                    }
+                }
+
+                // 2. Last week of Grower feeds (Week 18: Days 120 to 126): "start introducing layers feed gradually"
+                if (ageInfo.totalDays in 120..126) {
+                    val daysUntilLayer = 127 - ageInfo.totalDays
+                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, daysUntilLayer) }
+                    val targetDateStr = dateFormat.format(cal.time)
+                    val reminderRuleKey = "poultry_feed_layer_${unit.id}"
+                    if (!isSuppressedByCompletion(reminderRuleKey, 14, completedRuleKeys, today)) {
+                        reminders.add(
+                            FarmReminder(
+                                id = reminderRuleKey,
+                                type = ReminderType.FEED_TRANSITION,
+                                title = "Introduce Layers Feed Gradually",
+                                targetName = unit.name,
+                                targetTag = if (unit.tagNumber.isNotBlank()) "#${unit.tagNumber}" else "${unit.headCount} birds (${ageInfo.shortAgeLabel})",
+                                dueDateStr = targetDateStr,
+                                daysRemaining = daysUntilLayer,
+                                urgency = if (daysUntilLayer <= 1) ReminderUrgency.TODAY else ReminderUrgency.DUE_SOON,
+                                details = "Flock is on the last week of Grower feeds (Week 18). Start introducing layers feed gradually.",
+                                recommendation = "Begin blending Layer Mash (or Finisher) with Grower feed over 7 days to prepare calcium absorption before point-of-lay without sudden digestive stress.",
+                                actionLabel = "View Flock Feed",
                                 unitId = unit.id
                             )
                         )

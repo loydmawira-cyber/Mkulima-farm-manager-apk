@@ -392,8 +392,8 @@ fun MkulimaAppContent(
                 userRole = userRole,
                 canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true,
                 onDismiss = { showAddEggLogDialog = false },
-                onSaveEggLog = { unitName, totalEggs, damagedEggs, grade, notes ->
-                    viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, notes)
+                onSaveEggLog = { unitName, totalEggs, damagedEggs, grade, date, notes ->
+                    viewModel.addEggLog(unitName, totalEggs, damagedEggs, grade, date, notes)
                     showAddEggLogDialog = false
                 }
             )
@@ -954,7 +954,7 @@ fun MkulimaAppContent(
                             },
                             onDeleteMilkUsageLog = { viewModel.deleteMilkUsageLog(it) },
                             onQuickSaveEggLog = { flockName, totalEggs, damagedEggs, grade, date, notes ->
-                                viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, notes)
+                                viewModel.addEggLog(flockName, totalEggs, damagedEggs, grade, date, notes)
                             },
                             onDeleteMilkLog = { viewModel.deleteMilkLog(it) },
                             onDeleteEggLog = { viewModel.deleteEggLog(it) },

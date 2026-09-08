@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.util.DateValidationUtils
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -136,6 +138,14 @@ private fun parseDashboardCalendar(rawValue: String?): Calendar? {
     val raw = rawValue?.trim().orEmpty()
     if (raw.isBlank()) return null
     if (raw.equals("today", ignoreCase = true)) return Calendar.getInstance()
+    val parsedDate = DateValidationUtils.parseDate(raw)
+    if (parsedDate != null) {
+        val cal = Calendar.getInstance().apply { time = parsedDate }
+        if (cal.get(Calendar.YEAR) < 2000) {
+            cal.set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
+        }
+        return cal
+    }
     val formats = listOf("dd MMM yyyy", "d MMM yyyy", "yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MM-yyyy", "d MMM")
     return formats.firstNotNullOfOrNull { pattern ->
         runCatching {
@@ -674,6 +684,15 @@ fun DashboardScreen(
                                     selected = selectedReminderFilter == ReminderType.DEWORMING,
                                     onClick = { selectedReminderFilter = ReminderType.DEWORMING },
                                     label = { Text("💊 Deworm", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ForestGreenPrimary,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                                FilterChip(
+                                    selected = selectedReminderFilter == ReminderType.FEED_TRANSITION,
+                                    onClick = { selectedReminderFilter = ReminderType.FEED_TRANSITION },
+                                    label = { Text("🌾 Feed Shift", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = ForestGreenPrimary,
                                         selectedLabelColor = Color.White

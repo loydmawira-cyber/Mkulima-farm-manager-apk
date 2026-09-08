@@ -420,7 +420,7 @@ fun SettingsDialog(
                             if (enabled) {
                                 scheduleTaskReminders(context)
                             } else {
-                                WorkManager.getInstance(context).cancelUniqueWork("task_reminder_check")
+                                runCatching { WorkManager.getInstance(context).cancelUniqueWork("task_reminder_check") }
                             }
                         },
                         colors = SwitchDefaults.colors(checkedThumbColor = ForestGreenPrimary)

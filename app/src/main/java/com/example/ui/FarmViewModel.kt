@@ -441,21 +441,10 @@ class FarmViewModel(
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             if (sourceTaskId != null) {
-                // Reminder was generated from a real task — update that task directly
-                // instead of creating an orphaned duplicate.
-                val existingTask = repository.getTaskById(sourceTaskId)
-                if (existingTask != null) {
-                    val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-                    repository.updateTask(
-                        existingTask.copy(
-                            isCompleted = true,
-                            completedAt = nowFormatted,
-                            proofNotes = existingTask.proofNotes ?: "Completed from Reminders."
-                        )
-                    )
-                    return@launch
-                }
-                // Fall through if the task was deleted out from under the reminder.
+                // Reminder was generated from a real task — complete with proof logic
+                // to properly record completion history and advance recurring tasks.
+                completeTaskWithProof(sourceTaskId, null, "Completed from Reminders.")
+                return@launch
             }
 
             if (reminderRuleKey != null) {
@@ -993,19 +982,36 @@ class FarmViewModel(
         totalEggs: Int,
         damagedEggs: Int = 0,
         grade: String = "Grade A",
+        date: String? = null,
         notes: String? = null
     ) {
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+            val timePart = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+            val effectiveDateStr = if (!date.isNullOrBlank()) {
+                date
+            } else {
+                notes?.substringAfter("[", "")?.substringBefore("]", "")?.trim()?.ifBlank { null }
+            }
+            val formattedLoggedAt = if (!effectiveDateStr.isNullOrBlank()) {
+                val parsed = DateValidationUtils.parseDate(effectiveDateStr)
+                if (parsed != null) {
+                    val datePart = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)
+                    "$datePart, $timePart"
+                } else {
+                    "${effectiveDateStr.trim()}, $timePart"
+                }
+            } else {
+                SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date())
+            }
             val log = EggLog(
                 farmId = farmId,
                 unitName = unitName.ifBlank { "Poultry Flock" },
                 totalEggs = totalEggs,
                 damagedEggs = damagedEggs,
                 grade = grade,
-                loggedAt = nowFormatted,
+                loggedAt = formattedLoggedAt,
                 notes = notes
             )
             repository.insertEggLog(log)
@@ -1655,47 +1661,15 @@ class FarmViewModel(
                 task.syncId == taskSyncId ||
                     task.targetUnit.equals(targetName, ignoreCase = true)
             }
-        val existingTask = candidateTasks.firstOrNull { it.syncId == taskSyncId }
-            ?: candidateTasks.firstOrNull { it.isCompleted }
-            ?: candidateTasks.firstOrNull()
+        val existingPendingTask = candidateTasks.firstOrNull { !it.isCompleted }
 
         var resolvedEvents = sourceEvents
         var latestDeworming = latestDewormingEvent(resolvedEvents.filter { it.unitId == cow.id })
 
-        if (latestDeworming == null && existingTask != null && existingTask.isCompleted) {
-            // `sourceEvents` can legitimately be an empty/stale snapshot right after
-            // app launch — feeding StateFlows here use `initialValue = emptyList()`
-            // (and now `SharingStarted.Eagerly`, which starts them immediately on
-            // ViewModel creation, before Room/Firestore have necessarily emitted real
-            // data). Treating an empty snapshot as "no event exists" caused a brand
-            // new "Deworming Administered" event to be inserted on every cold start
-            // for any cow with a previously-completed task. Re-check the DB directly —
-            // bypassing the possibly-stale flow snapshot — before backfilling.
+        if (latestDeworming == null) {
             val dbEventsForCow = repository.getCattleEventsForUnit(cow.id).first()
             val confirmedLatestDeworming = latestDewormingEvent(dbEventsForCow)
-
-            if (confirmedLatestDeworming == null) {
-                val completedDateStr = existingTask.completedAt?.let { parseFarmDate(it.substringBefore(",")) }?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
-                    ?: parseFarmDate(existingTask.scheduledTime)?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(it) }
-                    ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
-                val healEvent = CattleEvent(
-                    farmId = cow.farmId,
-                    unitId = cow.id,
-                    category = "DEWORMING",
-                    title = "Deworming Administered",
-                    date = completedDateStr,
-                    details = existingTask.instructions ?: "Routine deworming completed",
-                    notes = existingTask.proofNotes ?: "Recorded from completed deworming task"
-                )
-                repository.insertCattleEvent(healEvent)
-                repository.markReminderComplete(cow.farmId, "cattle_deworm_${cow.id}", cow.id)
-                repository.markReminderComplete(cow.farmId, "cattle_deworm_routine_${cow.id}", cow.id)
-                resolvedEvents = sourceEvents.filterNot { it.id == healEvent.id } + healEvent
-                latestDeworming = healEvent
-            } else {
-                // A real event already exists in the DB; the in-memory sourceEvents
-                // snapshot was just stale. Use the confirmed data instead of
-                // fabricating a duplicate.
+            if (confirmedLatestDeworming != null) {
                 resolvedEvents = sourceEvents.filterNot { it.unitId == cow.id } + dbEventsForCow
                 latestDeworming = confirmedLatestDeworming
             }
@@ -1712,39 +1686,30 @@ class FarmViewModel(
             "This calf is on the monthly deworming cycle until six months of age."
         }
 
-        val preserveCompletion = when {
-            existingTask == null -> false
-            existingTask.isCompleted && !isDueTodayOrEarlier(dueDateText) -> true
-            existingTask.isCompleted && sameFarmDate(existingTask.scheduledTime, dueDateText) -> true
-            else -> false
-        }
-
-        val synchronizedTask = FarmTask(
-            id = existingTask?.id ?: 0L,
+        val nextPendingTask = FarmTask(
+            id = existingPendingTask?.id ?: 0L,
             syncId = taskSyncId,
             farmId = cow.farmId,
             title = "Routine Deworming Treatment",
             category = TaskCategory.LIVESTOCK,
             targetUnit = targetName,
-            priority = if (preserveCompletion) TaskPriority.LOW else TaskPriority.HIGH,
+            priority = TaskPriority.HIGH,
             scheduledTime = dueDateText,
             instructions = cycleDescription,
-            assignedWorker = "Lead Operator",
-            isCompleted = preserveCompletion,
-            completedAt = if (preserveCompletion) (existingTask?.completedAt ?: SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())) else null,
-            proofPhotoUri = if (preserveCompletion) existingTask?.proofPhotoUri else null,
-            proofNotes = if (preserveCompletion) existingTask?.proofNotes else null,
+            assignedWorker = existingPendingTask?.assignedWorker ?: "Lead Operator",
+            isCompleted = false,
             updatedAt = System.currentTimeMillis()
         )
 
+        // Clean up duplicate pending tasks for this cow's routine deworming, but NEVER delete completed history tasks
         candidateTasks
-            .filter { it.id != existingTask?.id }
+            .filter { !it.isCompleted && it.id != existingPendingTask?.id }
             .forEach { duplicate -> repository.deleteTask(duplicate.id) }
 
-        if (existingTask == null) {
-            repository.insertTask(synchronizedTask)
+        if (existingPendingTask == null) {
+            repository.insertTask(nextPendingTask)
         } else {
-            repository.updateTask(synchronizedTask)
+            repository.updateTask(nextPendingTask)
         }
     }
 

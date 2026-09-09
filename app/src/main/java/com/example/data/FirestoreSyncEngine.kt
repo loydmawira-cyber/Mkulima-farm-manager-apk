@@ -627,6 +627,7 @@ class FirestoreSyncEngine(
                     "amount" to rec.amount,
                     "date" to rec.date,
                     "description" to rec.description,
+                    "targetUnit" to rec.targetUnit,
                     "updatedAt" to rec.updatedAt,
                     "isDeleted" to rec.isDeleted
                 )
@@ -1121,6 +1122,7 @@ class FirestoreSyncEngine(
                 amount = doc.getDouble("amount") ?: 0.0,
                 date = doc.getString("date") ?: "",
                 description = doc.getString("description") ?: "Transaction",
+                targetUnit = doc.getString("targetUnit") ?: "General Farm",
                 updatedAt = remoteUpdatedAt,
                 isDeleted = isDeleted
             )
@@ -1239,7 +1241,7 @@ class FirestoreSyncEngine(
     private suspend fun applyRemoteReminderCompletion(farmId: String, doc: DocumentSnapshot) {
         val ruleKey = doc.getString("ruleKey") ?: return
         val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
-        val existing = farmDao.getReminderCompletion(farmId, ruleKey)
+        val existing = farmDao.getReminderCompletionBySyncId(doc.id) ?: farmDao.getReminderCompletionAnyStatus(farmId, ruleKey)
         if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
             farmDao.insertReminderCompletion(ReminderCompletion(id = existing?.id ?: 0, syncId = doc.id, farmId = farmId, ruleKey = ruleKey, unitId = doc.getLong("unitId") ?: 0L, completedAt = doc.getLong("completedAt") ?: System.currentTimeMillis(), updatedAt = remoteUpdatedAt, isDeleted = doc.getBoolean("isDeleted") ?: false))
         }

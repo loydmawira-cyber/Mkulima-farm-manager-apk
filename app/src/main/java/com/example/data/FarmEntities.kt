@@ -228,6 +228,7 @@ data class FinanceRecord(
     val amount: Double,           // e.g. 8500.00
     val date: String,             // e.g. "12 Aug 2026"
     val description: String,
+    val targetUnit: String = "General Farm",
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity

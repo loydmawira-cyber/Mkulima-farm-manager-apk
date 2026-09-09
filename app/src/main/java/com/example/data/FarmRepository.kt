@@ -120,12 +120,13 @@ class FarmRepository(
 
     suspend fun updateUnit(unit: FarmUnit) {
         val existing = farmDao.getUnitById(unit.id)
-        val preserveExistingCattleTag = existing != null && (
-            existing.type.contains("cattle", ignoreCase = true) ||
-                existing.type.contains("cow", ignoreCase = true)
-            )
+        val finalTagNumber = if (unit.tagNumber.isNotBlank()) {
+            unit.tagNumber.trim()
+        } else {
+            existing?.tagNumber ?: ""
+        }
         val prepared = unit.copy(
-            tagNumber = if (preserveExistingCattleTag) existing.tagNumber else unit.tagNumber,
+            tagNumber = finalTagNumber,
             updatedAt = System.currentTimeMillis()
         )
         farmDao.updateUnit(prepared)
@@ -136,9 +137,26 @@ class FarmRepository(
         val unit = farmDao.getUnitById(id)
         val now = System.currentTimeMillis()
         farmDao.softDeleteUnit(id, now)
+        val syncId = unit?.syncId ?: ""
+        farmDao.softDeleteCattleEventsForUnit(id, syncId, now)
+        farmDao.softDeletePoultryLogsForUnit(id, syncId, now)
+        farmDao.softDeleteReminderCompletionsForUnit(id, now)
         if (unit != null) {
+            farmDao.softDeleteMilkLogsForCow(unit.name, "${unit.name} %", unit.name, unit.farmId, now)
+            farmDao.softDeleteTasksBySyncIdPrefix(unit.farmId, "repeat_heat_${id}_", now)
+            farmDao.softDeleteTasksBySyncIdPrefix(unit.farmId, "deworm_${id}_", now)
+            farmDao.softDeleteTasksBySyncIdPrefix(unit.farmId, "cattle_deworm_${id}", now)
+            farmDao.softDeleteTasksBySyncIdPrefix(unit.farmId, "vac_${id}_", now)
             syncEngine?.triggerPush(unit.farmId)
         }
+        cleanupOrphanedUnitRecords(now)
+    }
+
+    suspend fun cleanupOrphanedUnitRecords(now: Long = System.currentTimeMillis()) {
+        try {
+            farmDao.cleanupOrphanedCattleEvents(now)
+            farmDao.cleanupOrphanedPoultryLogs(now)
+        } catch (_: Exception) {}
     }
 
     suspend fun insertMilkLog(log: MilkLog): Long {
@@ -348,28 +366,68 @@ class FarmRepository(
         item?.let { syncEngine?.triggerPush(it.farmId) }
     }
 
-    suspend fun receiveSilage(farmId: String, quantityKg: Double, sourceField: String, receivedDate: String) {
-        val existing = farmDao.getSilageItem(farmId)
-        if (existing == null) {
-            insertInventoryItem(InventoryItem(
-                farmId = farmId,
-                itemName = "Maize Silage",
-                category = "Silage",
-                description = "Received from field: $sourceField",
-                quantityAvailable = quantityKg,
-                unitOfMeasurement = "kgs",
-                storageLocation = "Silage pit",
+    suspend fun receiveSilage(
+        farmId: String,
+        quantityKg: Double,
+        sourceField: String,
+        receivedDate: String,
+        targetPitId: Long? = null,
+        newPitName: String? = null
+    ) {
+        val targetItem = if (targetPitId != null && targetPitId > 0) {
+            farmDao.getInventoryItemById(targetPitId)
+        } else {
+            null
+        }
+
+        if (targetItem != null) {
+            updateInventoryItem(targetItem.copy(
+                quantityAvailable = targetItem.quantityAvailable + quantityKg,
+                unitOfMeasurement = if (targetItem.unitOfMeasurement.isNotBlank()) targetItem.unitOfMeasurement else "kgs",
+                description = "Latest receipt: $sourceField ($quantityKg kgs) on $receivedDate",
                 purchaseDate = receivedDate,
-                unitCost = 0.0,
                 isSilage = true
             ))
         } else {
-            updateInventoryItem(existing.copy(
-                quantityAvailable = existing.quantityAvailable + quantityKg,
-                unitOfMeasurement = "kgs",
-                description = "Latest receipt: $sourceField on $receivedDate",
-                isSilage = true
-            ))
+            val pitName = newPitName?.trim()?.ifBlank { null }
+            if (pitName != null) {
+                insertInventoryItem(InventoryItem(
+                    farmId = farmId,
+                    itemName = pitName,
+                    category = "Silage",
+                    description = "Harvested from field: $sourceField on $receivedDate",
+                    quantityAvailable = quantityKg,
+                    unitOfMeasurement = "kgs",
+                    storageLocation = "Silage pit",
+                    purchaseDate = receivedDate,
+                    unitCost = 0.0,
+                    isSilage = true
+                ))
+            } else {
+                val existing = farmDao.getSilageItem(farmId)
+                if (existing == null) {
+                    insertInventoryItem(InventoryItem(
+                        farmId = farmId,
+                        itemName = "Silage Pit 1",
+                        category = "Silage",
+                        description = "Received from field: $sourceField",
+                        quantityAvailable = quantityKg,
+                        unitOfMeasurement = "kgs",
+                        storageLocation = "Silage pit",
+                        purchaseDate = receivedDate,
+                        unitCost = 0.0,
+                        isSilage = true
+                    ))
+                } else {
+                    updateInventoryItem(existing.copy(
+                        quantityAvailable = existing.quantityAvailable + quantityKg,
+                        unitOfMeasurement = "kgs",
+                        description = "Latest receipt: $sourceField ($quantityKg kgs) on $receivedDate",
+                        purchaseDate = receivedDate,
+                        isSilage = true
+                    ))
+                }
+            }
         }
     }
 
@@ -605,8 +663,10 @@ class FarmRepository(
         farmDao.getReminderCompletionsByFarm(farmId)
 
     suspend fun markReminderComplete(farmId: String, ruleKey: String, unitId: Long) {
+        val existing = farmDao.getReminderCompletionAnyStatus(farmId, ruleKey)
         val prepared = ReminderCompletion(
-            syncId = UUID.randomUUID().toString(),
+            id = existing?.id ?: 0L,
+            syncId = existing?.syncId ?: UUID.randomUUID().toString(),
             farmId = farmId,
             ruleKey = ruleKey,
             unitId = unitId,

@@ -352,8 +352,12 @@ fun DashboardScreen(
                 sire = unit.sire,
                 dam = unit.dam
             )
-            val cowLogs = milkLogs.filter { it.cowName.equals(unit.name, ignoreCase = true) }
-            CattleLifecycleEngine.evaluateCattleStage(mockDetail, unitDbEvents, if (cowLogs.isNotEmpty()) cowLogs else milkLogs)
+            val isExplicitNonLactating = unit.healthStatus.contains("Heifer", ignoreCase = true) ||
+                unit.healthStatus.contains("Calf", ignoreCase = true) ||
+                unit.healthStatus.contains("Bull", ignoreCase = true) ||
+                unit.healthStatus.contains("Steer", ignoreCase = true)
+            val cowLogs = if (isExplicitNonLactating) emptyList() else com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
+            CattleLifecycleEngine.evaluateCattleStage(mockDetail, unitDbEvents, cowLogs)
         }
         stageCounts["Milking"] = evaluated.count { it.stage == CattleStage.MILKING }
         stageCounts["In-calf"] = evaluated.count { it.stage == CattleStage.INCALF || it.stage == CattleStage.INCALF_MILKING }

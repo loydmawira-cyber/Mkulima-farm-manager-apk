@@ -32,6 +32,10 @@
             </intent-filter>
         </activity>
 
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
+
         <service
             android:name=".notifications.MkulimaFirebaseMessagingService"
             android:exported="false">

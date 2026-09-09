@@ -16,6 +16,7 @@ import com.example.ui.components.AnimalOptionsDialog
 import com.example.ui.components.DeleteAnimalConfirmDialog
 import com.example.utils.PoultryAgeAndVaccinationUtils
 import com.example.utils.VaccineDueStatus
+import com.example.data.ReminderCompletion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
@@ -50,7 +52,9 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.SentimentSatisfied
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -200,7 +204,9 @@ fun generateAnimalUpcomingEvents(
     animalEvents: List<CattleEventItem>,
     tasks: List<com.example.data.FarmTask> = emptyList(),
     eggLogs: List<EggLog> = emptyList(),
-    isPoultry: Boolean = false
+    isPoultry: Boolean = false,
+    poultryLogs: List<PoultryLog> = emptyList(),
+    reminderCompletions: List<ReminderCompletion> = emptyList()
 ): List<UpcomingCattleNotification> {
     val list = mutableListOf<UpcomingCattleNotification>()
     val sdf = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
@@ -235,18 +241,63 @@ fun generateAnimalUpcomingEvents(
         }.time
     }
 
+    val cleanTag = animal.tagNumber.replace("#", "").trim()
+    val animalUnitId = animal.id.removePrefix("unit_").toLongOrNull() ?: 0L
+
     val matchingTasks = tasks.filter { !it.isCompleted &&
-        (it.targetUnit.isNotBlank() && (it.targetUnit.contains(animal.name, ignoreCase = true) || (animal.tagNumber.isNotBlank() && it.targetUnit.contains(animal.tagNumber.replace("#", ""), ignoreCase = true))))
+        (it.targetUnit.isNotBlank() && (
+            it.targetUnit.contains(animal.name, ignoreCase = true) ||
+            (cleanTag.isNotBlank() && it.targetUnit.contains(cleanTag, ignoreCase = true))
+        ))
     }
-    val hasAssignedDewormTask = matchingTasks.any { 
+    val completedMatchingTasks = tasks.filter { it.isCompleted &&
+        (it.targetUnit.isNotBlank() && (
+            it.targetUnit.contains(animal.name, ignoreCase = true) ||
+            (cleanTag.isNotBlank() && it.targetUnit.contains(cleanTag, ignoreCase = true))
+        ))
+    }
+
+    val dewormTasks = matchingTasks.filter { 
         it.title.contains("deworm", ignoreCase = true) || 
-        it.category.name.contains("DEWORM", ignoreCase = true) 
+        it.category.name.contains("DEWORM", ignoreCase = true) ||
+        it.instructions?.contains("deworm", ignoreCase = true) == true
+    }.sortedBy { parseDate(it.scheduledTime)?.time ?: Long.MAX_VALUE }
+
+    val hasAssignedDewormTask = dewormTasks.isNotEmpty()
+    val hasCompletedDewormTask = completedMatchingTasks.any {
+        it.title.contains("deworm", ignoreCase = true) ||
+        it.category.name.contains("DEWORM", ignoreCase = true) ||
+        it.instructions?.contains("deworm", ignoreCase = true) == true
     }
-    val hasAssignedVaccineTask = matchingTasks.any { 
+    val hasDewormReminderCompletion = reminderCompletions.any {
+        it.unitId == animalUnitId && it.ruleKey.contains("deworm", ignoreCase = true)
+    }
+    val hasDewormPoultryLog = poultryLogs.any {
+        it.unitId == animalUnitId && (it.vaccineName.contains("deworm", ignoreCase = true) || it.notes.contains("deworm", ignoreCase = true))
+    }
+    val isDewormDoneOrAssigned = hasAssignedDewormTask || hasCompletedDewormTask || hasDewormReminderCompletion || hasDewormPoultryLog
+
+    val vaccineTasks = matchingTasks.filter { 
         it.title.contains("vaccin", ignoreCase = true) || 
         it.title.contains("immuniz", ignoreCase = true) || 
-        it.category.name.contains("VACCIN", ignoreCase = true) 
+        it.category.name.contains("VACCIN", ignoreCase = true) ||
+        it.instructions?.contains("vaccin", ignoreCase = true) == true
+    }.sortedBy { parseDate(it.scheduledTime)?.time ?: Long.MAX_VALUE }
+
+    val hasAssignedVaccineTask = vaccineTasks.isNotEmpty()
+    val hasCompletedVaccineTask = completedMatchingTasks.any {
+        it.title.contains("vaccin", ignoreCase = true) ||
+        it.title.contains("immuniz", ignoreCase = true) ||
+        it.category.name.contains("VACCIN", ignoreCase = true) ||
+        it.instructions?.contains("vaccin", ignoreCase = true) == true
     }
+    val hasVaccineReminderCompletion = reminderCompletions.any {
+        it.unitId == animalUnitId && it.ruleKey.contains("poultry_vac", ignoreCase = true)
+    }
+    val hasVaccinePoultryLog = poultryLogs.any {
+        it.unitId == animalUnitId && it.logType.equals("VACCINATION", ignoreCase = true)
+    }
+    val isVaccineDoneOrAssigned = hasAssignedVaccineTask || hasCompletedVaccineTask || hasVaccineReminderCompletion || hasVaccinePoultryLog
 
     if (isPoultry) {
         val flockAgeInfo = CattleLifecycleEngine.calculateAgeFromDob(animal.dateOfBirth)
@@ -290,8 +341,8 @@ fun generateAnimalUpcomingEvents(
             )
         }
 
-        // Routine Deworming (every 8 weeks / 56 days) - only add if no explicit task assigned
-        if (!hasAssignedDewormTask) {
+        // Routine Deworming (every 8 weeks / 56 days) - only add if not already done or assigned
+        if (!isDewormDoneOrAssigned) {
             val dewormDueDays = (56 - (totalFlockDays % 56)).coerceIn(-10, 56)
             val dewormDate = addDaysToDate(today.time, dewormDueDays)
             list.add(
@@ -310,8 +361,8 @@ fun generateAnimalUpcomingEvents(
             )
         }
 
-        // Newcastle / Gumboro Booster - only add if no explicit task assigned
-        if (!hasAssignedVaccineTask) {
+        // Newcastle / Gumboro Booster - only add if not already done or assigned
+        if (!isVaccineDoneOrAssigned) {
             val vacDueDays = (90 - (totalFlockDays % 90)).coerceIn(-10, 90)
             val vacDate = addDaysToDate(today.time, vacDueDays)
             list.add(
@@ -522,10 +573,35 @@ fun generateAnimalUpcomingEvents(
         }
     }
 
-    // Pending Farm Tasks matching this unit/animal
-    tasks.filter { !it.isCompleted &&
-        (it.targetUnit.isNotBlank() && (it.targetUnit.contains(animal.name, ignoreCase = true) || (animal.tagNumber.isNotBlank() && it.targetUnit.contains(animal.tagNumber.replace("#", ""), ignoreCase = true))))
-    }.forEach { task ->
+    // Pending Farm Tasks matching this unit/animal (deduplicate duplicate pending deworming/vaccine tasks)
+    val deduplicatedTasks = mutableListOf<com.example.data.FarmTask>()
+    var includedDewormTask = false
+    var includedVaccineTask = false
+    matchingTasks.sortedBy { parseDate(it.scheduledTime)?.time ?: Long.MAX_VALUE }.forEach { task ->
+        val isDeworm = task.title.contains("deworm", ignoreCase = true) ||
+            task.category.name.contains("DEWORM", ignoreCase = true) ||
+            task.instructions?.contains("deworm", ignoreCase = true) == true
+        val isVaccine = task.title.contains("vaccin", ignoreCase = true) ||
+            task.title.contains("immuniz", ignoreCase = true) ||
+            task.category.name.contains("VACCIN", ignoreCase = true) ||
+            task.instructions?.contains("vaccin", ignoreCase = true) == true
+
+        if (isDeworm) {
+            if (!includedDewormTask) {
+                deduplicatedTasks.add(task)
+                includedDewormTask = true
+            }
+        } else if (isVaccine) {
+            if (!includedVaccineTask) {
+                deduplicatedTasks.add(task)
+                includedVaccineTask = true
+            }
+        } else {
+            deduplicatedTasks.add(task)
+        }
+    }
+
+    deduplicatedTasks.forEach { task ->
         val taskDate = parseDate(task.scheduledTime)
         val taskDaysLeft = if (taskDate != null) getDaysDifference(taskDate) else 0
         list.add(
@@ -544,7 +620,20 @@ fun generateAnimalUpcomingEvents(
         )
     }
 
-    return list.distinctBy { it.id }.sortedWith(
+    // Ensure strictly 1 routine deworming reminder/task is presented per animal
+    var seenDeworm = false
+    val singleDewormList = list.filter { notif ->
+        val isDeworm = notif.id.contains("deworm", ignoreCase = true) ||
+            notif.title.contains("deworm", ignoreCase = true) ||
+            notif.details.contains("deworm", ignoreCase = true)
+        if (isDeworm) {
+            if (seenDeworm) false else { seenDeworm = true; true }
+        } else {
+            true
+        }
+    }
+
+    return singleDewormList.distinctBy { it.id }.sortedWith(
         compareBy<UpcomingCattleNotification> {
             when (it.urgencyLabel) {
                 "DUE / IMMINENT", "DUE NOW", "OVERDUE" -> 1
@@ -1065,6 +1154,8 @@ fun FlocksScreen(
     val allDbCattleEvents by viewModel.allCattleEvents.collectAsStateWithLifecycle(initialValue = emptyList())
     val allDbPoultryLogs by viewModel.allPoultryLogs.collectAsStateWithLifecycle(initialValue = emptyList())
     val reminderCompletions by viewModel.reminderCompletions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val rawTasks by viewModel.rawTasks.collectAsStateWithLifecycle(initialValue = emptyList())
+    val currentSession by viewModel.currentSession.collectAsStateWithLifecycle()
 
     val milkLogsByCow = remember(milkLogs) {
         milkLogs.groupBy { log -> log.cowName.trim().lowercase() }
@@ -1087,24 +1178,21 @@ fun FlocksScreen(
     val roomAnimals = remember(units, milkLogs, cattleEventsByUnit, eggLogs) {
         units.map { unit ->
             val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true)
-            val cowLogs = MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
+            val isHeiferOrCalfOrBull = !isPoultry && (
+                unit.healthStatus.contains("Heifer", ignoreCase = true) ||
+                unit.healthStatus.contains("Calf", ignoreCase = true) ||
+                unit.healthStatus.contains("Bull", ignoreCase = true) ||
+                unit.healthStatus.contains("Steer", ignoreCase = true)
+            )
+            val cowLogs = if (isHeiferOrCalfOrBull) emptyList() else MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
             val unitDbEvents = cattleEventsByUnit[unit.id].orEmpty()
-            val lastMilkStr = if (isPoultry) {
-                val poultryEggLogs = eggLogs.filter { it.unitName.equals(unit.name, ignoreCase = true) || it.unitName.contains(unit.name, ignoreCase = true) }
-                    .sortedByDescending { it.id }
-                if (poultryEggLogs.isNotEmpty()) "${poultryEggLogs.first().totalEggs} Eggs" else "${unit.headCount} Birds"
-            } else if (cowLogs.isNotEmpty()) {
-                "${"%.1f".format(cowLogs.first().litres)}L"
-            } else {
-                "No data yet"
-            }
             val calculatedAge = if (unit.dob.isNotBlank()) {
                 CattleLifecycleEngine.calculateAgeFromDob(unit.dob)
             } else {
                 "1y"
             }
 
-            val animalDetail = AnimalDetailData(
+            val baseAnimalDetail = AnimalDetailData(
                 id = "unit_${unit.id}",
                 name = unit.name,
                 tagNumber = if (unit.tagNumber.isNotBlank()) unit.tagNumber else if (isPoultry) "Count: ${unit.headCount}" else "#${unit.id + 100}",
@@ -1118,8 +1206,8 @@ fun FlocksScreen(
                     ?.metricValue
                     ?.takeIf { it.isNotBlank() }
                     ?: unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
-                lastMilk = lastMilkStr,
-                breedingStatus = "HEALTHY",
+                lastMilk = "No data yet",
+                breedingStatus = if (unit.healthStatus.isNotBlank() && !unit.healthStatus.equals("ACTIVE", ignoreCase = true) && !unit.healthStatus.equals("OPTIMAL", ignoreCase = true)) unit.healthStatus else "HEALTHY",
                 dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },
                 weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
                 sire = unit.sire.ifBlank { "N/A" },
@@ -1129,14 +1217,27 @@ fun FlocksScreen(
                 notes = unit.notes
             )
 
-            val eval = CattleLifecycleEngine.evaluateCattleStage(animalDetail, unitDbEvents, cowLogs)
+            val eval = CattleLifecycleEngine.evaluateCattleStage(baseAnimalDetail, unitDbEvents, cowLogs)
+
+            val lastMilkStr = if (isPoultry) {
+                val poultryEggLogs = eggLogs.filter { it.unitName.equals(unit.name, ignoreCase = true) || it.unitName.contains(unit.name, ignoreCase = true) }
+                    .sortedByDescending { it.id }
+                if (poultryEggLogs.isNotEmpty()) "${poultryEggLogs.first().totalEggs} Eggs" else "${unit.headCount} Birds"
+            } else if (eval.stage == CattleStage.HEIFER || eval.stage == CattleStage.CALF || eval.stage == CattleStage.BULL || isHeiferOrCalfOrBull) {
+                "Not Lactating"
+            } else if (cowLogs.isNotEmpty()) {
+                "${"%.1f".format(cowLogs.first().litres)}L"
+            } else {
+                "No data yet"
+            }
 
             // Dynamic Stage Update
-            val newStatus = if (unitDbEvents.isNotEmpty() || animalDetail.status.isBlank() || animalDetail.status.equals("ACTIVE", ignoreCase = true)) eval.stage.displayName else animalDetail.status
+            val newStatus = if (unitDbEvents.isNotEmpty() || baseAnimalDetail.status.isBlank() || baseAnimalDetail.status.equals("ACTIVE", ignoreCase = true) || baseAnimalDetail.status.equals("OPTIMAL", ignoreCase = true)) eval.stage.displayName else baseAnimalDetail.status
 
-            animalDetail.copy(
+            baseAnimalDetail.copy(
                 status = newStatus,
-                breedingStatus = if (unitDbEvents.isNotEmpty() || animalDetail.breedingStatus.isBlank() || animalDetail.breedingStatus.equals("HEALTHY", ignoreCase = true)) eval.breedingStatusText else animalDetail.breedingStatus
+                lastMilk = lastMilkStr,
+                breedingStatus = if (eval.breedingStatusText.isNotBlank()) eval.breedingStatusText else baseAnimalDetail.breedingStatus
             )
         }
     }
@@ -1259,6 +1360,23 @@ fun FlocksScreen(
                     notes = notes ?: matching.notes
                 )
                 onUpdateUnit(updatedUnit)
+            } else {
+                viewModel.addNewUnit(
+                    name = name,
+                    type = if (category.equals("POULTRY", ignoreCase = true)) "Poultry" else "Cattle",
+                    headCount = headCount,
+                    healthStatus = status,
+                    location = "Main Farm",
+                    tagNumber = tagNumber,
+                    breed = breed,
+                    dob = dob,
+                    weightAtBirth = weightAtBirth,
+                    currentWeight = currentWeight,
+                    sire = sire,
+                    dam = dam,
+                    photoUri = photoUri,
+                    notes = notes ?: ""
+                )
             }
         }
     }
@@ -1410,8 +1528,12 @@ fun FlocksScreen(
             val rawId = animal.id.removePrefix("unit_")
             val mockEvs = allAnimalEventsMap[animal.id] ?: allAnimalEventsMap[rawId] ?: emptyList()
             val combinedEvs = (dbEvs + mockEvs).distinctBy { it.id }
-            val cowMilkLogs = milkLogs.filter { it.cowName.equals(animal.name, ignoreCase = true) }
-            animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, if (cowMilkLogs.isNotEmpty()) cowMilkLogs else milkLogs)
+            val isExplicitNonLactating = animal.status.contains("Heifer", ignoreCase = true) ||
+                animal.status.contains("Calf", ignoreCase = true) ||
+                animal.status.contains("Bull", ignoreCase = true) ||
+                animal.breedingStatus.contains("HEIFER", ignoreCase = true)
+            val cowMilkLogs = if (isExplicitNonLactating) emptyList() else com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
+            animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, cowMilkLogs)
         }
     }
 
@@ -1609,20 +1731,53 @@ fun FlocksScreen(
                 eggLogs = eggLogs,
                 financeRecords = financeRecords,
                 poultryLogs = allDbPoultryLogs.filter { it.unitId == selectedPoultryUnitId },
-                completedVaccineRuleIds = reminderCompletions
-                    .asSequence()
-                    .filter { it.unitId == selectedPoultryUnitId }
-                    .mapNotNull { completion ->
-                        completion.ruleKey
-                            .takeIf { it.startsWith("poultry_vac_${selectedPoultryUnitId}_") }
-                            ?.removePrefix("poultry_vac_${selectedPoultryUnitId}_")
+                completedVaccineRuleIds = remember(reminderCompletions, allDbPoultryLogs, rawTasks, selectedPoultryUnitId, selectedAnimal) {
+                    val completedSet = mutableSetOf<String>()
+                    // 1. From reminder_completions
+                    reminderCompletions.filter { it.unitId == selectedPoultryUnitId }.forEach { completion ->
+                        val prefix = "poultry_vac_${selectedPoultryUnitId}_"
+                        if (completion.ruleKey.startsWith(prefix)) {
+                            completedSet.add(completion.ruleKey.removePrefix(prefix))
+                        }
+                        val matched = com.example.utils.PoultryAgeAndVaccinationUtils.matchVaccineRuleId(completion.ruleKey)
+                        if (matched != null) completedSet.add(matched)
                     }
-                    .toSet(),
+                    // 2. From poultry_logs
+                    allDbPoultryLogs.filter { it.unitId == selectedPoultryUnitId && (it.logType == "VACCINATION" || it.vaccineStatus == "COMPLETED") }.forEach { log ->
+                        val matched = com.example.utils.PoultryAgeAndVaccinationUtils.matchVaccineRuleId(log.vaccineName, log.notes, log.targetStage)
+                        if (matched != null) completedSet.add(matched)
+                    }
+                    // 3. From completed tasks
+                    val cleanTag = selectedAnimal?.tagNumber?.replace("#", "")?.trim() ?: ""
+                    rawTasks.filter { it.isCompleted && (
+                        (selectedAnimal != null && it.targetUnit.contains(selectedAnimal!!.name, ignoreCase = true)) ||
+                        (cleanTag.isNotBlank() && it.targetUnit.contains(cleanTag, ignoreCase = true))
+                    ) }.forEach { task ->
+                        val matched = com.example.utils.PoultryAgeAndVaccinationUtils.matchVaccineRuleId(task.title, task.instructions, task.syncId)
+                        if (matched != null) completedSet.add(matched)
+                    }
+                    completedSet
+                },
                 onMarkVaccinationComplete = { ruleId ->
                     if (selectedPoultryUnitId > 0) {
                         viewModel.markReminderComplete(
                             ruleKey = "poultry_vac_${selectedPoultryUnitId}_${ruleId}",
                             unitId = selectedPoultryUnitId
+                        )
+                        val rule = com.example.utils.PoultryAgeAndVaccinationUtils.STANDARD_VACCINATION_RULES.firstOrNull { it.id == ruleId }
+                        val vacName = rule?.vaccineName ?: ruleId
+                        val todayStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+                        viewModel.addPoultryLog(
+                            PoultryLog(
+                                farmId = currentSession?.farmId ?: "FARM-DEFAULT",
+                                unitId = selectedPoultryUnitId,
+                                logType = "VACCINATION",
+                                vaccineName = vacName,
+                                targetStage = rule?.targetStageLabel ?: "Scheduled Stage",
+                                vaccineStatus = "COMPLETED",
+                                date = todayStr,
+                                notes = "Marked complete from vaccination schedule"
+                            )
                         )
                     }
                 },
@@ -1676,6 +1831,7 @@ fun FlocksScreen(
                 userRole = userRole,
                 milkLogs = milkLogs,
                 eggLogs = eggLogs,
+                allDbCattleEvents = allDbCattleEvents,
                 onUpdateAnimalStage = { newStatus, newBreedingStatus ->
                     handleUpdateAnimalStage(selectedAnimal!!.id, newStatus, newBreedingStatus)
                 },
@@ -1984,129 +2140,446 @@ fun FlocksScreen(
                             ?: CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), emptyList())
                     } else null
 
-                    @OptIn(ExperimentalFoundationApi::class)
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .combinedClickable(
-                                onClick = { selectedAnimal = animal },
-                                onLongClick = { animalForOptions = animal }
-                            )
-                            .testTag("animal_card_${animal.id}"),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
-                    ) {
-                        Row(
+                    val isPoultryItem = animal.category.equals("POULTRY", ignoreCase = true)
+                    val poultryEval = if (isPoultryItem) {
+                        val unitId = animal.id.removePrefix("unit_").toLongOrNull() ?: animal.id.toLongOrNull() ?: 0L
+                        val flockLogs = allDbPoultryLogs.filter { it.unitId == unitId }
+                        val mLogs = flockLogs.filter { it.logType == "MORTALITY" }
+                        val eLogs = flockLogs.filter { it.logType == "EGG_SALE" }
+                        val totalMort = mLogs.sumOf { it.birdCount }
+                        val cutoff7Days = System.currentTimeMillis() - (7L * 24L * 60L * 60L * 1000L)
+                        val mort7 = mLogs.filter { log ->
+                            val parsed = PoultryAgeAndVaccinationUtils.parseDate(log.date)
+                            parsed == null || parsed.time >= cutoff7Days
+                        }.sumOf { it.birdCount }
+                        val avgEggTrays7 = eLogs.filter { log ->
+                            val parsed = PoultryAgeAndVaccinationUtils.parseDate(log.date)
+                            parsed == null || parsed.time >= cutoff7Days
+                        }.sumOf { it.traysSold }.toDouble() / 7.0
+
+                        val ageInfo = PoultryAgeAndVaccinationUtils.calculateFlockAge(animal.dateOfBirth)
+                        val completedVacs = flockLogs.filter { it.logType == "VACCINATION" || it.vaccineStatus == "COMPLETED" }
+                            .mapNotNull { log -> PoultryAgeAndVaccinationUtils.matchVaccineRuleId(log.vaccineName, log.notes, log.targetStage) }
+                            .toSet()
+                        val schedule = PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(animal.dateOfBirth, completedVacs)
+                        val overdueCount = schedule.count { it.status == VaccineDueStatus.OVERDUE }
+                        val dueTodayCount = schedule.count { it.status == VaccineDueStatus.DUE_TODAY }
+
+                        PoultryAgeAndVaccinationUtils.evaluateAutomatedFlockStatus(
+                            ageInfo = ageInfo,
+                            activeHeadCount = animal.headCountInt,
+                            mortalityCountLast7Days = mort7,
+                            totalMortalityCount = totalMort,
+                            avgDailyEggTraysLast7Days = avgEggTrays7,
+                            overdueVaccineCount = overdueCount,
+                            dueTodayVaccineCount = dueTodayCount
+                        )
+                    } else null
+
+                    if (isPoultryItem && poultryEval != null) {
+                        val flockAge = PoultryAgeAndVaccinationUtils.calculateFlockAge(animal.dateOfBirth)
+                        @OptIn(ExperimentalFoundationApi::class)
+                        Card(
                             modifier = Modifier
-                                .padding(14.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .combinedClickable(
+                                    onClick = { selectedAnimal = animal },
+                                    onLongClick = { animalForOptions = animal }
+                                )
+                                .testTag("animal_card_${animal.id}"),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
                         ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                // Header Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color(0xFFFEF3C7),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                            modifier = Modifier.size(46.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                if (!animal.photoUri.isNullOrBlank()) {
+                                                    AsyncImage(
+                                                        model = ImageRequest.Builder(LocalContext.current)
+                                                            .data(ImageStorageUtils.resolveImageModel(animal.photoUri))
+                                                            .crossfade(true)
+                                                            .memoryCachePolicy(CachePolicy.ENABLED)
+                                                            .diskCachePolicy(CachePolicy.ENABLED)
+                                                            .build(),
+                                                        contentDescription = "${animal.name} Photo",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Egg,
+                                                        contentDescription = "Poultry Icon",
+                                                        tint = Color(0xFFD97706),
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column {
+                                            Text(
+                                                text = animal.name,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Text(
+                                                text = "${animal.breed.ifEmpty { "Layers" }} • ${animal.tagNumber.ifEmpty { "Coop Unit" }}",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(100.dp),
+                                            color = when (poultryEval.healthLevel) {
+                                                com.example.utils.PoultryHealthLevel.HEALTHY -> Color(0xFFDCFCE7)
+                                                com.example.utils.PoultryHealthLevel.CAUTION -> Color(0xFFFEF3C7)
+                                                com.example.utils.PoultryHealthLevel.CRITICAL -> Color(0xFFFEE2E2)
+                                            },
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                when (poultryEval.healthLevel) {
+                                                    com.example.utils.PoultryHealthLevel.HEALTHY -> Color(0xFF86EFAC)
+                                                    com.example.utils.PoultryHealthLevel.CAUTION -> Color(0xFFFDE68A)
+                                                    com.example.utils.PoultryHealthLevel.CRITICAL -> Color(0xFFFCA5A5)
+                                                }
+                                            )
+                                        ) {
+                                            Text(
+                                                text = when (poultryEval.healthLevel) {
+                                                    com.example.utils.PoultryHealthLevel.HEALTHY -> "🟢 Healthy"
+                                                    com.example.utils.PoultryHealthLevel.CAUTION -> "🟡 Caution"
+                                                    com.example.utils.PoultryHealthLevel.CRITICAL -> "🔴 Critical"
+                                                },
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = when (poultryEval.healthLevel) {
+                                                    com.example.utils.PoultryHealthLevel.HEALTHY -> Color(0xFF166534)
+                                                    com.example.utils.PoultryHealthLevel.CAUTION -> Color(0xFF92400E)
+                                                    com.example.utils.PoultryHealthLevel.CRITICAL -> Color(0xFF991B1B)
+                                                },
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
+
+                                        if (effectiveCanEditLivestock) {
+                                            IconButton(
+                                                onClick = { animalForOptions = animal },
+                                                modifier = Modifier.size(32.dp).testTag("more_options_${animal.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MoreVert,
+                                                    contentDescription = "Flock options",
+                                                    tint = Color(0xFF64748B),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Structured Metric Boxes Grid
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (animal.category == "POULTRY") Color(0xFFFEF3C7) else Color(0xFFE8F5E9),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, if (animal.category == "POULTRY") Color(0xFFFDE68A) else Color(0xFFC8E6C9)),
-                                    modifier = Modifier.size(50.dp)
+                                    color = Color(0xFFF8FAFC),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        if (!animal.photoUri.isNullOrBlank()) {
-                                            AsyncImage(
-                                                model = ImageRequest.Builder(LocalContext.current)
-                                                    .data(animal.photoUri)
-                                                    .memoryCacheKey("animal-thumb-${animal.id}-${animal.photoUri}")
-                                                    .diskCacheKey("animal-thumb-${animal.id}-${animal.photoUri}")
-                                                    .size(100)
-                                                    .precision(Precision.INEXACT)
-                                                    .crossfade(false)
-                                                    .placeholder(R.drawable.ic_livestock_placeholder)
-                                                    .error(R.drawable.ic_livestock_placeholder)
-                                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                                    .networkCachePolicy(CachePolicy.ENABLED)
-                                                    .build(),
-                                                contentDescription = "${animal.name} Photo",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceEvenly,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Box 1: Flock Count & Age
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "BIRDS & AGE",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF64748B)
                                             )
-                                        } else {
-                                            Icon(
-                                                imageVector = if (animal.category == "POULTRY") Icons.Filled.Egg else Icons.Filled.Pets,
-                                                contentDescription = if (animal.category == "POULTRY") "Poultry Icon" else "Cattle Icon",
-                                                tint = if (animal.category == "POULTRY") Color(0xFFD97706) else ForestGreenPrimary,
-                                                modifier = Modifier.size(24.dp)
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "${animal.headCountInt} Birds",
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Text(
+                                                text = flockAge.shortAgeLabel,
+                                                fontSize = 10.5.sp,
+                                                color = Color(0xFF475569)
+                                            )
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .width(1.dp)
+                                                .height(32.dp)
+                                                .background(Color(0xFFE2E8F0))
+                                        )
+
+                                        // Box 2: Production Status & Lay Rate
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "PRODUCTION",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF64748B)
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = if (poultryEval.layRatePercent > 0.0)
+                                                    String.format("%.1f%% Lay Rate", poultryEval.layRatePercent)
+                                                else "Pre-Lay",
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = when (poultryEval.productionLevel) {
+                                                    com.example.utils.PoultryProductionLevel.EXCELLENT -> Color(0xFF1E40AF)
+                                                    com.example.utils.PoultryProductionLevel.NORMAL -> Color(0xFF15803D)
+                                                    com.example.utils.PoultryProductionLevel.LOW_WARNING -> Color(0xFFB45309)
+                                                    com.example.utils.PoultryProductionLevel.PRE_LAY -> Color(0xFF475569)
+                                                }
+                                            )
+                                            Text(
+                                                text = poultryEval.productionBadgeLabel,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = when (poultryEval.productionLevel) {
+                                                    com.example.utils.PoultryProductionLevel.EXCELLENT -> Color(0xFF1D4ED8)
+                                                    com.example.utils.PoultryProductionLevel.NORMAL -> Color(0xFF166534)
+                                                    com.example.utils.PoultryProductionLevel.LOW_WARNING -> Color(0xFFD97706)
+                                                    com.example.utils.PoultryProductionLevel.PRE_LAY -> Color(0xFF64748B)
+                                                },
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .width(1.dp)
+                                                .height(32.dp)
+                                                .background(Color(0xFFE2E8F0))
+                                        )
+
+                                        // Box 3: Feed Stage
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "FEED STAGE",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF64748B)
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = flockAge.feedStage.stageName.substringBefore(" ("),
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF0F172A),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = flockAge.feedStage.dailyRationPerBird,
+                                                fontSize = 10.5.sp,
+                                                color = Color(0xFF475569),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = animal.name,
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1E293B)
-                                    )
-                                    Text(
-                                        text = if (cattleEval != null) "${cattleEval.stage.emoji} ${animal.breed}   ${animal.tagNumber}" else "Breed: ${animal.breed}   ${animal.tagNumber}",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF64748B)
-                                    )
-                                    if (cattleEval != null) {
-                                        Text(
-                                            text = cattleEval.breedingStatusText,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = cattleEval.badgeTextColor
-                                        )
-                                    } else {
-                                        Text(
-                                            text = if (userRole == "OWNER") "Long press to Edit / Delete" else "Tap to view full details",
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF94A3B8)
-                                        )
+                                if (poultryEval.automatedAlerts.isNotEmpty()) {
+                                    val topAlert = poultryEval.automatedAlerts.first()
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (topAlert.isCritical) Color(0xFFFEF2F2) else Color(0xFFFFFBEB),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, if (topAlert.isCritical) Color(0xFFFECACA) else Color(0xFFFDE68A)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (topAlert.isCritical) Icons.Filled.Warning else Icons.Filled.Info,
+                                                contentDescription = null,
+                                                tint = if (topAlert.isCritical) Color(0xFFDC2626) else Color(0xFFD97706),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "${topAlert.title}: ${topAlert.recommendation}",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (topAlert.isCritical) Color(0xFF991B1B) else Color(0xFF92400E),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                             }
-
+                        }
+                    } else {
+                        @OptIn(ExperimentalFoundationApi::class)
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .combinedClickable(
+                                    onClick = { selectedAnimal = animal },
+                                    onLongClick = { animalForOptions = animal }
+                                )
+                                .testTag("animal_card_${animal.id}"),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                modifier = Modifier
+                                    .padding(14.dp)
+                                    .fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = cattleEval?.badgeBgColor ?: if (animal.status == "MILKING" || animal.status == "ACTIVE" || animal.status == "Active Laying") TagLivestockBg else TagYieldBg
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = cattleEval?.stage?.displayName ?: animal.status,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = cattleEval?.badgeTextColor ?: if (animal.status == "MILKING" || animal.status == "ACTIVE" || animal.status == "Active Laying") TagLivestockText else TagYieldText
-                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (animal.category == "POULTRY") Color(0xFFFEF3C7) else Color(0xFFE8F5E9),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, if (animal.category == "POULTRY") Color(0xFFFDE68A) else Color(0xFFC8E6C9)),
+                                        modifier = Modifier.size(50.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (!animal.photoUri.isNullOrBlank()) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(LocalContext.current)
+                                                        .data(ImageStorageUtils.resolveImageModel(animal.photoUri))
+                                                        .crossfade(true)
+                                                        .memoryCachePolicy(CachePolicy.ENABLED)
+                                                        .diskCachePolicy(CachePolicy.ENABLED)
+                                                        .build(),
+                                                    contentDescription = "${animal.name} Photo",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = if (animal.category == "POULTRY") Icons.Filled.Egg else Icons.Filled.Pets,
+                                                    contentDescription = if (animal.category == "POULTRY") "Poultry Icon" else "Cattle Icon",
+                                                    tint = if (animal.category == "POULTRY") Color(0xFFD97706) else ForestGreenPrimary,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column {
+                                        Text(
+                                            text = animal.name,
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF1E293B)
+                                        )
+                                        if (cattleEval != null) {
+                                            Text(
+                                                text = "${cattleEval.stage.emoji} ${animal.breed}   ${animal.tagNumber}",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                            Text(
+                                                text = cattleEval.breedingStatusText,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = cattleEval.badgeTextColor
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "Breed: ${animal.breed}   ${animal.tagNumber}",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                            Text(
+                                                text = if (userRole == "OWNER") "Long press to Edit / Delete" else "Tap to view full details",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF94A3B8)
+                                            )
+                                        }
+                                    }
                                 }
 
-                                if (effectiveCanEditLivestock) {
-                                    IconButton(
-                                        onClick = { animalForOptions = animal },
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .testTag("more_options_${animal.id}")
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = cattleEval?.badgeBgColor ?: if (animal.status == "MILKING" || animal.status == "ACTIVE" || animal.status == "Active Laying") TagLivestockBg else TagYieldBg
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.MoreVert,
-                                            contentDescription = "Animal options",
-                                            tint = Color(0xFF64748B),
-                                            modifier = Modifier.size(18.dp)
+                                        Text(
+                                            text = cattleEval?.stage?.displayName ?: animal.status,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = cattleEval?.badgeTextColor ?: if (animal.status == "MILKING" || animal.status == "ACTIVE" || animal.status == "Active Laying") TagLivestockText else TagYieldText
                                         )
+                                    }
+
+                                    if (effectiveCanEditLivestock) {
+                                        IconButton(
+                                            onClick = { animalForOptions = animal },
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .testTag("more_options_${animal.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.MoreVert,
+                                                contentDescription = "Animal options",
+                                                tint = Color(0xFF64748B),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -2154,6 +2627,7 @@ fun AnimalDetailsView(
     onUpdatePhoto: (String?) -> Unit = {},
     milkLogs: List<MilkLog> = emptyList(),
     eggLogs: List<EggLog> = emptyList(),
+    allDbCattleEvents: List<com.example.data.CattleEvent> = emptyList(),
     onUpdateAnimalStage: (newStatus: String, newBreedingStatus: String) -> Unit = { _, _ -> },
     canEditLivestock: Boolean = true,
     modifier: Modifier = Modifier
@@ -2163,7 +2637,10 @@ fun AnimalDetailsView(
     val unitId = remember(animal.id) {
         animal.id.removePrefix("unit_").toLongOrNull() ?: ((animal.id.hashCode().toLong() and 0x7FFFFFFF) + 10000L)
     }
-    val dbEvents by viewModel.getCattleEventsFlow(unitId).collectAsStateWithLifecycle(initialValue = emptyList())
+    val initialUnitDbEvents = remember(unitId, allDbCattleEvents) {
+        allDbCattleEvents.filter { it.unitId == unitId }
+    }
+    val dbEvents by viewModel.getCattleEventsFlow(unitId).collectAsStateWithLifecycle(initialValue = initialUnitDbEvents)
     val animalEvents = remember(dbEvents) {
         dbEvents.map {
             CattleEventItem(
@@ -2204,26 +2681,56 @@ fun AnimalDetailsView(
             )
     }
 
-    var currentStatus by remember(animal.id, animal.status) { mutableStateOf(animal.status) }
+    val isCattle = animal.category.equals("CATTLE", ignoreCase = true)
+    val isPoultry = animal.category.contains("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Poultry", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
+
+    val isExplicitNonLactating = isCattle && (
+        animal.status.contains("Heifer", ignoreCase = true) ||
+        animal.status.contains("Calf", ignoreCase = true) ||
+        animal.status.contains("Bull", ignoreCase = true) ||
+        animal.breedingStatus.contains("HEIFER", ignoreCase = true)
+    )
+
+    val cowMilkLogs = remember(animal.name, animal.tagNumber, milkLogs, isExplicitNonLactating) {
+        if (isExplicitNonLactating) emptyList()
+        else com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
+    }
+
+    // Evaluate dynamic cattle stage using CattleLifecycleEngine
+    val cattleEval = remember(animal, animalEvents.toList(), cowMilkLogs) {
+        if (isCattle) {
+            CattleLifecycleEngine.evaluateCattleStage(animal, animalEvents.toList(), cowMilkLogs)
+        } else null
+    }
+
+    val isNonLactatingStage = isCattle && (
+        isExplicitNonLactating ||
+        cattleEval?.stage == CattleStage.HEIFER ||
+        cattleEval?.stage == CattleStage.CALF ||
+        cattleEval?.stage == CattleStage.BULL ||
+        (cattleEval != null && !cattleEval.hasGivenBirthPreviously && !cattleEval.isMilking)
+    )
+
+    val initialDisplayStatus = remember(animal.id, animal.status, cattleEval) {
+        if (isCattle && cattleEval != null && (animal.status.isBlank() || animal.status.equals("ACTIVE", ignoreCase = true) || animal.status.equals("OPTIMAL", ignoreCase = true) || animal.status.equals("HEALTHY", ignoreCase = true))) {
+            cattleEval.stage.displayName
+        } else {
+            animal.status
+        }
+    }
+
+    var currentStatus by remember(animal.id, animal.status, initialDisplayStatus) { mutableStateOf(initialDisplayStatus) }
     var showUpdateStageDialog by remember { mutableStateOf(false) }
     var showDisposeDialog by remember { mutableStateOf(false) }
     var showStageInfoDialog by remember { mutableStateOf(false) }
 
-    val isCattle = animal.category.equals("CATTLE", ignoreCase = true)
-    val isPoultry = animal.category.contains("POULTRY", ignoreCase = true) || animal.breed.contains("Layer", ignoreCase = true) || animal.breed.contains("Poultry", ignoreCase = true) || animal.breed.contains("Flock", ignoreCase = true)
-
-    // Evaluate dynamic cattle stage using CattleLifecycleEngine
-    val cattleEval = remember(animal, animalEvents.toList(), milkLogs) {
-        if (isCattle) {
-            CattleLifecycleEngine.evaluateCattleStage(animal, animalEvents.toList(), milkLogs)
-        } else null
-    }
-
     // Keep animal status in sync with calculated stage if cattle and status is default/empty
-    LaunchedEffect(cattleEval) {
-        if (cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true) && (animal.status.isBlank() || animal.status.equals("ACTIVE", ignoreCase = true))) {
-            currentStatus = cattleEval.stage.displayName
-            onUpdateAnimalStage(cattleEval.stage.displayName, cattleEval.breedingStatusText)
+    LaunchedEffect(cattleEval?.stage) {
+        if (cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true) && (animal.status.isBlank() || animal.status.equals("ACTIVE", ignoreCase = true) || animal.status.equals("OPTIMAL", ignoreCase = true) || animal.status.equals("HEALTHY", ignoreCase = true))) {
+            if (currentStatus != cattleEval.stage.displayName) {
+                currentStatus = cattleEval.stage.displayName
+                onUpdateAnimalStage(cattleEval.stage.displayName, cattleEval.breedingStatusText)
+            }
         }
     }
 
@@ -2398,20 +2905,72 @@ fun AnimalDetailsView(
                     )
                     Spacer(modifier = Modifier.height(14.dp))
 
+                    val isAutoManaged = currentStatus.isBlank() || currentStatus.equals("ACTIVE", ignoreCase = true) || currentStatus.equals("AUTO", ignoreCase = true)
+
+                    // Automatic Option
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isAutoManaged) ForestGreenPrimary.copy(alpha = 0.12f) else Color(0xFFF8FAFC),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isAutoManaged) ForestGreenPrimary else Color(0xFFE2E8F0)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .clickable {
+                                val autoStatus = cattleEval?.stage?.displayName ?: "Milking"
+                                val autoBreeding = cattleEval?.breedingStatusText ?: "Healthy"
+                                currentStatus = autoStatus
+                                onUpdateAnimalStage(autoStatus, autoBreeding)
+                                showUpdateStageDialog = false
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isAutoManaged) Icons.Filled.CheckCircle else Icons.Filled.Pets,
+                                contentDescription = null,
+                                tint = if (isAutoManaged) ForestGreenPrimary else Color(0xFF94A3B8),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "✨ Auto-Manage (Recommended)",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isAutoManaged) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isAutoManaged) ForestGreenPrimary else Color(0xFF1E293B)
+                                )
+                                Text(
+                                    "Current Stage: ${cattleEval?.stage?.displayName ?: "Dynamic"} (${cattleEval?.breedingStatusText ?: "Calculated"})",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        }
+                    }
+
                     val stages = listOf(
-                        "MILKING" to " MILKING (Active Lactation)",
-                        "INCALF_MILKING" to "INCALF / MILKING (Pregnant + Lactating)",
-                        "INCALF" to "INCALF (Confirmed Pregnant)",
-                        "DRY" to "DRY (Non-Lactating Gestation)",
-                        "CALF" to " CALF (Young Stock)",
-                        "HEIFER" to "HEIFER (Pre-calving Female)",
-                        "BULL" to " BULL (Breeding Male)",
-                        "DISPOSED" to "DISPOSED (Culled / Sold)"
+                        "MILKING" to "🥛 MILKING (Active Lactation)",
+                        "INCALF_MILKING" to "🥛🤰 INCALF / MILKING (Pregnant + Lactating)",
+                        "INCALF" to "🤰 INCALF (Confirmed Pregnant)",
+                        "DRY" to "🍂 DRY (Non-Lactating Gestation)",
+                        "CALF" to "🍼 CALF (Young Stock)",
+                        "HEIFER" to "🌾 HEIFER (Pre-calving Female)",
+                        "BULL" to "🐂 BULL (Breeding Male)",
+                        "DISPOSED" to "🚫 DISPOSED (Culled / Sold)"
                     )
 
                     stages.forEach { (stageKey, stageLabel) ->
-                        val isSelected = currentStatus.equals(stageKey, ignoreCase = true) ||
-                            (cattleEval?.stage?.name.equals(stageKey, ignoreCase = true))
+                        val targetStatusName = when (stageKey) {
+                            "INCALF_MILKING" -> "INCALF / MILKING"
+                            else -> stageKey
+                        }
+                        val isCurrentStageCalculated = cattleEval?.stage?.name.equals(stageKey, ignoreCase = true)
+                        val isSelected = !isAutoManaged && (currentStatus.equals(stageKey, ignoreCase = true) || currentStatus.equals(targetStatusName, ignoreCase = true))
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = if (isSelected) ForestGreenPrimary.copy(alpha = 0.12f) else Color(0xFFF8FAFC),
@@ -2450,12 +3009,32 @@ fun AnimalDetailsView(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    stageLabel,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) ForestGreenPrimary else Color(0xFF1E293B)
-                                )
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        stageLabel,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) ForestGreenPrimary else Color(0xFF1E293B)
+                                    )
+                                    if (isCurrentStageCalculated) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = ForestGreenPrimary.copy(alpha = 0.15f)
+                                        ) {
+                                            Text(
+                                                "Dynamic Stage",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ForestGreenPrimary,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -2465,17 +3044,18 @@ fun AnimalDetailsView(
     }
 
     val tasks by viewModel.rawTasks.collectAsStateWithLifecycle(initialValue = emptyList<com.example.data.FarmTask>())
+    val reminderCompletions by viewModel.reminderCompletions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val allDbPoultryLogs by viewModel.allPoultryLogs.collectAsStateWithLifecycle(initialValue = emptyList())
 
-    val cowMilkLogs = remember(animal.name, animal.tagNumber, milkLogs) {
-        MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
-    }
     val latestMilkLog = cowMilkLogs.firstOrNull()
 
-    val displayLastMilk = remember(latestMilkLog, eggLogs, animal.lastMilk, isPoultry) {
+    val displayLastMilk = remember(latestMilkLog, eggLogs, animal.lastMilk, isPoultry, isNonLactatingStage) {
         if (isPoultry) {
             val poultryEggLogs = eggLogs.filter { it.unitName.equals(animal.name, ignoreCase = true) || it.unitName.contains(animal.name, ignoreCase = true) }
                 .sortedByDescending { it.id }
             if (poultryEggLogs.isNotEmpty()) "${poultryEggLogs.first().totalEggs} Eggs" else if (animal.headCountInt > 0) "${animal.headCountInt} Birds" else animal.lastMilk
+        } else if (isNonLactatingStage) {
+            "Not Lactating"
         } else if (latestMilkLog != null) {
             "${"%.1f".format(latestMilkLog.litres)}L"
         } else if (animal.lastMilk.isNotBlank() && animal.lastMilk != "No data yet") {
@@ -2486,14 +3066,16 @@ fun AnimalDetailsView(
     }
 
     // Initialize events & alerts dynamically
-    val cattleNotifications = remember(cattleEval, animalEvents.toList(), tasks, eggLogs, isPoultry) {
+    val cattleNotifications = remember(cattleEval, animalEvents.toList(), tasks, eggLogs, isPoultry, reminderCompletions, allDbPoultryLogs) {
         generateAnimalUpcomingEvents(
             animal = animal,
             cattleEval = cattleEval,
             animalEvents = animalEvents.toList(),
             tasks = tasks,
             eggLogs = eggLogs,
-            isPoultry = isPoultry
+            isPoultry = isPoultry,
+            poultryLogs = allDbPoultryLogs,
+            reminderCompletions = reminderCompletions
         )
     }
 
@@ -2731,17 +3313,10 @@ fun AnimalDetailsView(
                             if (!animal.photoUri.isNullOrBlank()) {
                                 AsyncImage(
                                     model = ImageRequest.Builder(LocalContext.current)
-                                        .data(animal.photoUri)
-                                        .memoryCacheKey("animal-profile-${animal.id}-${animal.photoUri}")
-                                        .diskCacheKey("animal-profile-${animal.id}-${animal.photoUri}")
-                                        .size(640)
-                                        .precision(Precision.INEXACT)
-                                        .crossfade(false)
-                                        .placeholder(R.drawable.ic_livestock_placeholder)
-                                        .error(R.drawable.ic_livestock_placeholder)
+                                        .data(ImageStorageUtils.resolveImageModel(animal.photoUri))
+                                        .crossfade(true)
                                         .memoryCachePolicy(CachePolicy.ENABLED)
                                         .diskCachePolicy(CachePolicy.ENABLED)
-                                        .networkCachePolicy(CachePolicy.ENABLED)
                                         .build(),
                                     contentDescription = "${animal.name} Photo",
                                     contentScale = ContentScale.Crop,
@@ -2995,9 +3570,9 @@ fun AnimalDetailsView(
                             Text(animal.weight, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
                         }
                         Column {
-                            Text(if (isPoultry) "Daily Egg Yield" else "Last Milk", fontSize = 11.sp, color = Color(0xFF64748B))
-                            Text(displayLastMilk, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
-                            if (latestMilkLog != null && !isPoultry) {
+                            Text(if (isPoultry) "Daily Egg Yield" else if (isNonLactatingStage) "Lactation" else "Last Milk", fontSize = 11.sp, color = Color(0xFF64748B))
+                            Text(displayLastMilk, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (isNonLactatingStage) Color(0xFF64748B) else ForestGreenPrimary)
+                            if (latestMilkLog != null && !isPoultry && !isNonLactatingStage) {
                                 Text(
                                     text = "${latestMilkLog.session.lowercase().replaceFirstChar { it.uppercase() }} (${latestMilkLog.date})",
                                     fontSize = 10.sp,
@@ -3900,140 +4475,182 @@ fun AnimalDetailsView(
         }
 
         // Yield Productivity 7-Days Bar Chart (Dynamic Data with Real Values)
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
-            ) {
-                val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
-                val shortDayFormat = remember { SimpleDateFormat("EEE", Locale.getDefault()) }
+        if (isPoultry || !isNonLactatingStage) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+                    val shortDayFormat = remember { SimpleDateFormat("EEE", Locale.getDefault()) }
 
-                val last7DaysData = remember(animal, milkLogs, eggLogs, isPoultry) {
-                    val calKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                    (6 downTo 0).map { dayOffset ->
-                        val c = java.util.Calendar.getInstance()
-                        c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
-                        val fullDate = dateFormat.format(c.time)
-                        val targetKey = calKeyFormat.format(c.time)
-                        val dayName = shortDayFormat.format(c.time)
+                    val last7DaysData = remember(animal, milkLogs, eggLogs, isPoultry) {
+                        val calKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                        (6 downTo 0).map { dayOffset ->
+                            val c = java.util.Calendar.getInstance()
+                            c.add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
+                            val fullDate = dateFormat.format(c.time)
+                            val targetKey = calKeyFormat.format(c.time)
+                            val dayName = shortDayFormat.format(c.time)
 
-                        val yieldVal = if (isPoultry) {
-                            val matched = eggLogs.filter { log ->
-                                val flockMatches = log.unitName.equals(animal.name, ignoreCase = true) ||
-                                    log.unitName.contains(animal.name, ignoreCase = true) ||
-                                    animal.name.contains(log.unitName, ignoreCase = true)
-                                if (!flockMatches) return@filter false
+                            val yieldVal = if (isPoultry) {
+                                val matched = eggLogs.filter { log ->
+                                    val flockMatches = log.unitName.equals(animal.name, ignoreCase = true) ||
+                                        log.unitName.contains(animal.name, ignoreCase = true) ||
+                                        animal.name.contains(log.unitName, ignoreCase = true)
+                                    if (!flockMatches) return@filter false
 
-                                val parsedDate = DateValidationUtils.parseDate(log.loggedAt)
-                                    ?: log.notes?.let { n -> DateValidationUtils.parseDate(n.substringAfter("[", "").substringBefore("]", "")) }
+                                    val parsedDate = DateValidationUtils.parseDate(log.loggedAt)
+                                        ?: log.notes?.let { n -> DateValidationUtils.parseDate(n.substringAfter("[", "").substringBefore("]", "")) }
 
-                                if (parsedDate != null) {
-                                    val logCal = java.util.Calendar.getInstance().apply { time = parsedDate }
-                                    val sameYear = logCal.get(java.util.Calendar.YEAR) == c.get(java.util.Calendar.YEAR) ||
-                                        logCal.get(java.util.Calendar.YEAR) < 2000
-                                    sameYear && logCal.get(java.util.Calendar.DAY_OF_YEAR) == c.get(java.util.Calendar.DAY_OF_YEAR)
-                                } else {
-                                    val shortDay = SimpleDateFormat("dd MMM", Locale.getDefault()).format(c.time)
-                                    log.loggedAt.contains(fullDate, ignoreCase = true) ||
-                                    log.loggedAt.contains(targetKey) ||
-                                    log.loggedAt.contains(shortDay, ignoreCase = true)
+                                    if (parsedDate != null) {
+                                        val logCal = java.util.Calendar.getInstance().apply { time = parsedDate }
+                                        val sameYear = logCal.get(java.util.Calendar.YEAR) == c.get(java.util.Calendar.YEAR) ||
+                                            logCal.get(java.util.Calendar.YEAR) < 2000
+                                        sameYear && logCal.get(java.util.Calendar.DAY_OF_YEAR) == c.get(java.util.Calendar.DAY_OF_YEAR)
+                                    } else {
+                                        val shortDay = SimpleDateFormat("dd MMM", Locale.getDefault()).format(c.time)
+                                        log.loggedAt.contains(fullDate, ignoreCase = true) ||
+                                        log.loggedAt.contains(targetKey) ||
+                                        log.loggedAt.contains(shortDay, ignoreCase = true)
+                                    }
                                 }
+                                matched.sumOf { it.totalEggs }.toFloat()
+                            } else {
+                                val cowLogs = MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
+                                val matched = cowLogs.filter { log ->
+                                    val logKey = MilkLogEntryRules.canonicalDateKey(log.date)
+                                    logKey == targetKey || log.date.equals(fullDate, ignoreCase = true)
+                                }
+                                matched.sumOf { it.litres }.toFloat()
                             }
-                            matched.sumOf { it.totalEggs }.toFloat()
-                        } else {
-                            val cowLogs = MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
-                            val matched = cowLogs.filter { log ->
-                                val logKey = MilkLogEntryRules.canonicalDateKey(log.date)
-                                logKey == targetKey || log.date.equals(fullDate, ignoreCase = true)
+
+                            Triple(dayName, yieldVal, fullDate)
+                        }
+                    }
+
+                    val maxYield = (last7DaysData.map { it.second }.maxOrNull() ?: 10f).coerceAtLeast(if (isPoultry) 50f else 10f)
+                    val total7Days = last7DaysData.sumOf { it.second.toDouble() }
+                    val lastLoggedVal = last7DaysData.lastOrNull()?.second ?: 0f
+
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = if (isPoultry) "Egg Laying Yield (7 Days)" else "Milk Productivity (7 Days)",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B)
+                                )
+                                Text(
+                                    text = if (isPoultry) {
+                                        if (lastLoggedVal > 0) "Today: ${lastLoggedVal.toInt()} Eggs (${"%.1f".format(lastLoggedVal / 30.0)} Trays)"
+                                        else "Total 7-Day: ${total7Days.toInt()} Eggs"
+                                    } else {
+                                        if (lastLoggedVal > 0) "Today: ${"%.1f".format(lastLoggedVal)}L"
+                                        else "Total 7-Day: ${"%.1f".format(total7Days)}L"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF64748B)
+                                )
                             }
-                            matched.sumOf { it.litres }.toFloat()
                         }
 
-                        Triple(dayName, yieldVal, fullDate)
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            last7DaysData.forEachIndexed { idx, (day, valAmt, _) ->
+                                val heightRatio = (valAmt / maxYield).coerceIn(if (valAmt > 0) 0.15f else 0.04f, 1f)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    if (valAmt > 0f) {
+                                        Text(
+                                            text = if (isPoultry) "${valAmt.toInt()}" else "%.1f".format(valAmt),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isPoultry) Color(0xFF92400E) else ForestGreenPrimary
+                                        )
+                                    } else {
+                                        Text("-", fontSize = 9.sp, color = Color(0xFF94A3B8))
+                                    }
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .width(22.dp)
+                                            .height((90 * heightRatio).dp)
+                                            .background(
+                                                if (valAmt == 0f) Color(0xFFE2E8F0)
+                                                else if (isPoultry) Color(0xFFD97706)
+                                                else ForestGreenPrimary,
+                                                RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                            )
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = day,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (idx == 6) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (idx == 6) Color(0xFF1E293B) else Color(0xFF64748B)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
-                val maxYield = (last7DaysData.map { it.second }.maxOrNull() ?: 10f).coerceAtLeast(if (isPoultry) 50f else 10f)
-                val total7Days = last7DaysData.sumOf { it.second.toDouble() }
-                val lastLoggedVal = last7DaysData.lastOrNull()?.second ?: 0f
-
-                Column(modifier = Modifier.padding(18.dp)) {
+                Spacer(modifier = Modifier.height(28.dp))
+            }
+        } else {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color(0xFFFEF3C7), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Info, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(
-                                text = if (isPoultry) "Egg Laying Yield (7 Days)" else "Milk Productivity (7 Days)",
-                                fontSize = 18.sp,
+                                text = "Pre-Calving Stock (No Lactation)",
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (isPoultry) {
-                                    if (lastLoggedVal > 0) "Today: ${lastLoggedVal.toInt()} Eggs (${"%.1f".format(lastLoggedVal / 30.0)} Trays)"
-                                    else "Total 7-Day: ${total7Days.toInt()} Eggs"
-                                } else {
-                                    if (lastLoggedVal > 0) "Today: ${"%.1f".format(lastLoggedVal)}L"
-                                    else "Total 7-Day: ${"%.1f".format(total7Days)}L"
-                                },
+                                text = "This animal is in a pre-calving stage. Milk production tracking will begin automatically once her first calving event is logged.",
                                 fontSize = 12.sp,
-                                color = Color(0xFF64748B)
+                                color = Color(0xFF64748B),
+                                lineHeight = 16.sp
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(130.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        last7DaysData.forEachIndexed { idx, (day, valAmt, _) ->
-                            val heightRatio = (valAmt / maxYield).coerceIn(if (valAmt > 0) 0.15f else 0.04f, 1f)
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                if (valAmt > 0f) {
-                                    Text(
-                                        text = if (isPoultry) "${valAmt.toInt()}" else "%.1f".format(valAmt),
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isPoultry) Color(0xFF92400E) else ForestGreenPrimary
-                                    )
-                                } else {
-                                    Text("-", fontSize = 9.sp, color = Color(0xFF94A3B8))
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .width(22.dp)
-                                        .height((90 * heightRatio).dp)
-                                        .background(
-                                            if (valAmt == 0f) Color(0xFFE2E8F0)
-                                            else if (isPoultry) Color(0xFFD97706)
-                                            else ForestGreenPrimary,
-                                            RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
-                                        )
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = day,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (idx == 6) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (idx == 6) Color(0xFF1E293B) else Color(0xFF64748B)
-                                )
-                            }
-                        }
-                    }
                 }
+                Spacer(modifier = Modifier.height(28.dp))
             }
-
-            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 
@@ -4302,15 +4919,20 @@ fun AnimalDetailsView(
             initialCategory = pendingFinanceCategory,
             initialDescription = pendingFinanceDescription,
             initialDate = pendingFinanceDate,
+            initialTargetUnit = animal.name.ifBlank { "Cattle" },
             userRole = userRole,
             canEditPastDaysLogs = true,
             onDismiss = { showRecordFinanceDialog = false },
+            onSaveRecordFull = { type, category, amount, description, date, targetUnit ->
+                viewModel.addFinanceRecord(type, category, amount, description, date, targetUnit)
+                showRecordFinanceDialog = false
+            },
             onSaveRecordWithDate = { type, category, amount, description, date ->
-                viewModel.addFinanceRecord(type, category, amount, description, date)
+                viewModel.addFinanceRecord(type, category, amount, description, date, animal.name.ifBlank { "Cattle" })
                 showRecordFinanceDialog = false
             },
             onSaveRecord = { type, category, amount, description ->
-                viewModel.addFinanceRecord(type, category, amount, description, pendingFinanceDate)
+                viewModel.addFinanceRecord(type, category, amount, description, pendingFinanceDate, animal.name.ifBlank { "Cattle" })
                 showRecordFinanceDialog = false
             }
         )
@@ -4560,6 +5182,44 @@ fun FlockDetailsView(
     val mortalityPercentage = remember(liveHeadCount, totalMortalityCount) {
         val totalBorn = liveHeadCount + totalMortalityCount
         if (totalBorn > 0) String.format("%.1f%%", (totalMortalityCount.toDouble() / totalBorn) * 100) else "0.0%"
+    }
+
+    val nowMillis = System.currentTimeMillis()
+    val sevenDaysAgoMillis = nowMillis - (7L * 24L * 60L * 60L * 1000L)
+
+    val mortalityLast7Days = remember(mortalityLogs) {
+        mortalityLogs.filter { log ->
+            val parsed = PoultryAgeAndVaccinationUtils.parseDate(log.date)
+            parsed == null || parsed.time >= sevenDaysAgoMillis
+        }.sumOf { it.count }
+    }
+
+    val avgDailyEggTraysLast7Days = remember(eggSaleLogs) {
+        val totalTrays = eggSaleLogs.filter { log ->
+            val parsed = PoultryAgeAndVaccinationUtils.parseDate(log.date)
+            parsed == null || parsed.time >= sevenDaysAgoMillis
+        }.sumOf { it.traysSold }
+        (totalTrays.toDouble() / 7.0)
+    }
+
+    val automatedStatus = remember(
+        flockAgeInfo,
+        liveHeadCount,
+        mortalityLast7Days,
+        totalMortalityCount,
+        avgDailyEggTraysLast7Days,
+        overdueVaccineCount,
+        dueTodayVaccineCount
+    ) {
+        PoultryAgeAndVaccinationUtils.evaluateAutomatedFlockStatus(
+            ageInfo = flockAgeInfo,
+            activeHeadCount = liveHeadCount,
+            mortalityCountLast7Days = mortalityLast7Days,
+            totalMortalityCount = totalMortalityCount,
+            avgDailyEggTraysLast7Days = avgDailyEggTraysLast7Days,
+            overdueVaccineCount = overdueVaccineCount,
+            dueTodayVaccineCount = dueTodayVaccineCount
+        )
     }
 
     if (showDisposeFlockDialog) {
@@ -4924,10 +5584,8 @@ fun FlockDetailsView(
                                 if (!flock.photoUri.isNullOrBlank()) {
                                     AsyncImage(
                                         model = ImageRequest.Builder(LocalContext.current)
-                                            .data(flock.photoUri)
-                                            .crossfade(false)
-                                            .placeholder(R.drawable.ic_livestock_placeholder)
-                                            .error(R.drawable.ic_livestock_placeholder)
+                                            .data(ImageStorageUtils.resolveImageModel(flock.photoUri))
+                                            .crossfade(true)
                                             .memoryCachePolicy(CachePolicy.ENABLED)
                                             .diskCachePolicy(CachePolicy.ENABLED)
                                             .build(),
@@ -5370,6 +6028,11 @@ fun FlockDetailsView(
                         }
                     }
                 }
+            }
+
+            // 1b. Automated Health & Production Status Diagnostic Engine Card
+            item {
+                AutomatedPoultryStatusCard(status = automatedStatus)
             }
 
             // 2. Stage-Based Feeding Guide & Logs Card
@@ -6475,6 +7138,232 @@ private fun EditDisposalLogDialog(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
                     ) { Text("SAVE CHANGES") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutomatedPoultryStatusCard(
+    status: com.example.utils.PoultryAutomatedStatus,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFFECFDF5), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = ForestGreenPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "AUTOMATED DIAGNOSTIC ENGINE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64748B)
+                        )
+                        Text(
+                            text = "Health & Production Status",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A)
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(100.dp),
+                    color = Color(0xFFDCFCE7),
+                    border = BorderStroke(1.dp, Color(0xFF86EFAC))
+                ) {
+                    Text(
+                        text = "⚡ Real-Time",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF166534),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 2 Main Diagnostic Badges
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Health Status Box
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    color = when (status.healthLevel) {
+                        com.example.utils.PoultryHealthLevel.HEALTHY -> Color(0xFFF0FDF4)
+                        com.example.utils.PoultryHealthLevel.CAUTION -> Color(0xFFFFFBEB)
+                        com.example.utils.PoultryHealthLevel.CRITICAL -> Color(0xFFFEF2F2)
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        when (status.healthLevel) {
+                            com.example.utils.PoultryHealthLevel.HEALTHY -> Color(0xFFBBF7D0)
+                            com.example.utils.PoultryHealthLevel.CAUTION -> Color(0xFFFDE68A)
+                            com.example.utils.PoultryHealthLevel.CRITICAL -> Color(0xFFFECACA)
+                        }
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "FLOCK HEALTH",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64748B)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = status.healthBadgeLabel,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = when (status.healthLevel) {
+                                com.example.utils.PoultryHealthLevel.HEALTHY -> Color(0xFF15803D)
+                                com.example.utils.PoultryHealthLevel.CAUTION -> Color(0xFFB45309)
+                                com.example.utils.PoultryHealthLevel.CRITICAL -> Color(0xFFB91C1C)
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = status.healthAdvice,
+                            fontSize = 10.5.sp,
+                            color = Color(0xFF334155),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Production Status Box
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    color = when (status.productionLevel) {
+                        com.example.utils.PoultryProductionLevel.EXCELLENT -> Color(0xFFEFF6FF)
+                        com.example.utils.PoultryProductionLevel.NORMAL -> Color(0xFFF0FDF4)
+                        com.example.utils.PoultryProductionLevel.LOW_WARNING -> Color(0xFFFFFBEB)
+                        com.example.utils.PoultryProductionLevel.PRE_LAY -> Color(0xFFF8FAFC)
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        when (status.productionLevel) {
+                            com.example.utils.PoultryProductionLevel.EXCELLENT -> Color(0xFFBFDBFE)
+                            com.example.utils.PoultryProductionLevel.NORMAL -> Color(0xFFBBF7D0)
+                            com.example.utils.PoultryProductionLevel.LOW_WARNING -> Color(0xFFFDE68A)
+                            com.example.utils.PoultryProductionLevel.PRE_LAY -> Color(0xFFE2E8F0)
+                        }
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "PRODUCTION STATUS",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64748B)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = status.productionBadgeLabel,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = when (status.productionLevel) {
+                                com.example.utils.PoultryProductionLevel.EXCELLENT -> Color(0xFF1E40AF)
+                                com.example.utils.PoultryProductionLevel.NORMAL -> Color(0xFF15803D)
+                                com.example.utils.PoultryProductionLevel.LOW_WARNING -> Color(0xFFB45309)
+                                com.example.utils.PoultryProductionLevel.PRE_LAY -> Color(0xFF475569)
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = status.productionAdvice,
+                            fontSize = 10.5.sp,
+                            color = Color(0xFF334155),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            // Automated Alerts if any exist
+            if (status.automatedAlerts.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "AUTOMATED HEALTH & YIELD ALERTS (${status.automatedAlerts.size})",
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF64748B)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    status.automatedAlerts.forEach { alert ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (alert.isCritical) Color(0xFFFEF2F2) else Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, if (alert.isCritical) Color(0xFFFECACA) else Color(0xFFFDE68A)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    imageVector = if (alert.isCritical) Icons.Filled.Warning else Icons.Filled.Info,
+                                    contentDescription = null,
+                                    tint = if (alert.isCritical) Color(0xFFDC2626) else Color(0xFFD97706),
+                                    modifier = Modifier.size(16.dp).padding(top = 2.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = alert.title,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (alert.isCritical) Color(0xFF991B1B) else Color(0xFF92400E)
+                                    )
+                                    Text(
+                                        text = alert.message,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF334155)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "💡 Action: ${alert.recommendation}",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (alert.isCritical) Color(0xFFB91C1C) else Color(0xFFB45309)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -73,6 +73,8 @@ import com.example.R
 import com.example.ui.screens.AnimalDetailData
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.util.ImageStorageUtils
+import com.example.util.CattleLifecycleEngine
+import com.example.util.CattleStage
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -241,10 +243,8 @@ fun EditAnimalDialog(
                                 if (!photoUri.isNullOrBlank()) {
                                     AsyncImage(
                                         model = ImageRequest.Builder(LocalContext.current)
-                                            .data(photoUri)
+                                            .data(ImageStorageUtils.resolveImageModel(photoUri))
                                             .crossfade(true)
-                                            .placeholder(R.drawable.ic_livestock_placeholder)
-                                            .error(R.drawable.ic_livestock_placeholder)
                                             .memoryCachePolicy(CachePolicy.ENABLED)
                                             .diskCachePolicy(CachePolicy.ENABLED)
                                             .build(),
@@ -484,6 +484,17 @@ fun EditAnimalDialog(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
+                        // Dynamic evaluated stage for cattle
+                        val evaluatedStage = remember(dob, breed, name, isCattle) {
+                            if (isCattle) {
+                                CattleLifecycleEngine.evaluateCattleStage(
+                                    animal.copy(dateOfBirth = dob, breed = breed, name = name, category = "CATTLE"),
+                                    emptyList(),
+                                    emptyList()
+                                )
+                            } else null
+                        }
+
                         // Stage / Health Status
                         OutlinedTextField(
                             value = status,
@@ -498,24 +509,86 @@ fun EditAnimalDialog(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         // Quick Stage Chips
-                        Text("Quick Select Stage:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Quick Select Stage:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+                            if (evaluatedStage != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = evaluatedStage.badgeBgColor,
+                                    modifier = Modifier.clickable {
+                                        status = evaluatedStage.stage.displayName
+                                        breedingStatus = evaluatedStage.breedingStatusText
+                                    }
+                                ) {
+                                    Text(
+                                        text = "Current: ${evaluatedStage.stage.displayName}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = evaluatedStage.badgeTextColor,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        val quickStages = listOf(
+                            Triple("Auto", "✨ Auto (${evaluatedStage?.stage?.displayName ?: "Dynamic"})", evaluatedStage?.stage?.displayName ?: "Milking"),
+                            Triple("Milking", "🥛 Milking", "Active Lactation"),
+                            Triple("In-Calf / Milking", "🥛🤰 In-Calf / Milking", "Confirmed Pregnant (Milking)"),
+                            Triple("In-Calf", "🤰 In-Calf", "Confirmed Pregnant"),
+                            Triple("Inseminated", "💉 Inseminated", "Served / Pending PD"),
+                            Triple("Heifer", "🌾 Heifer", "Open Heifer"),
+                            Triple("Calf", "🍼 Calf", "Young Stock"),
+                            Triple("Dry", "🍂 Dry", "Dry / Resting"),
+                            Triple("Bull", "🐂 Bull", "Breeding Sire"),
+                            Triple("Disposed", "🚫 Disposed", "Culled / Disposed")
+                        )
+
                         FlowRow(
                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            listOf("Milking", "In-Calf / Milking", "In-Calf", "Inseminated", "Heifer", "Calf", "Dry").forEach { st ->
+                            quickStages.forEach { (stKey, stLabel, defaultBreeding) ->
+                                val isSelected = when (stKey) {
+                                    "Auto" -> status.isBlank() || status.equals("AUTO", ignoreCase = true) || (evaluatedStage != null && status.equals(evaluatedStage.stage.displayName, ignoreCase = true))
+                                    "In-Calf / Milking" -> status.equals("In-Calf / Milking", ignoreCase = true) || status.equals("INCALF_MILKING", ignoreCase = true) || status.equals("INCALF / MILKING", ignoreCase = true)
+                                    else -> status.equals(stKey, ignoreCase = true)
+                                }
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = if (status.equals(st, ignoreCase = true)) ForestGreenPrimary.copy(alpha = 0.15f) else Color(0xFFF1F5F9),
-                                    border = BorderStroke(1.dp, if (status.equals(st, ignoreCase = true)) ForestGreenPrimary else Color(0xFFE2E8F0)),
-                                    modifier = Modifier.clickable { status = st }
+                                    color = if (isSelected) ForestGreenPrimary.copy(alpha = 0.15f) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFE2E8F0)),
+                                    modifier = Modifier.clickable {
+                                        if (stKey == "Auto") {
+                                            status = evaluatedStage?.stage?.displayName ?: "Milking"
+                                            breedingStatus = evaluatedStage?.breedingStatusText ?: "Healthy"
+                                        } else {
+                                            status = stKey
+                                            breedingStatus = when (stKey) {
+                                                "Milking" -> "Active Lactation"
+                                                "In-Calf / Milking" -> "Confirmed Pregnant (Milking)"
+                                                "In-Calf" -> "Confirmed Pregnant"
+                                                "Inseminated" -> "Served / Pending PD"
+                                                "Heifer" -> "Open Heifer"
+                                                "Calf" -> "Young Stock"
+                                                "Dry" -> "Dry / Resting"
+                                                "Bull" -> "Breeding Sire"
+                                                "Disposed" -> "Culled / Disposed"
+                                                else -> defaultBreeding
+                                            }
+                                        }
+                                    }
                                 ) {
                                     Text(
-                                        text = st,
+                                        text = stLabel,
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = if (status.equals(st, ignoreCase = true)) ForestGreenPrimary else Color(0xFF334155),
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) ForestGreenPrimary else Color(0xFF334155),
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
@@ -544,9 +617,20 @@ fun EditAnimalDialog(
                                 value = dob,
                                 onValueChange = { selectedDate ->
                                     dob = selectedDate
-                                    val calcAge = com.example.util.CattleLifecycleEngine.calculateAgeFromDob(selectedDate)
+                                    val calcAge = CattleLifecycleEngine.calculateAgeFromDob(selectedDate)
                                     if (calcAge.isNotBlank() && calcAge != "N/A") {
                                         ageText = calcAge
+                                    }
+                                    val d = CattleLifecycleEngine.parseDateOrNull(selectedDate)
+                                    if (d != null && isCattle) {
+                                        val monthsDiff = ((System.currentTimeMillis() - d.time) / (1000L * 60 * 60 * 24 * 30.4375)).toInt()
+                                        if (monthsDiff < 12 && (status.equals("HEIFER", ignoreCase = true) || status.equals("Milking", ignoreCase = true) || status.isBlank())) {
+                                            status = "Calf"
+                                            breedingStatus = "Young Stock"
+                                        } else if (monthsDiff in 12..24 && (status.equals("CALF", ignoreCase = true) || status.isBlank())) {
+                                            status = "Heifer"
+                                            breedingStatus = "Open Heifer"
+                                        }
                                     }
                                 },
                                 label = "Date of Birth",

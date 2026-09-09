@@ -111,21 +111,21 @@ object MilkLogEntryRules {
 
         val cleanTag = targetTag.trim().replace("#", "").lowercase(Locale.US)
         if (cleanTag.isNotEmpty()) {
-            val logLower = cleanLog.lowercase(Locale.US)
-            if (logLower.contains(cleanTag) || logLower.contains("#$cleanTag")) return true
-            if (logNotes?.lowercase(Locale.US)?.contains(cleanTag) == true) return true
-        }
-
-        val lowerLog = cleanLog.lowercase(Locale.US)
-        val lowerTarget = cleanTarget.lowercase(Locale.US)
-        if (lowerLog.isNotEmpty() && lowerTarget.isNotEmpty()) {
-            if (lowerLog.contains(lowerTarget) || lowerTarget.contains(lowerLog)) return true
-            val targetBase = lowerTarget.substringBefore(" (").substringBefore(" -").substringBefore("#").trim()
-            val logBase = lowerLog.substringBefore(" (").substringBefore(" -").substringBefore("#").trim()
-            if (targetBase.isNotEmpty() && logBase.isNotEmpty() && (targetBase == logBase || lowerLog.contains(targetBase) || lowerTarget.contains(logBase))) {
-                return true
+            val logTag = extractTag(cleanLog)?.lowercase(Locale.US)
+            if (logTag != null && logTag == cleanTag) return true
+            // Also match whole-word tag in notes or log text
+            if (logNotes != null) {
+                val tagPattern = Regex("""(?:\b|#)${Regex.escape(cleanTag)}\b""", RegexOption.IGNORE_CASE)
+                if (tagPattern.containsMatchIn(logNotes)) return true
             }
         }
+
+        val targetBase = extractBaseName(cleanTarget)
+        val logBase = extractBaseName(cleanLog)
+        if (targetBase.isNotBlank() && logBase.isNotBlank() && targetBase.equals(logBase, ignoreCase = true)) {
+            return true
+        }
+
         return false
     }
 

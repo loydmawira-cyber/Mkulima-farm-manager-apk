@@ -326,6 +326,28 @@ object ImageStorageUtils {
         }
         return if (isLocalFileValid(context, localUri)) localUri else null
     }
+
+    /**
+     * Resolves an image URI / path string into a direct File, Uri, or string object
+     * so that Coil can decode it instantaneously without URI resolution delays.
+     */
+    fun resolveImageModel(uriString: String?): Any? {
+        if (uriString.isNullOrBlank()) return null
+        val clean = uriString.trim()
+        if (clean.startsWith("file://")) {
+            val path = clean.removePrefix("file://")
+            val file = File(path)
+            if (file.exists() && file.isFile) return file
+        }
+        if (clean.startsWith("/")) {
+            val file = File(clean)
+            if (file.exists() && file.isFile) return file
+        }
+        if (clean.startsWith("content://") || clean.startsWith("android.resource://")) {
+            return runCatching { Uri.parse(clean) }.getOrNull() ?: clean
+        }
+        return clean
+    }
 }
 
 

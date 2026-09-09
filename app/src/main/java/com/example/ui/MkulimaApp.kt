@@ -414,6 +414,11 @@ fun MkulimaAppContent(
                     viewModel.addFinanceRecord(type, category, amount, description)
                     showAddFinanceDialog = false
                 },
+                onSaveRecordFull = { type, category, amount, description, date, targetUnit ->
+                    viewModel.addFinanceRecord(type, category, amount, description, date, targetUnit)
+                    showAddFinanceDialog = false
+                },
+                units = allUnits,
                 userRole = userRole,
                 canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
             )
@@ -436,6 +441,7 @@ fun MkulimaAppContent(
                     viewModel.updateFinanceRecord(updated)
                     editingFinanceRecord = null
                 },
+                units = allUnits,
                 userRole = userRole,
                 canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
             )
@@ -868,8 +874,8 @@ fun MkulimaAppContent(
                             onAddField = { viewModel.addFieldPlan(it) },
                             onUpdateField = { viewModel.updateFieldPlan(it) },
                             onDeleteField = { viewModel.deleteFieldPlan(it) },
-                            onHarvest = { field, outcome, tonnes, saleAmount, harvestDate ->
-                                viewModel.recordFieldHarvest(field, outcome, tonnes, saleAmount, harvestDate)
+                            onHarvest = { field, outcome, tonnes, saleAmount, harvestDate, targetPitId, targetPitName ->
+                                viewModel.recordFieldHarvest(field, outcome, tonnes, saleAmount, harvestDate, targetPitId, targetPitName)
                             },
                             onSaveFeedPlan = { viewModel.saveFeedPlan(it) },
                             onDeleteFeedPlan = { viewModel.deleteFeedPlan(it) },
@@ -980,6 +986,7 @@ fun MkulimaAppContent(
                         FinanceScreen(
                             records = financeRecords,
                             reports = monthlyReports,
+                            units = allUnits,
                             onAddTransactionClick = { showAddFinanceDialog = true },
                             onEditTransaction = { editingFinanceRecord = it },
                             onDeleteTransaction = { viewModel.deleteFinanceRecord(it) },

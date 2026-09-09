@@ -23,6 +23,40 @@ enum class VaccineDueStatus {
     UPCOMING
 }
 
+enum class PoultryHealthLevel {
+    HEALTHY,
+    CAUTION,
+    CRITICAL
+}
+
+enum class PoultryProductionLevel {
+    EXCELLENT,
+    NORMAL,
+    LOW_WARNING,
+    PRE_LAY
+}
+
+data class PoultryAutomatedAlert(
+    val title: String,
+    val message: String,
+    val isCritical: Boolean,
+    val recommendation: String
+)
+
+data class PoultryAutomatedStatus(
+    val healthLevel: PoultryHealthLevel,
+    val healthBadgeLabel: String,
+    val healthSummary: String,
+    val healthAdvice: String,
+    val productionLevel: PoultryProductionLevel,
+    val productionBadgeLabel: String,
+    val layRatePercent: Double,
+    val productionSummary: String,
+    val productionAdvice: String,
+    val weeklyMortalityPercent: Double,
+    val automatedAlerts: List<PoultryAutomatedAlert>
+)
+
 data class FlockVaccineScheduleItem(
     val ruleId: String,
     val vaccineName: String,
@@ -133,6 +167,30 @@ object PoultryAgeAndVaccinationUtils {
             description = "ND + IB pre-laying booster for layers and breeding stock."
         )
     )
+
+    /**
+     * Resolves a standard vaccine rule ID (e.g. "vac_day_14") from arbitrary text (title, notes, syncId, ruleKey).
+     */
+    fun matchVaccineRuleId(vararg texts: String?): String? {
+        val combined = texts.filterNotNull().joinToString(" ").lowercase(Locale.ROOT)
+        if (combined.isBlank()) return null
+
+        if (combined.contains("vac_day_0") || combined.contains("marek")) return "vac_day_0"
+        if (combined.contains("vac_day_7") || combined.contains("nd1") ||
+            (combined.contains("newcastle") && (combined.contains("day 7") || combined.contains("1 week") || combined.contains("first")))) return "vac_day_7"
+        if (combined.contains("vac_day_14") || combined.contains("ibd 1") || combined.contains("ibd1") ||
+            (combined.contains("gumboro") && (combined.contains("first") || combined.contains("day 14") || combined.contains("2 week") || (!combined.contains("2") && !combined.contains("booster"))))) return "vac_day_14"
+        if (combined.contains("vac_day_21") || combined.contains("nd2") || combined.contains("lasota") ||
+            (combined.contains("newcastle") && (combined.contains("day 21") || combined.contains("3 week") || combined.contains("second") || combined.contains("booster")))) return "vac_day_21"
+        if (combined.contains("vac_day_28") || combined.contains("ibd 2") || combined.contains("ibd2") ||
+            (combined.contains("gumboro") && (combined.contains("2") || combined.contains("booster") || combined.contains("day 28") || combined.contains("4 week")))) return "vac_day_28"
+        if (combined.contains("vac_day_42") || combined.contains("nd3") ||
+            (combined.contains("newcastle") && (combined.contains("day 42") || combined.contains("6 week") || combined.contains("third")))) return "vac_day_42"
+        if (combined.contains("vac_day_56_70") || combined.contains("fowl pox") || combined.contains("fowlpox") || combined.contains("wing web")) return "vac_day_56_70"
+        if (combined.contains("vac_day_112_126") || combined.contains("nd4") || combined.contains("pre-laying") || combined.contains("pre laying")) return "vac_day_112_126"
+
+        return null
+    }
 
     private val supportedDateFormats = listOf(
         "dd MMM yyyy",
@@ -327,4 +385,193 @@ object PoultryAgeAndVaccinationUtils {
             )
         }
     }
+
+    /**
+     * Automates health & production status diagnosis based on flock age, mortality, egg production, and vaccination compliance.
+     */
+    fun evaluateAutomatedFlockStatus(
+        ageInfo: PoultryAgeInfo,
+        activeHeadCount: Int,
+        mortalityCountLast7Days: Int,
+        totalMortalityCount: Int,
+        avgDailyEggTraysLast7Days: Double,
+        overdueVaccineCount: Int,
+        dueTodayVaccineCount: Int
+    ): PoultryAutomatedStatus {
+        val totalBirdsStart = (activeHeadCount + totalMortalityCount).coerceAtLeast(1)
+        val weeklyMortalityPercent = (mortalityCountLast7Days.toDouble() / totalBirdsStart.toDouble()) * 100.0
+
+        // Calculate Lay Rate % (1 Tray = 30 Eggs)
+        val avgDailyEggs = avgDailyEggTraysLast7Days * 30.0
+        val layRatePercent = if (activeHeadCount > 0) {
+            ((avgDailyEggs / activeHeadCount.toDouble()) * 100.0).coerceIn(0.0, 100.0)
+        } else 0.0
+
+        val alerts = mutableListOf<PoultryAutomatedAlert>()
+
+        // 1. Evaluate Health Status
+        var healthLevel = PoultryHealthLevel.HEALTHY
+        var healthSummary = "Flock health is optimal with low mortality."
+        var healthAdvice = "Maintain current sanitation, bio-security, and fresh water supply."
+
+        if (weeklyMortalityPercent > 1.5) {
+            healthLevel = PoultryHealthLevel.CRITICAL
+            healthSummary = "⚠️ High Mortality Rate Spike (${String.format("%.1f%%", weeklyMortalityPercent)} in past 7 days)"
+            healthAdvice = "Isolate sick birds immediately, consult a qualified veterinarian, and review ventilation and feed hygiene."
+            alerts.add(
+                PoultryAutomatedAlert(
+                    title = "Critical Mortality Spike",
+                    message = "${mortalityCountLast7Days} deaths recorded in past 7 days (${String.format("%.1f%%", weeklyMortalityPercent)} of flock).",
+                    isCritical = true,
+                    recommendation = "Contact local vet for necropsy/diagnosis & inspect drinking water supply."
+                )
+            )
+        } else if (weeklyMortalityPercent > 0.5) {
+            healthLevel = PoultryHealthLevel.CAUTION
+            healthSummary = "⚡ Moderate Mortality Notice (${String.format("%.1f%%", weeklyMortalityPercent)} in past 7 days)"
+            healthAdvice = "Monitor flock behavior, check for respiratory symptoms or wet litter, and boost multivitamins in drinking water."
+            alerts.add(
+                PoultryAutomatedAlert(
+                    title = "Elevated Mortality Alert",
+                    message = "Weekly mortality is ${String.format("%.1f%%", weeklyMortalityPercent)}.",
+                    isCritical = false,
+                    recommendation = "Inspect feed freshness, coop temperature, and air ventilation."
+                )
+            )
+        }
+
+        if (overdueVaccineCount > 0) {
+            if (healthLevel == PoultryHealthLevel.HEALTHY) {
+                healthLevel = PoultryHealthLevel.CAUTION
+            }
+            alerts.add(
+                PoultryAutomatedAlert(
+                    title = "Overdue Vaccines Detected",
+                    message = "$overdueVaccineCount standard vaccination schedule ${if (overdueVaccineCount == 1) "item is" else "items are"} overdue.",
+                    isCritical = overdueVaccineCount > 1,
+                    recommendation = "Administer required vaccines immediately to prevent viral outbreak."
+                )
+            )
+        }
+
+        if (dueTodayVaccineCount > 0) {
+            alerts.add(
+                PoultryAutomatedAlert(
+                    title = "Vaccination Scheduled Today",
+                    message = "$dueTodayVaccineCount vaccine rule due for administration today.",
+                    isCritical = false,
+                    recommendation = "Prepare clean drinking water or eye drops according to vaccine guidelines."
+                )
+            )
+        }
+
+        val healthBadgeLabel = when (healthLevel) {
+            PoultryHealthLevel.HEALTHY -> "🟢 HEALTHY (${String.format("%.1f%%", weeklyMortalityPercent)} Mort/wk)"
+            PoultryHealthLevel.CAUTION -> "🟡 CAUTION (${String.format("%.1f%%", weeklyMortalityPercent)} Mort/wk)"
+            PoultryHealthLevel.CRITICAL -> "🔴 CRITICAL ALERT (${String.format("%.1f%%", weeklyMortalityPercent)} Mort/wk)"
+        }
+
+        // 2. Evaluate Production Status based on Age Weeks
+        val totalWeeks = ageInfo.weeks
+        val productionLevel: PoultryProductionLevel
+        val productionBadgeLabel: String
+        val productionSummary: String
+        val productionAdvice: String
+
+        when {
+            totalWeeks < 18 -> {
+                productionLevel = PoultryProductionLevel.PRE_LAY
+                productionBadgeLabel = "🌱 Pre-Lay Growth Stage (Wk $totalWeeks)"
+                productionSummary = "Flock is currently in rearing/growth phase before egg onset."
+                productionAdvice = "Focus on target weight gains and transition to Grower/Pre-layer mash at Week 17."
+            }
+            totalWeeks in 18..22 -> {
+                productionLevel = if (layRatePercent >= 15.0) PoultryProductionLevel.NORMAL else PoultryProductionLevel.LOW_WARNING
+                productionBadgeLabel = "🥚 Point of Lay Onset (${String.format("%.1f%%", layRatePercent)})"
+                productionSummary = "Flock is entering point of lay (onset of egg production)."
+                productionAdvice = "Ensure Layer Mash with 3.8% calcium is supplied to build strong eggshells."
+            }
+            totalWeeks in 23..45 -> {
+                // Peak Lay Stage (Expected 75% - 92%)
+                when {
+                    layRatePercent >= 75.0 -> {
+                        productionLevel = PoultryProductionLevel.EXCELLENT
+                        productionBadgeLabel = "🔥 Peak Lay Yield (${String.format("%.1f%%", layRatePercent)})"
+                        productionSummary = "Optimal peak laying performance achieved."
+                        productionAdvice = "Maintain consistent feeding times, clean water, and 16 hours of daily lighting."
+                    }
+                    layRatePercent >= 60.0 -> {
+                        productionLevel = PoultryProductionLevel.NORMAL
+                        productionBadgeLabel = "🟢 Normal Production (${String.format("%.1f%%", layRatePercent)})"
+                        productionSummary = "Laying performance is stable."
+                        productionAdvice = "Monitor feed consumption per bird (~120g/day) and egg weight."
+                    }
+                    else -> {
+                        productionLevel = PoultryProductionLevel.LOW_WARNING
+                        productionBadgeLabel = "⚠️ Below Target Laying (${String.format("%.1f%%", layRatePercent)})"
+                        productionSummary = "Laying percentage is below expected peak benchmark (Target: 75%+)."
+                        productionAdvice = "Check for feed nutrient deficiency, external parasites (mites), heat stress, or water disruption."
+                        alerts.add(
+                            PoultryAutomatedAlert(
+                                title = "Low Lay Rate Warning",
+                                message = "Current lay rate is ${String.format("%.1f%%", layRatePercent)} (Target for Week $totalWeeks is >75%).",
+                                isCritical = false,
+                                recommendation = "Inspect feed protein levels, water intake, and light duration."
+                            )
+                        )
+                    }
+                }
+            }
+            else -> {
+                // Late Lay Stage (>45 Weeks)
+                when {
+                    layRatePercent >= 65.0 -> {
+                        productionLevel = PoultryProductionLevel.EXCELLENT
+                        productionBadgeLabel = "🌟 High Late Lay (${String.format("%.1f%%", layRatePercent)})"
+                        productionSummary = "Strong late-cycle egg production."
+                        productionAdvice = "Supplement calcium grids or limestone grit for shell thickness."
+                    }
+                    layRatePercent >= 45.0 -> {
+                        productionLevel = PoultryProductionLevel.NORMAL
+                        productionBadgeLabel = "🟢 Late Lay Phase (${String.format("%.1f%%", layRatePercent)})"
+                        productionSummary = "Gradual post-peak drop in lay rate."
+                        productionAdvice = "Plan for eventual culling / spent hen marketing when lay rate drops < 40%."
+                    }
+                    else -> {
+                        productionLevel = PoultryProductionLevel.LOW_WARNING
+                        productionBadgeLabel = "📉 Low Production (${String.format("%.1f%%", layRatePercent)})"
+                        productionSummary = "Production has dropped below economical threshold."
+                        productionAdvice = "Consider molting evaluation or planning spent hen disposal / replacement flock."
+                    }
+                }
+            }
+        }
+
+        // Feed Transition Alert check
+        if (ageInfo.feedStage.hasTransitionAlert && ageInfo.feedStage.transitionAlertMessage != null) {
+            alerts.add(
+                PoultryAutomatedAlert(
+                    title = "Feed Stage Transition",
+                    message = ageInfo.feedStage.transitionAlertMessage,
+                    isCritical = false,
+                    recommendation = "Gradually mix old and new feed types over 5–7 days to prevent digestive stress."
+                )
+            )
+        }
+
+        return PoultryAutomatedStatus(
+            healthLevel = healthLevel,
+            healthBadgeLabel = healthBadgeLabel,
+            healthSummary = healthSummary,
+            healthAdvice = healthAdvice,
+            productionLevel = productionLevel,
+            productionBadgeLabel = productionBadgeLabel,
+            layRatePercent = layRatePercent,
+            productionSummary = productionSummary,
+            productionAdvice = productionAdvice,
+            weeklyMortalityPercent = weeklyMortalityPercent,
+            automatedAlerts = alerts
+        )
+    }
 }
+

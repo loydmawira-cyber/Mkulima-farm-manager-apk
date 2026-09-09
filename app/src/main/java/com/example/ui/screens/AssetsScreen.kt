@@ -12,8 +12,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Agriculture
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -60,7 +62,7 @@ fun AssetsScreen(
     onAddField: (FieldPlan) -> Unit,
     onUpdateField: (FieldPlan) -> Unit,
     onDeleteField: (FieldPlan) -> Unit,
-    onHarvest: (FieldPlan, String, Double, Double, String) -> Unit,
+    onHarvest: (field: FieldPlan, outcome: String, quantityKg: Double, saleAmount: Double, harvestDate: String, targetPitId: Long?, targetPitName: String?) -> Unit,
     onSaveFeedPlan: (FeedPlan) -> Unit,
     onDeleteFeedPlan: (Long) -> Unit,
     onAutomaticFeedDeductionChanged: (Boolean) -> Unit,
@@ -140,8 +142,12 @@ fun AssetsScreen(
         )
     }
     fieldToHarvest?.let { field ->
-        HarvestDialog(field, { fieldToHarvest = null }) { outcome, quantityKg, sale, date ->
-            onHarvest(field, outcome, quantityKg, sale, date)
+        HarvestDialog(
+            field = field,
+            inventoryItems = inventoryItems,
+            onDismiss = { fieldToHarvest = null }
+        ) { outcome, quantityKg, sale, date, targetPitId, targetPitName ->
+            onHarvest(field, outcome, quantityKg, sale, date, targetPitId, targetPitName)
             fieldToHarvest = null
         }
     }
@@ -153,10 +159,16 @@ fun AssetsScreen(
             initialAmount = pendingFinanceAmount,
             initialDescription = pendingFinanceDescription,
             initialDate = pendingFinanceDate,
+            initialTargetUnit = "Crops / Fields",
+            units = units,
             userRole = userRole,
             canEditPastDaysLogs = true,
             onDismiss = { showRecordFinanceDialog = false },
             onSaveRecordWithDate = { type, category, amount, description, date ->
+                onAddFinanceRecord(type, category, amount, description, date)
+                showRecordFinanceDialog = false
+            },
+            onSaveRecordFull = { type, category, amount, description, date, _ ->
                 onAddFinanceRecord(type, category, amount, description, date)
                 showRecordFinanceDialog = false
             },
@@ -965,31 +977,219 @@ private fun FieldEntryDialog(existing: FieldPlan?, onDismiss: () -> Unit, onSave
 }
 
 @Composable
-private fun HarvestDialog(field: FieldPlan, onDismiss: () -> Unit, onSave: (String, Double, Double, String) -> Unit) {
+private fun HarvestDialog(
+    field: FieldPlan,
+    inventoryItems: List<InventoryItem>,
+    onDismiss: () -> Unit,
+    onSave: (outcome: String, quantityKg: Double, sale: Double, date: String, targetPitId: Long?, targetPitName: String?) -> Unit
+) {
     var outcome by remember { mutableStateOf("SILAGE") }
     var quantityKg by remember { mutableStateOf("") }
     var sale by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(today()) }
+
+    val availableSilagePits = remember(inventoryItems) {
+        inventoryItems.filter {
+            it.isSilage ||
+                it.category.equals("Silage", ignoreCase = true) ||
+                it.itemName.contains("silage", ignoreCase = true) ||
+                it.itemName.contains("pit", ignoreCase = true)
+        }
+    }
+
+    var selectedPit by remember(availableSilagePits) {
+        mutableStateOf(availableSilagePits.firstOrNull())
+    }
+    var isCreatingNewPit by remember(availableSilagePits) {
+        mutableStateOf(availableSilagePits.isEmpty())
+    }
+    var newPitName by remember {
+        mutableStateOf(if (availableSilagePits.isEmpty()) "Silage Pit 1" else "")
+    }
+    var pitMenuExpanded by remember { mutableStateOf(false) }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(18.dp).fillMaxWidth()) {
                 Text("Harvest ${field.fieldName}", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("Choose Silage to receive kilograms (kgs) into inventory with no finance record, or Sold to record crop-sale income.", fontSize = 12.sp, color = Color.Gray)
-                Row {
-                    FilterChip(selected = outcome == "SILAGE", onClick = { outcome = "SILAGE" }, label = { Text("Chop as Silage (kgs)") })
+                Text(
+                    "Choose Silage to store chopped fodder into a silage pit in inventory, or Sold to record crop-sale income.",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                )
+
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                    FilterChip(
+                        selected = outcome == "SILAGE",
+                        onClick = { outcome = "SILAGE" },
+                        label = { Text("Chop as Silage (kgs)") },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Agriculture, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                    )
                     Spacer(Modifier.width(8.dp))
-                    FilterChip(selected = outcome == "SOLD", onClick = { outcome = "SOLD" }, label = { Text("Sold") })
+                    FilterChip(
+                        selected = outcome == "SOLD",
+                        onClick = { outcome = "SOLD" },
+                        label = { Text("Sold") }
+                    )
                 }
+
+                if (outcome == "SILAGE") {
+                    Text(
+                        "Silage Pit / Bunker *",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF334155),
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                    )
+
+                    if (availableSilagePits.isNotEmpty() && !isCreatingNewPit) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { pitMenuExpanded = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = selectedPit?.itemName ?: "Select Silage Pit",
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF0F172A)
+                                        )
+                                        Text(
+                                            text = "Available: ${(selectedPit?.quantityAvailable ?: 0.0).toInt()} ${selectedPit?.unitOfMeasurement?.ifBlank { "kgs" } ?: "kgs"}",
+                                            fontSize = 11.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = "Dropdown")
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = pitMenuExpanded,
+                                onDismissRequest = { pitMenuExpanded = false },
+                                modifier = Modifier.fillMaxWidth(0.85f)
+                            ) {
+                                availableSilagePits.forEach { pit ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(pit.itemName, fontWeight = FontWeight.SemiBold)
+                                                Text(
+                                                    "${pit.quantityAvailable.toInt()} ${pit.unitOfMeasurement.ifBlank { "kgs" }} in stock",
+                                                    fontSize = 11.sp,
+                                                    color = Color.Gray
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedPit = pit
+                                            isCreatingNewPit = false
+                                            pitMenuExpanded = false
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Filled.Inventory2, contentDescription = null, tint = Color(0xFF059669))
+                                        }
+                                    )
+                                }
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("+ Create New Silage Pit...", color = Color(0xFF059669), fontWeight = FontWeight.Bold)
+                                    },
+                                    onClick = {
+                                        isCreatingNewPit = true
+                                        if (newPitName.isBlank()) {
+                                            newPitName = "Silage Pit ${availableSilagePits.size + 1}"
+                                        }
+                                        pitMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        // Creating new pit or no existing pits found
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Input(
+                                value = newPitName,
+                                onValueChange = { newPitName = it },
+                                label = "New Silage Pit Name *"
+                            )
+                            if (availableSilagePits.isNotEmpty()) {
+                                TextButton(
+                                    onClick = {
+                                        isCreatingNewPit = false
+                                        if (selectedPit == null) selectedPit = availableSilagePits.firstOrNull()
+                                    },
+                                    modifier = Modifier.padding(top = 2.dp)
+                                ) {
+                                    Text("← Choose existing pit from inventory", fontSize = 12.sp)
+                                }
+                            } else {
+                                Text(
+                                    "No silage pit in inventory yet. A new pit item will be created automatically.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF059669),
+                                    modifier = Modifier.padding(top = 2.dp, start = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Show stock preview if pit selected
+                    if (!isCreatingNewPit && selectedPit != null) {
+                        val curStock = selectedPit?.quantityAvailable ?: 0.0
+                        val harvestQty = quantityKg.toDoubleOrNull() ?: 0.0
+                        if (harvestQty > 0.0) {
+                            Surface(
+                                color = Color(0xFFF0FDF4),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = "${selectedPit?.itemName}: ${curStock.toInt()} kgs + ${harvestQty.toInt()} kgs = ${(curStock + harvestQty).toInt()} kgs total",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF166534),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Input(quantityKg, { quantityKg = it }, if (outcome == "SILAGE") "Harvested Silage (kgs) *" else "Harvested Quantity (kgs) *", keyboard = KeyboardType.Decimal)
                 if (outcome == "SOLD") Input(sale, { sale = it }, "Total Sale Amount", keyboard = KeyboardType.Decimal)
                 Input(date, { date = it }, "Harvest Date")
+
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
+                    val canConfirm = (quantityKg.toDoubleOrNull() ?: 0.0) > 0.0 &&
+                        (outcome != "SILAGE" || (!isCreatingNewPit && selectedPit != null) || (isCreatingNewPit && newPitName.isNotBlank()))
                     Button(
                         onClick = {
                             val harvested = quantityKg.toDoubleOrNull() ?: 0.0
-                            if (harvested > 0.0) onSave(outcome, harvested, if (outcome == "SOLD") sale.toDoubleOrNull() ?: 0.0 else 0.0, date)
+                            if (harvested > 0.0) {
+                                val targetPitId = if (outcome == "SILAGE" && !isCreatingNewPit) selectedPit?.id else null
+                                val targetPitName = if (outcome == "SILAGE" && isCreatingNewPit) newPitName.trim() else null
+                                onSave(outcome, harvested, if (outcome == "SOLD") sale.toDoubleOrNull() ?: 0.0 else 0.0, date, targetPitId, targetPitName)
+                            }
                         },
+                        enabled = canConfirm,
                         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                     ) { Text("Confirm Harvest") }
                 }

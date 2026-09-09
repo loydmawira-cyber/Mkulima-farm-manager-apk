@@ -252,10 +252,8 @@ fun AddUnitDialog(
                             if (!photoUri.isNullOrBlank()) {
                                 AsyncImage(
                                     model = ImageRequest.Builder(LocalContext.current)
-                                        .data(photoUri)
+                                        .data(ImageStorageUtils.resolveImageModel(photoUri))
                                         .crossfade(true)
-                                        .placeholder(R.drawable.ic_livestock_placeholder)
-                                        .error(R.drawable.ic_livestock_placeholder)
                                         .memoryCachePolicy(CachePolicy.ENABLED)
                                         .diskCachePolicy(CachePolicy.ENABLED)
                                         .build(),

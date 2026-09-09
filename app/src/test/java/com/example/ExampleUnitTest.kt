@@ -59,10 +59,13 @@ class ExampleUnitTest {
             id = 101L,
             name = "Broiler Batch A",
             type = "Poultry",
+            headCount = 500,
+            healthStatus = "Healthy",
+            location = "Coop 1",
+            lastUpdated = "Today",
             breed = "Broiler",
             dateAdded = dateAdded8,
-            dob = dateAdded8,
-            headCount = 500
+            dob = dateAdded8
         )
 
         // Create flock in Week 18 (123 days old)
@@ -72,17 +75,20 @@ class ExampleUnitTest {
             id = 102L,
             name = "Layer Flock 2",
             type = "Poultry",
+            headCount = 300,
+            healthStatus = "Healthy",
+            location = "Coop 2",
+            lastUpdated = "Today",
             breed = "Isa Brown",
             dateAdded = dateAdded18,
-            dob = dateAdded18,
-            headCount = 300
+            dob = dateAdded18
         )
 
         val reminders = FarmReminderEngine.computeAllReminders(
             units = listOf(flockWeek8, flockWeek18),
             tasks = emptyList(),
-            inventory = emptyList(),
-            completedRuleKeys = emptySet()
+            completedRuleKeys = emptyMap(),
+            inventoryItems = emptyList()
         )
 
         val feedReminders = reminders.filter { it.type == ReminderType.FEED_TRANSITION }

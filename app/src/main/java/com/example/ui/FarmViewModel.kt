@@ -451,7 +451,42 @@ class FarmViewModel(
                 // Computed reminder (vaccination/deworming/etc.) — record completion so
                 // it stays suppressed for its cooldown window instead of recreating a task.
                 val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-                repository.markReminderComplete(farmId, reminderRuleKey, reminderUnitId ?: 0L)
+                val uId = reminderUnitId ?: 0L
+                repository.markReminderComplete(farmId, reminderRuleKey, uId)
+
+                // If this is a poultry vaccine or deworming reminder, also record in PoultryLog
+                if (uId > 0L) {
+                    val dateFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+                    if (reminderRuleKey.startsWith("poultry_vac_")) {
+                        val ruleId = reminderRuleKey.substringAfterLast("_")
+                        val matchedRule = com.example.utils.PoultryAgeAndVaccinationUtils.STANDARD_VACCINATION_RULES.firstOrNull { it.id == ruleId }
+                        repository.insertPoultryLog(
+                            PoultryLog(
+                                farmId = farmId,
+                                unitId = uId,
+                                logType = "VACCINATION",
+                                vaccineName = matchedRule?.vaccineName ?: title.ifBlank { "Poultry Vaccination" },
+                                targetStage = matchedRule?.targetStageLabel ?: "Scheduled Stage",
+                                vaccineStatus = "COMPLETED",
+                                date = dateFormatted,
+                                notes = details ?: "Vaccination confirmed complete from reminders"
+                            )
+                        )
+                    } else if (reminderRuleKey.startsWith("poultry_deworm_")) {
+                        repository.insertPoultryLog(
+                            PoultryLog(
+                                farmId = farmId,
+                                unitId = uId,
+                                logType = "VACCINATION",
+                                vaccineName = "Routine Deworming",
+                                targetStage = "Flock Deworming",
+                                vaccineStatus = "COMPLETED",
+                                date = dateFormatted,
+                                notes = details ?: "Routine deworming completed from reminders"
+                            )
+                        )
+                    }
+                }
                 return@launch
             }
 
@@ -603,17 +638,32 @@ class FarmViewModel(
                             repository.updateUnit(matchedUnit.copy(healthStatus = "Optimal", lastUpdated = nowFormatted))
                         }
                     } else if (isVaccin) {
+                        val matchedRuleId = com.example.utils.PoultryAgeAndVaccinationUtils.matchVaccineRuleId(
+                            existingTask.title,
+                            existingTask.instructions,
+                            existingTask.syncId
+                        )
+                        val rule = matchedRuleId?.let { rid ->
+                            com.example.utils.PoultryAgeAndVaccinationUtils.STANDARD_VACCINATION_RULES.firstOrNull { it.id == rid }
+                        }
+                        val vacName = rule?.vaccineName ?: existingTask.title
+                        val stageLabel = rule?.targetStageLabel ?: "Scheduled Vaccine"
+
                         val pLog = PoultryLog(
                             farmId = farmId,
                             unitId = matchedUnit.id,
                             logType = "VACCINATION",
-                            vaccineName = existingTask.title,
-                            targetStage = "Scheduled Vaccine",
+                            vaccineName = vacName,
+                            targetStage = stageLabel,
                             vaccineStatus = "COMPLETED",
                             date = dateFormatted,
-                            notes = notes ?: "Vaccine completed"
+                            notes = notes ?: existingTask.instructions ?: "Vaccine completed"
                         )
                         repository.insertPoultryLog(pLog)
+                        if (matchedRuleId != null) {
+                            repository.markReminderComplete(farmId, "poultry_vac_${matchedUnit.id}_$matchedRuleId", matchedUnit.id)
+                        }
+                        repository.markReminderComplete(farmId, "poultry_vac_${matchedUnit.id}", matchedUnit.id)
                         repository.markReminderComplete(farmId, "poultry_vac_${matchedUnit.id}_${existingTask.id}", matchedUnit.id)
                         if (matchedUnit.healthStatus.contains("Vaccin", ignoreCase = true)) {
                             repository.updateUnit(matchedUnit.copy(healthStatus = "Optimal", lastUpdated = nowFormatted))
@@ -622,8 +672,11 @@ class FarmViewModel(
                 }
             }
 
-            // Reschedule next recurrence if this is a recurring task
-            if (existingTask.isRecurring && existingTask.recurrenceInterval.isNotBlank()) {
+            // Reschedule next recurrence if this is a recurring task (excluding one-time poultry milestone vaccines)
+            val isPoultryVaccineMilestone = matchedUnit != null && !isCattleUnit(matchedUnit) && isVaccin &&
+                com.example.utils.PoultryAgeAndVaccinationUtils.matchVaccineRuleId(existingTask.title, existingTask.instructions, existingTask.syncId) != null
+
+            if (!isPoultryVaccineMilestone && existingTask.isRecurring && existingTask.recurrenceInterval.isNotBlank()) {
                 val nextScheduled = TaskRecurrenceUtils.calculateNextScheduledTime(
                     existingTask.scheduledTime,
                     existingTask.recurrenceInterval
@@ -1113,19 +1166,44 @@ class FarmViewModel(
         }
     }
 
-    fun recordFieldHarvest(field: FieldPlan, outcome: String, quantityKg: Double, saleAmount: Double, harvestDate: String) {
+    fun recordFieldHarvest(
+        field: FieldPlan,
+        outcome: String,
+        quantityKg: Double,
+        saleAmount: Double,
+        harvestDate: String,
+        targetPitId: Long? = null,
+        newPitName: String? = null
+    ) {
         viewModelScope.launch {
             if (!canWriteFarmData()) return@launch
             if (quantityKg <= 0.0 || field.status == "HARVESTED") return@launch
             val finalOutcome = outcome.uppercase()
-            val updated = field.copy(status = "HARVESTED", harvestedDate = harvestDate, harvestOutcome = finalOutcome,
-                harvestedTonnes = quantityKg, saleAmount = if (finalOutcome == "SOLD") saleAmount else 0.0)
+            val updated = field.copy(
+                status = "HARVESTED",
+                harvestedDate = harvestDate,
+                harvestOutcome = finalOutcome,
+                harvestedTonnes = quantityKg,
+                saleAmount = if (finalOutcome == "SOLD") saleAmount else 0.0
+            )
             repository.updateFieldPlan(updated)
             if (finalOutcome == "SILAGE") {
-                repository.receiveSilage(updated.farmId, quantityKg, updated.fieldName, harvestDate)
+                repository.receiveSilage(
+                    farmId = updated.farmId,
+                    quantityKg = quantityKg,
+                    sourceField = updated.fieldName,
+                    receivedDate = harvestDate,
+                    targetPitId = targetPitId,
+                    newPitName = newPitName
+                )
             } else if (finalOutcome == "SOLD" && saleAmount > 0.0) {
-                addFinanceRecord(FinanceType.INCOME, "Crop Sale", saleAmount,
-                    "${updated.cropName} harvest from ${updated.fieldName} (${quantityKg} kgs)", harvestDate)
+                addFinanceRecord(
+                    FinanceType.INCOME,
+                    "Crop Sale",
+                    saleAmount,
+                    "${updated.cropName} harvest from ${updated.fieldName} (${quantityKg} kgs)",
+                    harvestDate
+                )
             }
         }
     }
@@ -1136,7 +1214,8 @@ class FarmViewModel(
         category: String,
         amount: Double,
         description: String,
-        date: String = ""
+        date: String = "",
+        targetUnit: String = "General Farm"
     ) {
         viewModelScope.launch {
             if (!subscriptionAccess.value.canUseFinance) return@launch
@@ -1148,13 +1227,15 @@ class FarmViewModel(
                 category = category.ifBlank { "General" },
                 amount = amount,
                 date = if (date.isNotBlank()) date else todayFormatted,
-                description = description.ifBlank { "Farm transaction" }
+                description = description.ifBlank { "Farm transaction" },
+                targetUnit = targetUnit.ifBlank { "General Farm" }
             )
             repository.insertFinanceRecord(record)
+            val unitBadge = if (record.targetUnit.isNotBlank() && record.targetUnit != "General Farm") " [${record.targetUnit}]" else ""
             NotificationHelper.notify(
                 type = NotificationType.NEW_ENTRY,
                 title = if (type == FinanceType.INCOME) "💰 Income Recorded" else "💸 Expense Recorded",
-                message = "${record.category}: KES ${record.amount} - ${record.description}"
+                message = "${record.category}$unitBadge: KES ${record.amount} - ${record.description}"
             )
         }
     }
@@ -1319,6 +1400,10 @@ class FarmViewModel(
     private var lastDewormingFarmId: String? = null
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.cleanupOrphanedUnitRecords()
+        }
+
         // Existing cattle pre-date this feature, so build their first task after
         // Room emits livestock and event data. Per-cow keys prevent duplicate
         // task rewrites when unrelated recompositions occur, and let us skip
@@ -1483,11 +1568,36 @@ class FarmViewModel(
         initialValue = emptyList()
     )
 
-    fun addCattleEvent(unitId: Long, category: String, title: String, date: String, details: String, notes: String?, metricValue: String?) {
+    fun addCattleEvent(unitId: Long, category: String, title: String, date: String, details: String, notes: String?, metricValue: String?, costAmount: Double? = null) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
             val event = CattleEvent(farmId = farmId, unitId = unitId, category = category, title = title, date = date, details = details, notes = notes, metricValue = metricValue)
             repository.insertCattleEvent(event)
+
+            val unitName = if (unitId > 0) allUnits.value.find { it.id == unitId }?.name ?: "Cattle" else "Cattle"
+
+            if (costAmount != null && costAmount > 0) {
+                val expenseCat = when (category.uppercase()) {
+                    "HEALTH", "VACCINATION", "DEWORMING", "MEDICATION" -> "Vaccines & Vet"
+                    "INSEMINATION" -> "Vaccines & Vet"
+                    "PD" -> "Vaccines & Vet"
+                    "CALVING" -> "Vaccines & Vet"
+                    "FEED" -> "Feeds & Nutrition"
+                    else -> "Other Expense"
+                }
+                val logDate = date.ifBlank { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) }
+                repository.insertFinanceRecord(
+                    FinanceRecord(
+                        farmId = farmId,
+                        type = FinanceType.EXPENSE,
+                        category = expenseCat,
+                        amount = costAmount,
+                        date = logDate,
+                        description = "$title - $unitName",
+                        targetUnit = unitName
+                    )
+                )
+            }
 
             // Auto-update animal status based on breeding event
             if (unitId > 0) {
@@ -1655,11 +1765,20 @@ class FarmViewModel(
 
         val targetName = if (cow.tagNumber.isBlank()) cow.name else "${cow.name} • Tag ${cow.tagNumber}"
         val taskSyncId = "cattle-deworming-${cow.farmId}-${cow.id}"
+        val cleanTag = cow.tagNumber.replace("#", "").trim()
 
         val candidateTasks = repository.getTaskSnapshotForFarm(cow.farmId)
             .filter { task ->
-                task.syncId == taskSyncId ||
-                    task.targetUnit.equals(targetName, ignoreCase = true)
+                val isDewormTask = task.syncId == taskSyncId ||
+                    task.title.contains("deworm", ignoreCase = true) ||
+                    (task.category == TaskCategory.LIVESTOCK && task.instructions?.contains("deworm", ignoreCase = true) == true)
+                val matchesCow = task.syncId == taskSyncId ||
+                    task.targetUnit.equals(targetName, ignoreCase = true) ||
+                    (task.targetUnit.isNotBlank() && (
+                        task.targetUnit.contains(cow.name, ignoreCase = true) ||
+                        (cleanTag.isNotBlank() && task.targetUnit.contains(cleanTag, ignoreCase = true))
+                    ))
+                isDewormTask && matchesCow
             }
         val existingPendingTask = candidateTasks.firstOrNull { !it.isCompleted }
 
@@ -1771,7 +1890,77 @@ class FarmViewModel(
     fun addPoultryLog(log: PoultryLog) {
         viewModelScope.launch {
             val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
-            repository.insertPoultryLog(log.copy(farmId = farmId))
+            val prepared = log.copy(farmId = farmId)
+            repository.insertPoultryLog(prepared)
+
+            val unitName = if (prepared.unitId > 0) allUnits.value.find { it.id == prepared.unitId }?.name ?: "Poultry" else "Poultry"
+            val logDate = prepared.date.ifBlank { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) }
+
+            when (prepared.logType.uppercase()) {
+                "EGG_SALE" -> {
+                    if (prepared.totalRevenue > 0) {
+                        val buyerDesc = if (prepared.buyer.isNotBlank()) " to ${prepared.buyer}" else ""
+                        repository.insertFinanceRecord(
+                            FinanceRecord(
+                                farmId = farmId,
+                                type = FinanceType.INCOME,
+                                category = "Egg Sales",
+                                amount = prepared.totalRevenue,
+                                date = logDate,
+                                description = "Egg sale (${prepared.traysSold} trays$buyerDesc)",
+                                targetUnit = unitName
+                            )
+                        )
+                    }
+                }
+                "DISPOSAL" -> {
+                    if (prepared.disposalAmount > 0 && !prepared.disposalReason.equals("Death", ignoreCase = true)) {
+                        repository.insertFinanceRecord(
+                            FinanceRecord(
+                                farmId = farmId,
+                                type = FinanceType.INCOME,
+                                category = "Poultry Meat Sales",
+                                amount = prepared.disposalAmount,
+                                date = logDate,
+                                description = "Bird / Cull sale (${prepared.birdCount} birds - ${prepared.disposalReason})",
+                                targetUnit = unitName
+                            )
+                        )
+                    }
+                }
+                "FEED" -> {
+                    if (prepared.costAmount > 0) {
+                        val feedDesc = if (prepared.feedType.isNotBlank()) " - ${prepared.feedType}" else ""
+                        repository.insertFinanceRecord(
+                            FinanceRecord(
+                                farmId = farmId,
+                                type = FinanceType.EXPENSE,
+                                category = "Feeds & Nutrition",
+                                amount = prepared.costAmount,
+                                date = logDate,
+                                description = "Poultry Feed (${prepared.quantityKg}kg$feedDesc)",
+                                targetUnit = unitName
+                            )
+                        )
+                    }
+                }
+                "VACCINE", "VACCINATION" -> {
+                    if (prepared.costAmount > 0) {
+                        val vacDesc = if (prepared.vaccineName.isNotBlank()) prepared.vaccineName else "Poultry Vaccine"
+                        repository.insertFinanceRecord(
+                            FinanceRecord(
+                                farmId = farmId,
+                                type = FinanceType.EXPENSE,
+                                category = "Vaccines & Vet",
+                                amount = prepared.costAmount,
+                                date = logDate,
+                                description = "Vaccine / Treatment ($vacDesc)",
+                                targetUnit = unitName
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 

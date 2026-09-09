@@ -136,6 +136,9 @@ interface FarmDao {
     @Query("UPDATE milk_logs SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun softDeleteMilkLog(id: Long, updatedAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE milk_logs SET isDeleted = 1, updatedAt = :updatedAt WHERE (cowName = :cowName OR cowName LIKE :cowNamePrefix OR (unitName = :unitName AND unitName != '')) AND farmId = :farmId")
+    suspend fun softDeleteMilkLogsForCow(cowName: String, cowNamePrefix: String, unitName: String, farmId: String, updatedAt: Long = System.currentTimeMillis())
+
     @Query("DELETE FROM milk_logs WHERE id = :id")
     suspend fun deleteMilkLogById(id: Long)
 
@@ -336,10 +339,24 @@ interface FarmDao {
     suspend fun setWorkerRevoked(workerId: String, isRevoked: Boolean, updatedAt: Long = System.currentTimeMillis())
 
     // ================= Cattle Events =================
-    @Query("SELECT * FROM cattle_events WHERE unitId = :unitId AND isDeleted = 0 ORDER BY date DESC")
+    @Query("""
+        SELECT ce.* FROM cattle_events ce 
+        LEFT JOIN farm_units u ON (ce.unitId = u.id OR (ce.unitSyncId != '' AND ce.unitSyncId = u.syncId))
+        WHERE ce.unitId = :unitId 
+          AND ce.isDeleted = 0 
+          AND (u.id IS NULL OR u.isDeleted = 0)
+        ORDER BY ce.date DESC
+    """)
     fun getCattleEventsByUnit(unitId: Long): Flow<List<CattleEvent>>
 
-    @Query("SELECT * FROM cattle_events WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY date DESC")
+    @Query("""
+        SELECT ce.* FROM cattle_events ce 
+        LEFT JOIN farm_units u ON (ce.unitId = u.id OR (ce.unitSyncId != '' AND ce.unitSyncId = u.syncId))
+        WHERE (ce.farmId = :farmId OR ce.farmId = 'FARM-DEFAULT') 
+          AND ce.isDeleted = 0 
+          AND (u.id IS NULL OR u.isDeleted = 0)
+        ORDER BY ce.date DESC
+    """)
     fun getAllCattleEvents(farmId: String): Flow<List<CattleEvent>>
 
     @Query("SELECT * FROM cattle_events WHERE syncId = :syncId LIMIT 1")
@@ -360,6 +377,12 @@ interface FarmDao {
     @Query("UPDATE cattle_events SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun softDeleteCattleEvent(id: Long, updatedAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE cattle_events SET isDeleted = 1, updatedAt = :updatedAt WHERE unitId = :unitId OR (unitSyncId != '' AND unitSyncId = :unitSyncId)")
+    suspend fun softDeleteCattleEventsForUnit(unitId: Long, unitSyncId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE cattle_events SET isDeleted = 1, updatedAt = :now WHERE isDeleted = 0 AND (unitId IN (SELECT id FROM farm_units WHERE isDeleted = 1) OR (unitSyncId != '' AND unitSyncId IN (SELECT syncId FROM farm_units WHERE isDeleted = 1)))")
+    suspend fun cleanupOrphanedCattleEvents(now: Long = System.currentTimeMillis())
+
     @Query("DELETE FROM cattle_events WHERE id = :id")
     suspend fun deleteCattleEventById(id: Long)
 
@@ -374,11 +397,11 @@ interface FarmDao {
     @Query("SELECT * FROM poultry_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY date DESC, id DESC")
     fun getAllPoultryLogs(farmId: String): Flow<List<PoultryLog>>
 
-    @Query("SELECT * FROM poultry_logs WHERE id = :id LIMIT 1")
-    suspend fun getPoultryLogById(id: Long): PoultryLog?
-
     @Query("SELECT * FROM poultry_logs WHERE syncId = :syncId LIMIT 1")
     suspend fun getPoultryLogBySyncId(syncId: String): PoultryLog?
+
+    @Query("SELECT * FROM poultry_logs WHERE id = :id LIMIT 1")
+    suspend fun getPoultryLogById(id: Long): PoultryLog?
 
     @Query("SELECT * FROM poultry_logs WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyPoultryLogs(farmId: String, since: Long): List<PoultryLog>
@@ -391,6 +414,15 @@ interface FarmDao {
 
     @Query("UPDATE poultry_logs SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun softDeletePoultryLog(id: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE poultry_logs SET isDeleted = 1, updatedAt = :updatedAt WHERE unitId = :unitId OR (unitSyncId != '' AND unitSyncId = :unitSyncId)")
+    suspend fun softDeletePoultryLogsForUnit(unitId: Long, unitSyncId: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE poultry_logs SET isDeleted = 1, updatedAt = :now WHERE isDeleted = 0 AND (unitId IN (SELECT id FROM farm_units WHERE isDeleted = 1) OR (unitSyncId != '' AND unitSyncId IN (SELECT syncId FROM farm_units WHERE isDeleted = 1)))")
+    suspend fun cleanupOrphanedPoultryLogs(now: Long = System.currentTimeMillis())
+
+    @Query("UPDATE reminder_completions SET isDeleted = 1, updatedAt = :updatedAt WHERE unitId = :unitId")
+    suspend fun softDeleteReminderCompletionsForUnit(unitId: Long, updatedAt: Long = System.currentTimeMillis())
 
     @Query("DELETE FROM poultry_logs WHERE id = :id")
     suspend fun deletePoultryLogById(id: Long)
@@ -554,6 +586,12 @@ interface FarmDao {
 
     @Query("SELECT * FROM reminder_completions WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND ruleKey = :ruleKey AND isDeleted = 0 LIMIT 1")
     suspend fun getReminderCompletion(farmId: String, ruleKey: String): ReminderCompletion?
+
+    @Query("SELECT * FROM reminder_completions WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND ruleKey = :ruleKey LIMIT 1")
+    suspend fun getReminderCompletionAnyStatus(farmId: String, ruleKey: String): ReminderCompletion?
+
+    @Query("SELECT * FROM reminder_completions WHERE syncId = :syncId LIMIT 1")
+    suspend fun getReminderCompletionBySyncId(syncId: String): ReminderCompletion?
 
     @Query("SELECT * FROM reminder_completions WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND updatedAt > :since")
     suspend fun getDirtyReminderCompletions(farmId: String, since: Long): List<ReminderCompletion>

@@ -114,11 +114,36 @@ object FarmReminderEngine {
                 // POULTRY VACCINATION & DEWORMING REMINDERS
                 val dateAddedStr = unit.dateAdded.ifBlank { unit.dob }
                 val ageInfo = PoultryAgeAndVaccinationUtils.calculateFlockAge(dateAddedStr)
-                val schedule = PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(dateAddedStr, emptySet())
+
+                val completedRuleIdsForUnit = mutableSetOf<String>()
+                completedRuleKeys.keys.forEach { key ->
+                    if (key.startsWith("poultry_vac_${unit.id}_")) {
+                        completedRuleIdsForUnit.add(key.removePrefix("poultry_vac_${unit.id}_"))
+                    }
+                    val matched = PoultryAgeAndVaccinationUtils.matchVaccineRuleId(key)
+                    if (matched != null && (key.contains("_${unit.id}_") || key.endsWith("_${unit.id}"))) {
+                        completedRuleIdsForUnit.add(matched)
+                    }
+                }
+                tasks.filter { it.isCompleted && (
+                    it.targetUnit.contains(unit.name, ignoreCase = true) ||
+                    (unit.tagNumber.isNotBlank() && it.targetUnit.contains(unit.tagNumber, ignoreCase = true))
+                ) }.forEach { t ->
+                    val matched = PoultryAgeAndVaccinationUtils.matchVaccineRuleId(t.title, t.instructions, t.syncId)
+                    if (matched != null) completedRuleIdsForUnit.add(matched)
+                }
+
+                val schedule = PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(dateAddedStr, completedRuleIdsForUnit)
 
                 schedule.forEach { item ->
                     val ruleKey = "poultry_vac_${unit.id}_${item.ruleId}"
-                    if (!item.isCompleted && !isSuppressedByCompletion(ruleKey, 30, completedRuleKeys, today)) {
+                    val hasPendingTask = tasks.any { !it.isCompleted &&
+                        (it.targetUnit.contains(unit.name, ignoreCase = true) || (unit.tagNumber.isNotBlank() && it.targetUnit.contains(unit.tagNumber, ignoreCase = true))) &&
+                        (it.title.contains(item.vaccineName, ignoreCase = true) || it.instructions?.contains(item.ruleId, ignoreCase = true) == true)
+                    }
+                    val isRuleDone = item.isCompleted || completedRuleIdsForUnit.contains(item.ruleId) || isSuppressedByCompletion(ruleKey, 90, completedRuleKeys, today)
+
+                    if (!isRuleDone && !hasPendingTask) {
                         val urgency = when (item.status) {
                             VaccineDueStatus.OVERDUE -> ReminderUrgency.OVERDUE
                             VaccineDueStatus.DUE_TODAY -> ReminderUrgency.TODAY
@@ -149,7 +174,16 @@ object FarmReminderEngine {
                 // Routine Poultry Deworming Alert (every 8 weeks / 56 days)
                 if (ageInfo.totalDays >= 42) {
                     val dewormRuleKey = "poultry_deworm_${unit.id}"
-                    if (!isSuppressedByCompletion(dewormRuleKey, 56, completedRuleKeys, today)) {
+                    val hasPendingDewormTask = tasks.any { !it.isCompleted &&
+                        (it.targetUnit.contains(unit.name, ignoreCase = true) || (unit.tagNumber.isNotBlank() && it.targetUnit.contains(unit.tagNumber, ignoreCase = true))) &&
+                        it.title.contains("deworm", ignoreCase = true)
+                    }
+                    val hasCompletedDewormTask = tasks.any { it.isCompleted &&
+                        (it.targetUnit.contains(unit.name, ignoreCase = true) || (unit.tagNumber.isNotBlank() && it.targetUnit.contains(unit.tagNumber, ignoreCase = true))) &&
+                        it.title.contains("deworm", ignoreCase = true)
+                    }
+
+                    if (!hasPendingDewormTask && !hasCompletedDewormTask && !isSuppressedByCompletion(dewormRuleKey, 56, completedRuleKeys, today)) {
                         val dewormDueDays = (56 - (ageInfo.totalDays % 56)).coerceIn(-10, 56)
                         val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, dewormDueDays) }
                         val dewormDateStr = dateFormat.format(cal.time)

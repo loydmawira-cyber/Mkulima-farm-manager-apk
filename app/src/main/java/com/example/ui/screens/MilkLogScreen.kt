@@ -144,60 +144,6 @@ data class CowDayMilkBreakdown(
     val dailyTotal: Double
 )
 
-fun isMilkingCow(
-    name: String,
-    breed: String = "",
-    status: String = "",
-    tag: String = "",
-    lastMilk: String = "",
-    breedingStatus: String = ""
-): Boolean {
-    val s = status.uppercase()
-    val b = breed.uppercase()
-    val n = name.uppercase()
-    val bs = breedingStatus.uppercase()
-    val lm = lastMilk.uppercase().trim()
-
-    // 1. Disqualify disposed, sold, dead, culled
-    if (s.contains("DISPOSED") || s.contains("SOLD") || s.contains("DEAD") || s.contains("CULLED") || bs.contains("DISPOSED")) return false
-
-    // 2. Disqualify bulls, sires, steers, studs
-    if (s.contains("BULL") || b.contains("BULL") || n.contains("BULL") || s.contains("SIRE") || b.contains("SIRE") || bs.contains("BULL") || bs.contains("SIRE") || s.contains("STEER")) return false
-
-    // 3. Disqualify young calves and weaners
-    if (s.contains("CALF") || b.contains("CALF") || n.contains("CALF") || bs.contains("CALF") || s.contains("WEAN") || bs.contains("WEAN")) return false
-
-    // 4. Disqualify heifers
-    if (s.contains("HEIFER") || b.contains("HEIFER") || n.contains("HEIFER") || bs.contains("HEIFER")) return false
-
-    // 5. Disqualify dry cows
-    if (s.contains("DRY") || bs.contains("DRY")) return false
-
-    // 6. Disqualify poultry, crops, greenhouses
-    if (b.contains("POULTRY") || b.contains("LAYER") || b.contains("BROILER") || n.contains("FLOCK") || b.contains("KIENYEJI") ||
-        b.contains("GREENHOUSE") || b.contains("FIELD") || b.contains("PLOT") ||
-        s.contains("POULTRY") || s.contains("FLOCK")) return false
-
-    // 7. Explicitly qualify milking & incalf&milking stages
-    if (s.contains("MILKING") || bs.contains("MILKING") || s == "INCALF_MILKING" || bs.contains("IN-CALF & MILKING") || bs.contains("INCALF & MILKING") || bs.contains("INCALF_MILKING")) {
-        return true
-    }
-
-    // 8. If status is PREGNANT / INCALF, qualify only if lactating/milking (e.g. lastMilk has positive yield)
-    if (s.contains("PREGNANT") || s.contains("INCALF") || bs.contains("PREGNANT") || bs.contains("IN-CALF")) {
-        if (lm == "0.0L" || lm == "0L" || lm == "N/A" || lm == "0") return false
-        return true
-    }
-
-    // 9. If status is ACTIVE or general cow with positive milk
-    if (s == "ACTIVE" || s.isEmpty()) {
-        if (lm == "0.0L" || lm == "0L" || lm == "N/A" || lm == "0") return false
-        return true
-    }
-
-    return false
-}
-
 fun isLogForCow(log: MilkLog, cow: AnimalCowItem): Boolean {
     val cleanLog = log.cowName.trim().lowercase()
     val cleanCow = cow.name.trim().lowercase()
@@ -624,6 +570,7 @@ fun MilkLogScreen(
     milkUsageLogs: List<MilkUsageLog> = emptyList(),
     eggLogs: List<EggLog> = emptyList(),
     units: List<com.example.data.FarmUnit> = emptyList(),
+    allCattleEvents: List<com.example.data.CattleEvent> = emptyList(),
     onAddMilkLogClick: () -> Unit,
     onAddEggLogClick: () -> Unit = {},
     onQuickSaveMilkLog: (cowName: String, litres: Double, session: String, date: String, onResult: (Boolean, String?) -> Unit) -> Unit = { _, _, _, _, _ -> },
@@ -651,20 +598,38 @@ fun MilkLogScreen(
     }
 
     // Registered Milking Cow Database dynamically built strictly from active farm livestock list (Room units + mockAnimals)
-    val cowsList = remember(units, deletedSet) {
+    val cowsList = remember(units, deletedSet, allCattleEvents) {
         val result = mutableListOf<AnimalCowItem>()
 
         // 1. From Room units (registered farm livestock)
-        units.filter {
-            (it.type.equals("Cattle", ignoreCase = true) || it.type.equals("CATTLE", ignoreCase = true)) &&
-            !deletedSet.contains("unit_${it.id}") && !deletedSet.contains(it.name.lowercase()) &&
-            isMilkingCow(
-                name = it.name,
-                breed = it.breed,
-                status = it.healthStatus,
-                tag = it.tagNumber,
-                lastMilk = it.currentWeight
+        units.filter { unit ->
+            if (!(unit.type.equals("Cattle", ignoreCase = true) || unit.type.equals("CATTLE", ignoreCase = true))) return@filter false
+            if (deletedSet.contains("unit_${unit.id}") || deletedSet.contains(unit.name.lowercase())) return@filter false
+
+            val unitDbEvents = allCattleEvents.filter { it.unitId == unit.id }.map {
+                com.example.ui.screens.CattleEventItem(
+                    id = it.id.toString(),
+                    category = it.category,
+                    title = it.title,
+                    date = it.date,
+                    details = it.details,
+                    notes = it.notes ?: "",
+                    metricValue = it.metricValue ?: ""
+                )
+            }
+            val animalData = com.example.ui.screens.AnimalDetailData(
+                id = unit.id.toString(),
+                name = unit.name,
+                tagNumber = unit.tagNumber,
+                category = unit.type,
+                breed = unit.breed,
+                age = "",
+                status = unit.healthStatus,
+                weight = unit.currentWeight,
+                breedingStatus = "",
+                lastMilk = unit.currentWeight
             )
+            com.example.util.CattleLifecycleEngine.evaluateCattleStage(animalData, unitDbEvents, milkLogs).isMilking
         }.forEach { unit ->
             val tag = unit.tagNumber.ifBlank { "#${unit.id + 100}" }
             val displayName = if (unit.name.contains(tag)) unit.name else "${unit.name} ($tag)"
@@ -679,17 +644,10 @@ fun MilkLogScreen(
         }
 
         // 2. From mockAnimals (registered farm livestock list)
-        mockAnimals.filter {
-            it.category.equals("CATTLE", ignoreCase = true) &&
-            !deletedSet.contains(it.id) && !deletedSet.contains(it.name.lowercase()) &&
-            isMilkingCow(
-                name = it.name,
-                breed = it.breed,
-                status = it.status,
-                tag = it.tagNumber,
-                lastMilk = it.lastMilk,
-                breedingStatus = it.breedingStatus
-            )
+        mockAnimals.filter { animal ->
+            animal.category.equals("CATTLE", ignoreCase = true) &&
+            !deletedSet.contains(animal.id) && !deletedSet.contains(animal.name.lowercase()) &&
+            com.example.util.CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), milkLogs).isMilking
         }.forEach { animal ->
             val tag = animal.tagNumber.ifBlank { "#100" }
             val displayName = if (animal.name.contains(tag)) animal.name else "${animal.name} ($tag)"

@@ -61,15 +61,20 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -1077,6 +1082,7 @@ fun FlocksScreen(
     var animalToEdit by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToDelete by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToDispose by remember { mutableStateOf<AnimalDetailData?>(null) }
+    var flockToDispose by remember { mutableStateOf<AnimalDetailData?>(null) }
     var showFinancePromptForDisposal by remember { mutableStateOf<Pair<String, String>?>(null) } // Pair(Description, InitialTargetUnit)
     var showRecordFinanceDialog by remember { mutableStateOf(false) }
     var pendingFinanceCategory by remember { mutableStateOf("Animal Sale") }
@@ -1091,7 +1097,7 @@ fun FlocksScreen(
 
     val hasFlocksOverlay = (selectedAnimal != null) || (animalForOptions != null) ||
             (animalToEdit != null) || (animalToDelete != null) || (animalToDispose != null) ||
-            showCategoryGuideDialog
+            (flockToDispose != null) || showCategoryGuideDialog
 
     BackHandler(enabled = hasFlocksOverlay) {
         when {
@@ -1099,6 +1105,7 @@ fun FlocksScreen(
             animalToEdit != null -> animalToEdit = null
             animalToDelete != null -> animalToDelete = null
             animalToDispose != null -> animalToDispose = null
+            flockToDispose != null -> flockToDispose = null
             showCategoryGuideDialog -> showCategoryGuideDialog = false
             selectedAnimal != null -> selectedAnimal = null
         }
@@ -1136,89 +1143,201 @@ fun FlocksScreen(
             }
         }
     }
-    val targetUnits = if (selectedStatusFilter == "ACTIVE") units else archivedUnits
-    val roomAnimals = remember(targetUnits, milkLogs, cattleEventsByUnit, eggLogs, allDbPoultryLogs) {
-        targetUnits.map { unit ->
-            val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true)
-            val isHeiferOrCalfOrBull = !isPoultry && (
-                unit.healthStatus.contains("Heifer", ignoreCase = true) ||
-                unit.healthStatus.contains("Calf", ignoreCase = true) ||
-                unit.healthStatus.contains("Bull", ignoreCase = true) ||
-                unit.healthStatus.contains("Steer", ignoreCase = true)
-            )
-            val cowLogs = if (isHeiferOrCalfOrBull) emptyList() else MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
-            val unitDbEvents = cattleEventsByUnit[unit.id].orEmpty()
-            val calculatedAge = if (unit.dob.isNotBlank()) {
-                CattleLifecycleEngine.calculateAgeFromDob(unit.dob)
-            } else {
-                "1y"
+    val targetUnits = remember(selectedStatusFilter, units, archivedUnits) {
+        if (selectedStatusFilter == "ACTIVE") {
+            units.filter { !it.isArchived && !it.healthStatus.contains("DISPOSED", ignoreCase = true) && it.headCount > 0 }
+        } else {
+            (archivedUnits + units.filter { it.isArchived || it.healthStatus.contains("DISPOSED", ignoreCase = true) || it.headCount == 0 }).distinctBy { it.id }
+        }
+    }
+    val roomAnimals = remember(targetUnits, units, archivedUnits, milkLogs, cattleEventsByUnit, eggLogs, allDbPoultryLogs, selectedStatusFilter) {
+        if (selectedStatusFilter == "ACTIVE") {
+            targetUnits.map { unit ->
+                val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true) || unit.breed.contains("Layer", ignoreCase = true) || unit.breed.contains("Flock", ignoreCase = true)
+                val isHeiferOrCalfOrBull = !isPoultry && (
+                    unit.healthStatus.contains("Heifer", ignoreCase = true) ||
+                    unit.healthStatus.contains("Calf", ignoreCase = true) ||
+                    unit.healthStatus.contains("Bull", ignoreCase = true) ||
+                    unit.healthStatus.contains("Steer", ignoreCase = true)
+                )
+                val cowLogs = if (isHeiferOrCalfOrBull) emptyList() else MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
+                val unitDbEvents = cattleEventsByUnit[unit.id].orEmpty()
+                val calculatedAge = if (unit.dob.isNotBlank()) {
+                    CattleLifecycleEngine.calculateAgeFromDob(unit.dob)
+                } else {
+                    "1y"
+                }
+
+                val baseAnimalDetail = AnimalDetailData(
+                    id = "unit_${unit.id}",
+                    name = unit.name,
+                    tagNumber = if (unit.tagNumber.isNotBlank()) unit.tagNumber else if (isPoultry) "Count: ${unit.headCount}" else "#${unit.id + 100}",
+                    breed = unit.breed.ifBlank { if (isPoultry) "Poultry Flock" else "Local Breed" },
+                    category = if (isPoultry) "POULTRY" else "CATTLE",
+                    status = unit.healthStatus.ifBlank { "ACTIVE" },
+                    age = calculatedAge,
+                    weight = unitDbEvents
+                        .filter { it.category.equals("WEIGHT", ignoreCase = true) }
+                        .maxByOrNull { CattleLifecycleEngine.parseDateOrNull(it.date)?.time ?: 0L }
+                        ?.metricValue
+                        ?.takeIf { it.isNotBlank() }
+                        ?: unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
+                    lastMilk = "No data yet",
+                    breedingStatus = if (unit.healthStatus.isNotBlank() && !unit.healthStatus.equals("ACTIVE", ignoreCase = true) && !unit.healthStatus.equals("OPTIMAL", ignoreCase = true)) unit.healthStatus else "HEALTHY",
+                    dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },
+                    weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
+                    sire = unit.sire.ifBlank { "N/A" },
+                    dam = unit.dam.ifBlank { "N/A" },
+                    disposalReason = "",
+                    disposalDate = "",
+                    disposalAmount = 0.0,
+                    disposalNotes = "",
+                    headCountInt = unit.headCount,
+                    photoUri = unit.photoUri,
+                    notes = unit.notes,
+                    isArchived = false
+                )
+
+                val eval = CattleLifecycleEngine.evaluateCattleStage(baseAnimalDetail, unitDbEvents, cowLogs)
+
+                val lastMilkStr = if (isPoultry) {
+                    val poultryEggLogs = eggLogs.filter { it.unitName.equals(unit.name, ignoreCase = true) || it.unitName.contains(unit.name, ignoreCase = true) }
+                        .sortedByDescending { it.id }
+                    if (poultryEggLogs.isNotEmpty()) "${poultryEggLogs.first().totalEggs} Eggs" else "${unit.headCount} Birds"
+                } else if (eval.stage == CattleStage.HEIFER || eval.stage == CattleStage.CALF || eval.stage == CattleStage.BULL || isHeiferOrCalfOrBull) {
+                    "Not Lactating"
+                } else if (cowLogs.isNotEmpty()) {
+                    "${"%.1f".format(cowLogs.first().litres)}L"
+                } else {
+                    "No data yet"
+                }
+
+                val newStatus = if (unitDbEvents.isNotEmpty() || baseAnimalDetail.status.isBlank() || baseAnimalDetail.status.equals("ACTIVE", ignoreCase = true) || baseAnimalDetail.status.equals("OPTIMAL", ignoreCase = true)) eval.stage.displayName else baseAnimalDetail.status
+
+                baseAnimalDetail.copy(
+                    status = newStatus,
+                    lastMilk = lastMilkStr,
+                    breedingStatus = if (eval.breedingStatusText.isNotBlank()) eval.breedingStatusText else baseAnimalDetail.breedingStatus
+                )
             }
+        } else {
+            val allUnitsCombined = (units + archivedUnits).distinctBy { it.id }
 
-            val disposalReasonExtracted = if (unit.healthStatus.contains("DISPOSED", ignoreCase = true)) {
-                unit.healthStatus.substringAfter("(", "").substringBefore(")", "").ifBlank { "Disposed" }
-            } else ""
+            // 1. Every recorded disposal log for poultry (full or partial)
+            val poultryDisposalLogs = allDbPoultryLogs
+                .filter { it.logType == "DISPOSAL" }
+                .sortedByDescending { it.id }
+                .map { log ->
+                    val parentUnit = allUnitsCombined.find { it.id == log.unitId }
+                    AnimalDetailData(
+                        id = "poultry_disposal_log_${log.id}",
+                        name = parentUnit?.name ?: (if (log.notes.isNotBlank() && !log.notes.startsWith("Partial disposal")) log.notes else "Poultry Flock"),
+                        tagNumber = "Disposed: ${log.birdCount}",
+                        breed = parentUnit?.breed?.ifBlank { "Layers" } ?: "Layers",
+                        category = "POULTRY",
+                        status = "DISPOSED (${log.disposalReason.ifBlank { "Disposed" }})",
+                        age = "",
+                        weight = "",
+                        lastMilk = "${log.birdCount} Birds",
+                        breedingStatus = "DISPOSED",
+                        dateOfBirth = parentUnit?.dob ?: "",
+                        weightAtBirth = "",
+                        sire = "",
+                        dam = "",
+                        disposalReason = log.disposalReason.ifBlank { "Disposed" },
+                        disposalDate = log.date,
+                        disposalAmount = log.disposalAmount,
+                        disposalNotes = log.notes,
+                        headCountInt = log.birdCount,
+                        photoUri = parentUnit?.photoUri,
+                        notes = log.notes,
+                        isArchived = true
+                    )
+                }
 
-            val poultryDisposalLog = if (isPoultry) allDbPoultryLogs.lastOrNull { it.unitId == unit.id && it.logType == "DISPOSAL" } else null
-            val cattleDisposalEvent = if (!isPoultry) unitDbEvents.lastOrNull { it.category.equals("DISPOSAL", ignoreCase = true) || it.title.contains("Dispos", ignoreCase = true) } else null
+            // 2. Any archived poultry unit with no individual disposal logs
+            val standaloneArchivedPoultry = targetUnits
+                .filter { unit ->
+                    val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true) || unit.breed.contains("Layer", ignoreCase = true) || unit.breed.contains("Flock", ignoreCase = true)
+                    isPoultry && allDbPoultryLogs.none { it.unitId == unit.id && it.logType == "DISPOSAL" }
+                }
+                .map { unit ->
+                    val disposalReasonExtracted = if (unit.healthStatus.contains("DISPOSED", ignoreCase = true)) {
+                        unit.healthStatus.substringAfter("(", "").substringBefore(")", "").ifBlank { "Disposed" }
+                    } else "Disposed"
+                    val resolvedDisposalDate = unit.lastUpdated.takeIf { it.isNotBlank() }
+                        ?: unit.dateAdded.takeIf { it.isNotBlank() }
+                        ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(unit.updatedAt))
+                    AnimalDetailData(
+                        id = "unit_${unit.id}",
+                        name = unit.name,
+                        tagNumber = if (unit.tagNumber.isNotBlank()) unit.tagNumber else "Count: ${unit.headCount}",
+                        breed = unit.breed.ifBlank { "Poultry Flock" },
+                        category = "POULTRY",
+                        status = "DISPOSED ($disposalReasonExtracted)",
+                        age = "",
+                        weight = "",
+                        lastMilk = "${unit.headCount} Birds",
+                        breedingStatus = "DISPOSED",
+                        dateOfBirth = unit.dob.ifBlank { "" },
+                        weightAtBirth = "",
+                        sire = "",
+                        dam = "",
+                        disposalReason = disposalReasonExtracted,
+                        disposalDate = resolvedDisposalDate,
+                        disposalAmount = 0.0,
+                        disposalNotes = unit.notes,
+                        headCountInt = unit.headCount,
+                        photoUri = unit.photoUri,
+                        notes = unit.notes,
+                        isArchived = true
+                    )
+                }
 
-            val resolvedDisposalDate = poultryDisposalLog?.date
-                ?: cattleDisposalEvent?.date
-                ?: if (unit.isArchived || unit.healthStatus.contains("DISPOSED", ignoreCase = true)) {
-                    unit.dateAdded.takeIf { it.isNotBlank() } ?: unit.lastUpdated.takeIf { it.isNotBlank() } ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(unit.updatedAt))
-                } else ""
+            // 3. Disposed / Archived cattle units
+            val archivedCattle = targetUnits
+                .filter { unit ->
+                    val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true) || unit.breed.contains("Layer", ignoreCase = true) || unit.breed.contains("Flock", ignoreCase = true)
+                    !isPoultry
+                }
+                .map { unit ->
+                    val unitDbEvents = cattleEventsByUnit[unit.id].orEmpty()
+                    val calculatedAge = if (unit.dob.isNotBlank()) CattleLifecycleEngine.calculateAgeFromDob(unit.dob) else "1y"
+                    val disposalReasonExtracted = if (unit.healthStatus.contains("DISPOSED", ignoreCase = true)) {
+                        unit.healthStatus.substringAfter("(", "").substringBefore(")", "").ifBlank { "Disposed" }
+                    } else ""
+                    val cattleDisposalEvent = unitDbEvents.lastOrNull { it.category.equals("DISPOSAL", ignoreCase = true) || it.title.contains("Dispos", ignoreCase = true) }
+                    val resolvedDisposalDate = cattleDisposalEvent?.date
+                        ?: unit.lastUpdated.takeIf { it.isNotBlank() }
+                        ?: unit.dateAdded.takeIf { it.isNotBlank() }
+                        ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(unit.updatedAt))
+                    AnimalDetailData(
+                        id = "unit_${unit.id}",
+                        name = unit.name,
+                        tagNumber = if (unit.tagNumber.isNotBlank()) unit.tagNumber else "#${unit.id + 100}",
+                        breed = unit.breed.ifBlank { "Local Breed" },
+                        category = "CATTLE",
+                        status = unit.healthStatus.ifBlank { "DISPOSED" },
+                        age = calculatedAge,
+                        weight = unit.currentWeight.ifBlank { "450kg" },
+                        lastMilk = "Not Lactating",
+                        breedingStatus = "DISPOSED",
+                        dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },
+                        weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
+                        sire = unit.sire.ifBlank { "N/A" },
+                        dam = unit.dam.ifBlank { "N/A" },
+                        disposalReason = disposalReasonExtracted.ifBlank { cattleDisposalEvent?.metricValue ?: "Disposed" },
+                        disposalDate = resolvedDisposalDate,
+                        disposalAmount = 0.0,
+                        disposalNotes = cattleDisposalEvent?.notes ?: unit.notes,
+                        headCountInt = unit.headCount,
+                        photoUri = unit.photoUri,
+                        notes = unit.notes,
+                        isArchived = true
+                    )
+                }
 
-            val baseAnimalDetail = AnimalDetailData(
-                id = "unit_${unit.id}",
-                name = unit.name,
-                tagNumber = if (unit.tagNumber.isNotBlank()) unit.tagNumber else if (isPoultry) "Count: ${unit.headCount}" else "#${unit.id + 100}",
-                breed = unit.breed.ifBlank { if (isPoultry) "Poultry Flock" else "Local Breed" },
-                category = if (isPoultry) "POULTRY" else "CATTLE",
-                status = unit.healthStatus.ifBlank { "ACTIVE" },
-                age = calculatedAge,
-                weight = unitDbEvents
-                    .filter { it.category.equals("WEIGHT", ignoreCase = true) }
-                    .maxByOrNull { CattleLifecycleEngine.parseDateOrNull(it.date)?.time ?: 0L }
-                    ?.metricValue
-                    ?.takeIf { it.isNotBlank() }
-                    ?: unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
-                lastMilk = "No data yet",
-                breedingStatus = if (unit.healthStatus.isNotBlank() && !unit.healthStatus.equals("ACTIVE", ignoreCase = true) && !unit.healthStatus.equals("OPTIMAL", ignoreCase = true)) unit.healthStatus else "HEALTHY",
-                dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },
-                weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
-                sire = unit.sire.ifBlank { "N/A" },
-                dam = unit.dam.ifBlank { "N/A" },
-                disposalReason = disposalReasonExtracted,
-                disposalDate = resolvedDisposalDate,
-                disposalAmount = poultryDisposalLog?.disposalAmount ?: 0.0,
-                disposalNotes = poultryDisposalLog?.notes ?: cattleDisposalEvent?.notes ?: "",
-                headCountInt = unit.headCount,
-                photoUri = unit.photoUri,
-                notes = unit.notes,
-                isArchived = unit.isArchived
-            )
-
-            val eval = CattleLifecycleEngine.evaluateCattleStage(baseAnimalDetail, unitDbEvents, cowLogs)
-
-            val lastMilkStr = if (isPoultry) {
-                val poultryEggLogs = eggLogs.filter { it.unitName.equals(unit.name, ignoreCase = true) || it.unitName.contains(unit.name, ignoreCase = true) }
-                    .sortedByDescending { it.id }
-                if (poultryEggLogs.isNotEmpty()) "${poultryEggLogs.first().totalEggs} Eggs" else "${unit.headCount} Birds"
-            } else if (eval.stage == CattleStage.HEIFER || eval.stage == CattleStage.CALF || eval.stage == CattleStage.BULL || isHeiferOrCalfOrBull) {
-                "Not Lactating"
-            } else if (cowLogs.isNotEmpty()) {
-                "${"%.1f".format(cowLogs.first().litres)}L"
-            } else {
-                "No data yet"
-            }
-
-            // Dynamic Stage Update
-            val newStatus = if (unitDbEvents.isNotEmpty() || baseAnimalDetail.status.isBlank() || baseAnimalDetail.status.equals("ACTIVE", ignoreCase = true) || baseAnimalDetail.status.equals("OPTIMAL", ignoreCase = true)) eval.stage.displayName else baseAnimalDetail.status
-
-            baseAnimalDetail.copy(
-                status = newStatus,
-                lastMilk = lastMilkStr,
-                breedingStatus = if (eval.breedingStatusText.isNotBlank()) eval.breedingStatusText else baseAnimalDetail.breedingStatus
-            )
+            poultryDisposalLogs + standaloneArchivedPoultry + archivedCattle
         }
     }
 
@@ -1368,13 +1487,18 @@ fun FlocksScreen(
         if (selectedAnimal?.id == animal.id || selectedAnimal?.name.equals(animal.name, ignoreCase = true)) {
             selectedAnimal = null
         }
-        if (animal.id.startsWith("unit_")) {
+        if (animal.id.startsWith("poultry_disposal_log_")) {
+            val logId = animal.id.removePrefix("poultry_disposal_log_").toLongOrNull()
+            if (logId != null) {
+                viewModel.deletePoultryLog(logId)
+            }
+        } else if (animal.id.startsWith("unit_")) {
             val uId = animal.id.removePrefix("unit_").toLongOrNull()
             if (uId != null) {
                 onDeleteUnit(uId)
             }
         } else {
-            val matching = units.find { it.name.equals(animal.name, ignoreCase = true) }
+            val matching = units.find { it.name.equals(animal.name, ignoreCase = true) } ?: archivedUnits.find { it.name.equals(animal.name, ignoreCase = true) }
             if (matching != null) {
                 onDeleteUnit(matching.id)
             }
@@ -1456,21 +1580,32 @@ fun FlocksScreen(
     fun handleDisposeFlock(flock: AnimalDetailData, quantity: Int, reason: String, amount: Double, notes: String, date: String) {
         val newCount = (flock.headCountInt - quantity).coerceAtLeast(0)
         val updatedTag = "Count: $newCount"
+        val isFullyDisposed = newCount == 0
         val updated = flock.copy(
             headCountInt = newCount,
             tagNumber = updatedTag,
             lastMilk = "$newCount Birds",
-            disposalReason = reason,
-            disposalDate = date,
-            disposalAmount = amount,
-            disposalNotes = notes
+            disposalReason = if (isFullyDisposed) reason else "",
+            disposalDate = if (isFullyDisposed) date else "",
+            disposalAmount = if (isFullyDisposed) amount else 0.0,
+            disposalNotes = if (isFullyDisposed) notes else "",
+            status = if (isFullyDisposed) "DISPOSED ($reason)" else flock.status,
+            isArchived = isFullyDisposed
         )
         val idx = mutableAnimals.indexOfFirst { it.id == flock.id }
         if (idx >= 0) {
-            mutableAnimals[idx] = updated
+            if (selectedStatusFilter == "ACTIVE" && isFullyDisposed) {
+                mutableAnimals.removeAt(idx)
+            } else {
+                mutableAnimals[idx] = updated
+            }
         }
         if (selectedAnimal?.id == flock.id) {
-            selectedAnimal = updated
+            if (isFullyDisposed) {
+                selectedAnimal = null
+            } else {
+                selectedAnimal = updated
+            }
         }
 
         if (flock.id.startsWith("unit_")) {
@@ -1488,7 +1623,7 @@ fun FlocksScreen(
                         notes = notes
                     )
                 )
-                if (newCount == 0) {
+                if (isFullyDisposed) {
                     val matching = units.find { it.id == uId }
                     if (matching != null) {
                         onUpdateUnit(matching.copy(headCount = 0, healthStatus = "DISPOSED ($reason)", isArchived = true, lastUpdated = date))
@@ -1497,18 +1632,7 @@ fun FlocksScreen(
                     onUpdateUnitHeadCount(uId, newCount)
                     val matching = units.find { it.id == uId }
                     if (matching != null) {
-                        viewModel.insertArchivedUnit(
-                            matching.copy(
-                                id = 0, // Let DB generate new ID
-                                name = "${matching.name} (Disposed)",
-                                headCount = quantity,
-                                healthStatus = "DISPOSED ($reason)",
-                                isArchived = true,
-                                dateAdded = date,
-                                lastUpdated = date,
-                                notes = notes.ifBlank { "Partial disposal of ${quantity} birds from ${matching.name}" }
-                            )
-                        )
+                        onUpdateUnit(matching.copy(headCount = newCount, lastUpdated = date))
                     }
                 }
             }
@@ -1668,7 +1792,7 @@ fun FlocksScreen(
                 animalForOptions = null
                 val isPoultry = target.category.equals("POULTRY", ignoreCase = true) || target.breed.contains("Layer", ignoreCase = true) || target.breed.contains("Flock", ignoreCase = true)
                 if (isPoultry) {
-                    selectedAnimal = target
+                    flockToDispose = target
                 } else {
                     animalToDispose = target
                 }
@@ -1747,6 +1871,24 @@ fun FlocksScreen(
         )
     }
 
+    if (flockToDispose != null) {
+        DisposeFlockDialog(
+            flockName = flockToDispose!!.name,
+            currentHeadCount = flockToDispose!!.headCountInt,
+            onDismiss = { flockToDispose = null },
+            onConfirmDisposeFlock = { quantity, reason, amount, notes, date ->
+                handleDisposeFlock(flockToDispose!!, quantity, reason, amount, notes, date)
+                if (reason.equals("Sold", ignoreCase = true) || reason.equals("Home Consumption", ignoreCase = true)) {
+                    val catName = "Poultry Sales"
+                    pendingFinanceCategory = catName
+                    pendingFinanceDate = date
+                    showFinancePromptForDisposal = Pair("Disposed $quantity birds from ${flockToDispose!!.name} ($reason) - $notes", flockToDispose!!.name)
+                }
+                flockToDispose = null
+            }
+        )
+    }
+
     if (showFinancePromptForDisposal != null) {
         val (desc, targetUnit) = showFinancePromptForDisposal!!
         androidx.compose.material3.AlertDialog(
@@ -1802,7 +1944,22 @@ fun FlocksScreen(
 
     if (selectedAnimal != null) {
         val isPoultry = selectedAnimal!!.category.equals("POULTRY", ignoreCase = true) || selectedAnimal!!.category.equals("FLOCK", ignoreCase = true)
-        if (isPoultry) {
+        val isDisposedPoultry = isPoultry && (selectedAnimal!!.isArchived || selectedAnimal!!.status.contains("DISPOSED", ignoreCase = true) || selectedStatusFilter == "ARCHIVED")
+
+        if (isDisposedPoultry) {
+            DisposedFlockDetailView(
+                flock = selectedAnimal!!,
+                userRole = userRole,
+                onBackClick = { selectedAnimal = null },
+                onDeleteFlock = {
+                    val toDelete = selectedAnimal
+                    selectedAnimal = null
+                    animalToDelete = toDelete
+                },
+                canEdit = effectiveCanEditLivestock,
+                modifier = modifier
+            )
+        } else if (isPoultry) {
             val selectedPoultryUnitId = selectedAnimal!!.id.removePrefix("unit_").toLongOrNull() ?: 0L
             FlockDetailsView(
                 flock = selectedAnimal!!,
@@ -1879,7 +2036,7 @@ fun FlocksScreen(
                 onDisposeFlock = { qty, reason, amount, notes, date ->
                     handleDisposeFlock(selectedAnimal!!, qty, reason, amount, notes, date)
                     if (reason.equals("Sold", ignoreCase = true) || reason.equals("Home Consumption", ignoreCase = true)) {
-                        val catName = if (reason.equals("Sold", ignoreCase = true)) "Poultry Sale" else "Farm Income"
+                        val catName = if (reason.equals("Sold", ignoreCase = true)) "Poultry Sales" else "Farm Income"
                         pendingFinanceCategory = catName
                         pendingFinanceDate = date
                         showFinancePromptForDisposal = Pair("Disposed $qty birds from ${selectedAnimal!!.name} ($reason) - $notes", selectedAnimal!!.name)
@@ -2190,7 +2347,12 @@ fun FlocksScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.Egg, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Poultry Flock Summary", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                    Text(
+                                        text = if (selectedStatusFilter == "ARCHIVED") "Disposed Poultry Summary" else "Poultry Flock Summary",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0F172A)
+                                    )
                                 }
 
                                 Spacer(modifier = Modifier.height(10.dp))
@@ -2199,39 +2361,79 @@ fun FlocksScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = Color.White,
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("$poultryFlocksCount", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                                            Text("Total Flocks", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    if (selectedStatusFilter == "ARCHIVED") {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color.White,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("${poultryList.size}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                                Text("Disposed Flocks", fontSize = 10.sp, color = Color(0xFF64748B))
+                                            }
                                         }
-                                    }
 
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFFFEF3C7),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("$poultryLayingCount", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
-                                            Text("Currently Laying", fontSize = 11.sp, color = Color(0xFF92400E))
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFFEE2E2),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                val totalDisposedBirds = poultryList.sumOf { it.headCountInt }
+                                                Text("$totalDisposedBirds", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
+                                                Text("Disposed Birds", fontSize = 10.sp, color = Color(0xFF7F1D1D))
+                                            }
                                         }
-                                    }
 
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFFDCFCE7),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("$poultryTotalBirds", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
-                                            Text("Total Birds", fontSize = 11.sp, color = ForestGreenPrimary)
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFDCFCE7),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                val totalRevenue = poultryList.sumOf { it.disposalAmount }
+                                                Text("KSh %,.0f".format(totalRevenue), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, maxLines = 1)
+                                                Text("Total Revenue", fontSize = 10.sp, color = ForestGreenPrimary)
+                                            }
+                                        }
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color.White,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("$poultryFlocksCount", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                                Text("Total Flocks", fontSize = 11.sp, color = Color(0xFF64748B))
+                                            }
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFFEF3C7),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("$poultryLayingCount", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                                Text("Currently Laying", fontSize = 11.sp, color = Color(0xFF92400E))
+                                            }
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFDCFCE7),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("$poultryTotalBirds", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                                Text("Total Birds", fontSize = 11.sp, color = ForestGreenPrimary)
+                                            }
                                         }
                                     }
                                 }
@@ -2286,7 +2488,16 @@ fun FlocksScreen(
                         )
                     } else null
 
-                    if (isPoultryItem && poultryEval != null) {
+                    val isDisposedPoultry = isPoultryItem && (animal.isArchived || animal.status.contains("DISPOSED", ignoreCase = true) || selectedStatusFilter == "ARCHIVED")
+
+                    if (isDisposedPoultry) {
+                        DisposedPoultryCard(
+                            animal = animal,
+                            onClick = { selectedAnimal = animal },
+                            onMoreOptions = { animalForOptions = animal },
+                            canEdit = effectiveCanEditLivestock
+                        )
+                    } else if (isPoultryItem && poultryEval != null) {
                         val flockAge = PoultryAgeAndVaccinationUtils.calculateFlockAge(animal.dateOfBirth)
                         @OptIn(ExperimentalFoundationApi::class)
                         Card(
@@ -2303,38 +2514,6 @@ fun FlocksScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
-                                val isDisposedUI = animal.status.contains("DISPOSED", ignoreCase = true) || animal.disposalReason.isNotBlank() || animal.headCountInt <= 0
-                                if (isDisposedUI) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = animal.name,
-                                                fontSize = 16.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF0F172A)
-                                            )
-                                            val unitIdForDisposal = animal.id.removePrefix("unit_").toLongOrNull() ?: animal.id.toLongOrNull() ?: 0L
-                                            val latestDisposalLog = allDbPoultryLogs.lastOrNull { it.unitId == unitIdForDisposal && it.logType == "DISPOSAL" }
-                                            val displayDate = animal.disposalDate.ifEmpty { latestDisposalLog?.date ?: "N/A" }
-                                            Text(
-                                                text = "Disposed on $displayDate",
-                                                fontSize = 12.sp,
-                                                color = Color(0xFF64748B)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFFEE2E2)) {
-                                            val unitIdForDisposalCount = animal.id.removePrefix("unit_").toLongOrNull() ?: animal.id.toLongOrNull() ?: 0L
-                                            val disposedBirdsCount = allDbPoultryLogs.filter { it.unitId == unitIdForDisposalCount && it.logType == "DISPOSAL" }.sumOf { it.birdCount }
-                                            val countToDisplay = if (disposedBirdsCount > 0) disposedBirdsCount else if (animal.headCountInt > 0) animal.headCountInt else "All"
-                                            Text("$countToDisplay Birds", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                                        }
-                                    }
-                                } else {
                                 // Header Row
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -2597,7 +2776,6 @@ fun FlocksScreen(
                                         }
                                     }
                                 }
-                                }
                             }
                         }
                     } else {
@@ -2855,7 +3033,7 @@ fun AnimalDetailsView(
     )
 
     val initialDisplayStatus = remember(animal.id, animal.status, cattleEval) {
-        if (isCattle && cattleEval != null && (animal.status.isBlank() || animal.status.equals("ACTIVE", ignoreCase = true) || animal.status.equals("OPTIMAL", ignoreCase = true) || animal.status.equals("HEALTHY", ignoreCase = true))) {
+        if (isCattle && cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true)) {
             cattleEval.stage.displayName
         } else {
             animal.status
@@ -2867,10 +3045,10 @@ fun AnimalDetailsView(
     var showDisposeDialog by remember { mutableStateOf(false) }
     var showStageInfoDialog by remember { mutableStateOf(false) }
 
-    // Keep animal status in sync with calculated stage if cattle and status is default/empty
+    // Keep animal status in sync with calculated stage if cattle
     LaunchedEffect(animal.id, cattleEval?.stage) {
-        if (cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true) && (animal.status.isBlank() || animal.status.equals("ACTIVE", ignoreCase = true) || animal.status.equals("OPTIMAL", ignoreCase = true) || animal.status.equals("HEALTHY", ignoreCase = true))) {
-            if (currentStatus != cattleEval.stage.displayName && animal.status != cattleEval.stage.displayName) {
+        if (cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true)) {
+            if (currentStatus != cattleEval.stage.displayName || animal.status != cattleEval.stage.displayName) {
                 currentStatus = cattleEval.stage.displayName
                 onUpdateAnimalStage(cattleEval.stage.displayName, cattleEval.breedingStatusText)
             }
@@ -7512,6 +7690,375 @@ private fun AutomatedPoultryStatusCard(
                                         fontWeight = FontWeight.Medium,
                                         color = if (alert.isCritical) Color(0xFFB91C1C) else Color(0xFFB45309)
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DisposedPoultryCard(
+    animal: AnimalDetailData,
+    onClick: () -> Unit,
+    onMoreOptions: () -> Unit,
+    canEdit: Boolean
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .testTag("disposed_flock_card_${animal.id}"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF1F5F9),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.Egg,
+                                contentDescription = "Disposed Flock",
+                                tint = Color(0xFF64748B),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(
+                            text = animal.name,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E293B)
+                        )
+                        val displayDate = animal.disposalDate.ifBlank { "N/A" }
+                        Text(
+                            text = "Disposed on $displayDate",
+                            fontSize = 12.5.sp,
+                            color = Color(0xFF64748B),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFEE2E2),
+                    border = BorderStroke(1.dp, Color(0xFFFECACA))
+                ) {
+                    val count = if (animal.headCountInt > 0) "${animal.headCountInt} Birds" else "Disposed"
+                    Text(
+                        text = count,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF991B1B),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+
+                if (canEdit) {
+                    IconButton(
+                        onClick = onMoreOptions,
+                        modifier = Modifier.size(32.dp).testTag("more_options_${animal.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "Options",
+                            tint = Color(0xFF64748B),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            if (animal.disposalReason.isNotBlank() || animal.disposalAmount > 0.0) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (animal.disposalReason.isNotBlank()) {
+                            Text(
+                                text = "Reason: ${animal.disposalReason}",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF475569)
+                            )
+                        }
+                        if (animal.disposalAmount > 0.0) {
+                            Text(
+                                text = "KSh %,.0f".format(animal.disposalAmount),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ForestGreenPrimary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DisposedFlockDetailView(
+    flock: AnimalDetailData,
+    userRole: String,
+    onBackClick: () -> Unit,
+    onDeleteFlock: () -> Unit = {},
+    canEdit: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            text = flock.name,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Color(0xFF0F172A),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Disposed Poultry Record",
+                            fontSize = 12.sp,
+                            color = Color(0xFFDC2626),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color(0xFF0F172A)
+                        )
+                    }
+                },
+                actions = {
+                    if (canEdit) {
+                        IconButton(onClick = onDeleteFlock) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Delete Record",
+                                tint = Color(0xFFDC2626)
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+            )
+        },
+        containerColor = Color(0xFFF8FAFC),
+        modifier = modifier.fillMaxSize()
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFFFEE2E2),
+                                    border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Egg,
+                                            contentDescription = null,
+                                            tint = Color(0xFFDC2626),
+                                            modifier = Modifier.size(30.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column {
+                                    Text(
+                                        text = flock.name,
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Text(
+                                        text = "Breed: ${flock.breed.ifEmpty { "Layers" }}",
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = Color(0xFFFEE2E2),
+                                border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                            ) {
+                                Text(
+                                    text = "DISPOSED",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF991B1B),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+                        HorizontalDivider(color = Color(0xFFF1F5F9))
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Key Disposed Information
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Birds Disposed Box
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFFEF2F2),
+                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text(
+                                        text = "BIRDS DISPOSED",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF991B1B)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "${flock.headCountInt} Birds",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF7F1D1D)
+                                    )
+                                }
+                            }
+
+                            // Disposed Date Box
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text(
+                                        text = "DISPOSAL DATE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF64748B)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = flock.disposalDate.ifBlank { "N/A" },
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (flock.disposalReason.isNotBlank() || flock.disposalAmount > 0.0) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (flock.disposalReason.isNotBlank()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Disposal Reason", fontSize = 12.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Medium)
+                                            Text(flock.disposalReason, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                                        }
+                                    }
+                                    if (flock.disposalAmount > 0.0) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Total Revenue / Value", fontSize = 12.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Medium)
+                                            Text("KSh %,.0f".format(flock.disposalAmount), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        val displayNotes = flock.disposalNotes.ifBlank { flock.notes }
+                        if (displayNotes.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFFFFBEB),
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Text("Disposal Notes / Destination", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(displayNotes, fontSize = 13.sp, color = Color(0xFF334155))
                                 }
                             }
                         }

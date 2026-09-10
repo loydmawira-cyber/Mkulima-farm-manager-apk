@@ -1615,43 +1615,11 @@ class FarmViewModel(
                 )
             }
 
-            // Auto-update animal status based on breeding event
+            // Auto-update animal status and breeding state based on events
             if (unitId > 0) {
                 val existing = allUnits.value.find { it.id == unitId }
                 if (existing != null) {
-                    val isPositivePd = category.equals("PD", ignoreCase = true) && (
-                        title.contains("Positive", ignoreCase = true) ||
-                        details.contains("Positive", ignoreCase = true) ||
-                        details.contains("Pregnant", ignoreCase = true) ||
-                        details.contains("In-Calf", ignoreCase = true) ||
-                        metricValue?.contains("Positive", ignoreCase = true) == true
-                    )
-                    val isNegativePd = category.equals("PD", ignoreCase = true) && (
-                        title.contains("Negative", ignoreCase = true) ||
-                        details.contains("Negative", ignoreCase = true) ||
-                        metricValue?.contains("Negative", ignoreCase = true) == true
-                    )
-                    val isInsemination = category.equals("INSEMINATION", ignoreCase = true) || title.contains("Insemination", ignoreCase = true)
-                    val isCalving = category.equals("CALVING", ignoreCase = true) || title.contains("Calving", ignoreCase = true)
-                    val isDryOff = category.equals("DRY_OFF", ignoreCase = true) || title.contains("Dry Off", ignoreCase = true)
-
-                    val hasCalvedOrMilking = existing.healthStatus.contains("Milking", ignoreCase = true) ||
-                        existing.healthStatus.contains("Lactating", ignoreCase = true) ||
-                        existing.healthStatus.contains("In-Calf / Milking", ignoreCase = true) ||
-                        !existing.healthStatus.contains("Heifer", ignoreCase = true)
-
-                    val newStatus = when {
-                        isPositivePd -> if (hasCalvedOrMilking) "In-Calf / Milking" else "In-Calf"
-                        isNegativePd -> if (hasCalvedOrMilking) "Milking (Open)" else "Heifer (Open)"
-                        isInsemination -> "Inseminated"
-                        isCalving -> "Milking"
-                        isDryOff -> "Dry"
-                        else -> null
-                    }
-                    if (newStatus != null) {
-                        val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
-                        repository.updateUnit(existing.copy(healthStatus = newStatus, lastUpdated = nowFormatted))
-                    }
+                    syncUnitLifecycleState(unitId, additionalOrUpdatedEvent = event)
 
                     synchronizeRepeatHeatCheckTasks(event, existing)
                     if (isDewormingEvent(event.category, event.title, event.details)) {
@@ -1684,6 +1652,7 @@ class FarmViewModel(
                 metricValue = metricValue
             )
             repository.updateCattleEvent(event)
+            syncUnitLifecycleState(unitId, additionalOrUpdatedEvent = event)
             val cow = allUnits.value.find { it.id == unitId }
             if (cow != null) {
                 synchronizeRepeatHeatCheckTasks(event, cow)
@@ -1704,6 +1673,7 @@ class FarmViewModel(
             val event = repository.getCattleEventById(eventId)
             repository.deleteCattleEvent(eventId)
             if (event != null) {
+                syncUnitLifecycleState(event.unitId, deletedEventId = eventId)
                 repository.softDeleteTasksBySyncIdPrefix("repeat-heat-${event.syncId}-day-", event.farmId)
                 if (isDewormingEvent(event.category, event.title, event.details)) {
                     allUnits.value.find { it.id == event.unitId }?.let { cow ->
@@ -1714,6 +1684,67 @@ class FarmViewModel(
                     }
                 }
             }
+        }
+    }
+
+    private suspend fun syncUnitLifecycleState(unitId: Long, additionalOrUpdatedEvent: CattleEvent? = null, deletedEventId: Long? = null) {
+        if (unitId <= 0) return
+        val existing = allUnits.value.find { it.id == unitId } ?: return
+        val isCattle = existing.type.equals("CATTLE", ignoreCase = true) || existing.type.equals("DAIRY", ignoreCase = true)
+        if (!isCattle) return
+
+        val baseEvents = allCattleEvents.value.filter { it.unitId == unitId }
+        val effectiveEvents = if (deletedEventId != null) {
+            baseEvents.filterNot { it.id == deletedEventId }
+        } else if (additionalOrUpdatedEvent != null) {
+            baseEvents.filterNot { it.id == additionalOrUpdatedEvent.id } + additionalOrUpdatedEvent
+        } else {
+            baseEvents
+        }
+
+        val mappedEvents = effectiveEvents.map {
+            com.example.ui.screens.CattleEventItem(
+                id = it.id.toString(),
+                category = it.category,
+                title = it.title,
+                date = it.date,
+                details = it.details,
+                notes = it.notes ?: "",
+                metricValue = it.metricValue ?: ""
+            )
+        }
+
+        val eval = com.example.util.CattleLifecycleEngine.evaluateCattleStage(
+            animal = com.example.ui.screens.AnimalDetailData(
+                id = "unit_${existing.id}",
+                name = existing.name,
+                tagNumber = existing.tagNumber,
+                breed = existing.breed,
+                category = "CATTLE",
+                status = existing.healthStatus,
+                age = "",
+                weight = existing.currentWeight,
+                lastMilk = "",
+                breedingStatus = existing.healthStatus,
+                dateOfBirth = existing.dob,
+                weightAtBirth = existing.weightAtBirth,
+                sire = existing.sire,
+                dam = existing.dam,
+                headCountInt = existing.headCount,
+                photoUri = existing.photoUri,
+                notes = existing.notes,
+                isArchived = existing.isArchived
+            ),
+            events = mappedEvents,
+            milkLogs = allMilkLogs.value
+        )
+        val newStage = eval.stage.displayName
+        if (existing.healthStatus != newStage) {
+            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+            repository.updateUnit(existing.copy(
+                healthStatus = newStage,
+                lastUpdated = nowFormatted
+            ))
         }
     }
 

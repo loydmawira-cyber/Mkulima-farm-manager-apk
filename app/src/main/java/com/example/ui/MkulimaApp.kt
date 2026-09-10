@@ -364,6 +364,7 @@ fun MkulimaAppContent(
             AddMilkLogDialog(
                 availableUnits = allUnits,
                 milkLogs = milkLogs,
+                allCattleEvents = allCattleEvents,
                 userRole = userRole,
                 canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true,
                 onDismiss = { showAddMilkLogDialog = false },
@@ -936,6 +937,7 @@ fun MkulimaAppContent(
                             milkUsageLogs = milkUsageLogs,
                             eggLogs = eggLogs,
                             units = allUnits,
+                            allCattleEvents = allCattleEvents,
                             onAddMilkLogClick = { showAddMilkLogDialog = true },
                             onAddEggLogClick = { showAddEggLogDialog = true },
                             onQuickSaveMilkLog = { cowName, litres, session, recordDate, onResult ->

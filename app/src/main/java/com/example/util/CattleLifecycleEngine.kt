@@ -411,21 +411,39 @@ object CattleLifecycleEngine {
             )
         )
 
-        val isPositivePd = !isAbortionMostRecent && latestCurrentPd != null && (
-            latestCurrentPd.title.contains("Positive", ignoreCase = true) ||
-            latestCurrentPd.details.contains("Positive", ignoreCase = true) ||
-            latestCurrentPd.metricValue.contains("Positive", ignoreCase = true) ||
-            latestCurrentPd.details.contains("Pregnant", ignoreCase = true) ||
-            latestCurrentPd.details.contains("In-Calf", ignoreCase = true)
+        // Check whether a newer AI service was performed after the latest PD check
+        val isAiNewerThanPd = latestCurrentAi != null && latestCurrentPd != null && (
+            (latestCurrentAiDate != null && latestCurrentPdDate != null && latestCurrentAiDate.after(latestCurrentPdDate)) ||
+            (latestCurrentAiDate == null && sortedEvents.indexOf(latestCurrentAi) < sortedEvents.indexOf(latestCurrentPd))
         )
 
-        val isNegativePd = latestCurrentPd != null && (
-            latestCurrentPd.title.contains("Negative", ignoreCase = true) ||
-            latestCurrentPd.details.contains("Negative", ignoreCase = true) ||
-            latestCurrentPd.metricValue.contains("Negative", ignoreCase = true) ||
-            latestCurrentPd.details.contains("Not Pregnant", ignoreCase = true) ||
-            latestCurrentPd.details.contains("Open", ignoreCase = true)
+        val pdCombinedText = if (latestCurrentPd != null) {
+            "${latestCurrentPd.category} ${latestCurrentPd.title} ${latestCurrentPd.details} ${latestCurrentPd.metricValue} ${latestCurrentPd.notes}".uppercase()
+        } else ""
+
+        val isExplicitNegativePd = latestCurrentPd != null && (
+            pdCombinedText.contains("NEGAT") ||
+            pdCombinedText.contains("NOT PREGNANT") ||
+            pdCombinedText.contains("NOT IN CALF") ||
+            pdCombinedText.contains("NOT IN-CALF") ||
+            pdCombinedText.contains("OPEN") ||
+            pdCombinedText.contains("EMPTY") ||
+            pdCombinedText.contains("NON-PREGNANT") ||
+            pdCombinedText.contains("FAIL")
         )
+
+        val isExplicitPositivePd = latestCurrentPd != null && (
+            pdCombinedText.contains("POSIT") ||
+            pdCombinedText.contains("PREGNANT") ||
+            pdCombinedText.contains("IN-CALF") ||
+            pdCombinedText.contains("INCALF") ||
+            pdCombinedText.contains("IN CALF") ||
+            pdCombinedText.contains("CONFIRMED") ||
+            pdCombinedText.contains("CONCEIVED")
+        )
+
+        val isPositivePd = !isAbortionMostRecent && !isAiNewerThanPd && latestCurrentPd != null && (isExplicitPositivePd || !isExplicitNegativePd)
+        val isNegativePd = !isAbortionMostRecent && !isAiNewerThanPd && latestCurrentPd != null && isExplicitNegativePd
 
         // Check Dry-off status
         val latestCurrentDryOff = currentCycleDryOffEvents.firstOrNull()
@@ -489,14 +507,15 @@ object CattleLifecycleEngine {
         // Determine milk activity
         val cleanAnimal = animal.name.lowercase().trim()
         val cleanTag = animal.tagNumber.lowercase().replace("#", "").trim()
-        val isExplicitInseminated = (cleanStatus.contains("INSEMINATED") || cleanBreeding.contains("INSEMINATED") || cleanBreeding.contains("SERVED")) && latestCurrentAi != null
+        val isPendingAi = latestCurrentAi != null && !isInCalf && !isNegativePd && !isAbortionMostRecent
+        val isExplicitInseminated = isPendingAi && (cleanStatus.contains("INSEMINATED") || cleanBreeding.contains("INSEMINATED") || cleanBreeding.contains("SERVED"))
         val isExplicitMilking = cleanStatus == "MILKING" || cleanStatus == "LACTATING" || cleanStatus.contains("MILKING")
         val isExplicitHeifer = cleanStatus == "HEIFER" || cleanBreeding.contains("HEIFER")
         val isExplicitCalf = cleanStatus == "CALF" || cleanBreeding.contains("CALF")
         val isExplicitBull = cleanStatus == "BULL" || cleanStatus == "STEER" || cleanBreed.contains("BULL")
 
-        // Non-milking stock (Heifers, Calves, Bulls, or cows that have never calved) have no milk production
-        val isNonLactatingStock = isExplicitHeifer || isExplicitCalf || isExplicitBull || (!hasGivenBirthPreviously && !isExplicitMilking)
+        // Non-milking stock (Heifers, Calves, Bulls) have no milk production
+        val isNonLactatingStock = isExplicitHeifer || isExplicitCalf || isExplicitBull
         val recentCowMilkLogs = if (isNonLactatingStock) {
             emptyList()
         } else {
@@ -507,8 +526,7 @@ object CattleLifecycleEngine {
         val hasRecentMilkYield = recentCowMilkLogs.any { it.litres > 0.0 }
 
         val isCurrentlyMilking = !isExplicitlyDriedOff && !isExplicitInseminated && !isExplicitHeifer && !isExplicitCalf && !isExplicitBull && (
-            (hasGivenBirthPreviously && hasRecentMilkYield) ||
-            isExplicitMilking
+            !isNonLactatingStock
         )
 
         // ============================================================
@@ -646,7 +664,7 @@ object CattleLifecycleEngine {
         }
 
         // CASE 4: SERVED AI IN CURRENT CYCLE (Pending PD)
-        if (latestCurrentAi != null && !isNegativePd && !isAbortionMostRecent) {
+        if (latestCurrentAi != null && !isInCalf && !isNegativePd && !isAbortionMostRecent) {
             val serviceDate = latestCurrentAi.date.ifBlank { "Recently" }
             val estCalvingIfConceived = calculateExpectedCalving(serviceDate)
             val isMilkingNow = !isExplicitlyDriedOff && (hasRecentMilkYield || isExplicitMilking)
@@ -665,6 +683,35 @@ object CattleLifecycleEngine {
                 expectedDryOffDate = null,
                 lastEventSummary = latestCurrentAi.title.ifBlank { "Artificial Insemination Logged" },
                 lastInseminationDate = latestCurrentAi.date.ifBlank { serviceDate },
+                lastCalvingDate = latestCalving?.date,
+                hasGivenBirthPreviously = hasGivenBirthPreviously,
+                parityCount = parityCount,
+                daysInMilk = daysInMilk,
+                isDriedOff = isExplicitlyDriedOff
+            )
+        }
+
+        // CASE 4.5: NEGATIVE PD IN CURRENT CYCLE (Insemination Unsuccessful)
+        if (isNegativePd && latestCurrentAi != null) {
+            val pdDateStr = latestCurrentPd?.date ?: "recent date"
+            val aiDateStr = latestCurrentAi.date.ifBlank { "recent service" }
+            val isMilkingNow = !isExplicitlyDriedOff && (hasRecentMilkYield || isExplicitMilking)
+            val labelStr = if (isMilkingNow || hasGivenBirthPreviously) "Milking (Open)" else "Heifer (Open)"
+            return CattleStageEvaluation(
+                stage = if (isMilkingNow || hasGivenBirthPreviously) CattleStage.MILKING else CattleStage.HEIFER,
+                stageKey = if (isMilkingNow || hasGivenBirthPreviously) CattleStage.MILKING.key else CattleStage.HEIFER.key,
+                label = labelStr,
+                summaryReason = "PD check on $pdDateStr returned negative • Insemination from $aiDateStr was unsuccessful. Cow is open and ready for re-breeding.",
+                breedingStatusText = "OPEN / PD NEGATIVE",
+                isInCalf = false,
+                isMilking = isMilkingNow,
+                badgeBgColor = Color(0xFFFEE2E2),
+                badgeTextColor = Color(0xFF991B1B),
+                gestationDays = null,
+                expectedCalvingDate = null,
+                expectedDryOffDate = null,
+                lastEventSummary = latestCurrentPd?.title ?: "PD Check Negative",
+                lastInseminationDate = null,
                 lastCalvingDate = latestCalving?.date,
                 hasGivenBirthPreviously = hasGivenBirthPreviously,
                 parityCount = parityCount,
@@ -781,6 +828,31 @@ object CattleLifecycleEngine {
                 hasGivenBirthPreviously = false,
                 parityCount = 0,
                 daysInMilk = null,
+                isDriedOff = false
+            )
+        }
+
+        // CASE 7.8: ADULT OPEN / ACTIVE COW (Fallback for adult cows that are not heifers, calves, or bulls)
+        if (!isExplicitHeifer && !isExplicitCalf && !isExplicitBull) {
+            return CattleStageEvaluation(
+                stage = CattleStage.MILKING,
+                stageKey = CattleStage.MILKING.key,
+                label = "Milking",
+                summaryReason = "Active adult cow • Open / Lactating.",
+                breedingStatusText = "OPEN (In Milk / Lactating)",
+                isInCalf = false,
+                isMilking = true,
+                badgeBgColor = Color(0xFFE0F2FE),
+                badgeTextColor = Color(0xFF0369A1),
+                gestationDays = null,
+                expectedCalvingDate = null,
+                expectedDryOffDate = null,
+                lastEventSummary = latestCalving?.title ?: "Active Lactation",
+                lastInseminationDate = null,
+                lastCalvingDate = latestCalving?.date,
+                hasGivenBirthPreviously = hasGivenBirthPreviously,
+                parityCount = parityCount,
+                daysInMilk = daysInMilk,
                 isDriedOff = false
             )
         }

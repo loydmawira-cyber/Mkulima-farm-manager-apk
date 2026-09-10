@@ -59,11 +59,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.data.CattleEvent
 import com.example.data.FarmUnit
 import com.example.data.MilkLog
 import com.example.data.MilkLogEntryRules
 import com.example.ui.screens.AnimalCowItem
-import com.example.ui.screens.isMilkingCow
 import com.example.ui.screens.mockAnimals
 import com.example.ui.theme.ForestGreenPrimary
 import java.text.SimpleDateFormat
@@ -75,6 +75,7 @@ import java.util.Locale
 fun AddMilkLogDialog(
     availableUnits: List<FarmUnit>,
     milkLogs: List<MilkLog> = emptyList(),
+    allCattleEvents: List<CattleEvent> = emptyList(),
     userRole: String = "OWNER",
     canEditPastDaysLogs: Boolean = true,
     onDismiss: () -> Unit,
@@ -99,20 +100,38 @@ fun AddMilkLogDialog(
         }
     }
 
-    val cowsList = remember(availableUnits, deletedSet) {
+    val cowsList = remember(availableUnits, deletedSet, allCattleEvents) {
         val result = mutableListOf<AnimalCowItem>()
 
         // 1. From Room units (registered farm livestock)
-        availableUnits.filter {
-            (it.type.equals("Cattle", ignoreCase = true) || it.type.equals("CATTLE", ignoreCase = true)) &&
-            !deletedSet.contains("unit_${it.id}") && !deletedSet.contains(it.name.lowercase()) &&
-            isMilkingCow(
-                name = it.name,
-                breed = it.breed,
-                status = it.healthStatus,
-                tag = it.tagNumber,
-                lastMilk = it.currentWeight
+        availableUnits.filter { unit ->
+            if (!(unit.type.equals("Cattle", ignoreCase = true) || unit.type.equals("CATTLE", ignoreCase = true))) return@filter false
+            if (deletedSet.contains("unit_${unit.id}") || deletedSet.contains(unit.name.lowercase())) return@filter false
+
+            val unitDbEvents = allCattleEvents.filter { it.unitId == unit.id }.map {
+                com.example.ui.screens.CattleEventItem(
+                    id = it.id.toString(),
+                    category = it.category,
+                    title = it.title,
+                    date = it.date,
+                    details = it.details,
+                    notes = it.notes ?: "",
+                    metricValue = it.metricValue ?: ""
+                )
+            }
+            val animalData = com.example.ui.screens.AnimalDetailData(
+                id = unit.id.toString(),
+                name = unit.name,
+                tagNumber = unit.tagNumber,
+                category = unit.type,
+                breed = unit.breed,
+                age = "",
+                status = unit.healthStatus,
+                weight = unit.currentWeight,
+                breedingStatus = "",
+                lastMilk = unit.currentWeight
             )
+            com.example.util.CattleLifecycleEngine.evaluateCattleStage(animalData, unitDbEvents, milkLogs).isMilking
         }.forEach { unit ->
             val tag = unit.tagNumber.ifBlank { "#${unit.id + 100}" }
             val displayName = if (unit.name.contains(tag)) unit.name else "${unit.name} ($tag)"
@@ -127,17 +146,10 @@ fun AddMilkLogDialog(
         }
 
         // 2. From mockAnimals (registered farm livestock list)
-        mockAnimals.filter {
-            it.category.equals("CATTLE", ignoreCase = true) &&
-            !deletedSet.contains(it.id) && !deletedSet.contains(it.name.lowercase()) &&
-            isMilkingCow(
-                name = it.name,
-                breed = it.breed,
-                status = it.status,
-                tag = it.tagNumber,
-                lastMilk = it.lastMilk,
-                breedingStatus = it.breedingStatus
-            )
+        mockAnimals.filter { animal ->
+            animal.category.equals("CATTLE", ignoreCase = true) &&
+            !deletedSet.contains(animal.id) && !deletedSet.contains(animal.name.lowercase()) &&
+            com.example.util.CattleLifecycleEngine.evaluateCattleStage(animal, emptyList(), milkLogs).isMilking
         }.forEach { animal ->
             val tag = animal.tagNumber.ifBlank { "#100" }
             val displayName = if (animal.name.contains(tag)) animal.name else "${animal.name} ($tag)"

@@ -84,7 +84,11 @@ fun FinanceRecord.effectiveTargetUnit(): String {
     }
 }
 
-fun FinanceRecord.matchesFilter(filter: String): Boolean {
+fun FinanceRecord.matchesFilter(
+    filter: String,
+    cattleNames: Set<String> = emptySet(),
+    poultryNames: Set<String> = emptySet()
+): Boolean {
     if (filter.isBlank() || filter.equals("ALL", ignoreCase = true) || filter.equals("All Categories", ignoreCase = true)) {
         return true
     }
@@ -98,12 +102,25 @@ fun FinanceRecord.matchesFilter(filter: String): Boolean {
         .removePrefix("🌾 ")
         .trim()
 
+    val cattleNamesLower = cattleNames.map { it.lowercase() }.toSet()
+    val poultryNamesLower = poultryNames.map { it.lowercase() }.toSet()
+
     return when {
         fClean == "cattle" || fClean == "all cattle" -> {
-            target.contains("cattle") || target.contains("cow") || cat.contains("cattle") || cat.contains("milk") || desc.contains("cattle") || desc.contains("cow") || origTarget.contains("cattle") || origTarget.contains("cow")
+            cattleNamesLower.contains(target) ||
+                    cattleNamesLower.contains(origTarget) ||
+                    target.contains("cattle") || target.contains("cow") ||
+                    cat.contains("cattle") || cat.contains("milk") ||
+                    desc.contains("cattle") || desc.contains("cow") ||
+                    origTarget.contains("cattle") || origTarget.contains("cow")
         }
         fClean == "poultry" || fClean == "all poultry" -> {
-            target.contains("poultry") || target.contains("flock") || cat.contains("egg") || cat.contains("poultry") || desc.contains("flock") || desc.contains("chick") || origTarget.contains("poultry") || origTarget.contains("flock")
+            poultryNamesLower.contains(target) ||
+                    poultryNamesLower.contains(origTarget) ||
+                    target.contains("poultry") || target.contains("flock") ||
+                    cat.contains("egg") || cat.contains("poultry") ||
+                    desc.contains("flock") || desc.contains("chick") ||
+                    origTarget.contains("poultry") || origTarget.contains("flock")
         }
         fClean.startsWith("flock") -> {
             target.contains(fClean) || origTarget.contains(fClean) || desc.contains(fClean) || cat.contains(fClean)
@@ -337,7 +354,11 @@ private fun FinanceTab(
                 "EXPENSE" -> record.type == FinanceType.EXPENSE
                 else -> true
             }
-            val matchesCat = record.matchesFilter(selectedCategoryOrUnitFilter)
+            val matchesCat = record.matchesFilter(
+                selectedCategoryOrUnitFilter,
+                activeCattleUnits.toSet(),
+                activeFlocks.toSet()
+            )
             matchesType && matchesCat
         }
     }

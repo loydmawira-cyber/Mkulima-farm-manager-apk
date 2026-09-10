@@ -459,16 +459,24 @@ object CattleLifecycleEngine {
 
         // Check Dry-off status
         val latestCurrentDryOff = currentCycleDryOffEvents.firstOrNull()
-        val isExplicitlyDriedOff = latestCurrentDryOff != null ||
+        val hasAnyLactationLogs = dryOffEvents.isNotEmpty() || calvingEvents.isNotEmpty()
+        val isExplicitlyDriedOff = if (hasAnyLactationLogs) {
+            // Trust logs if they exist
+            latestCurrentDryOff != null
+        } else {
+            // Fallback for initial registration
             cleanStatus == "DRY" ||
             cleanStatus.contains("DRY OFF") ||
             cleanStatus.contains("DRY COW")
+        }
 
         // In-Calf check in current cycle
         var isInCalf = false
         var gestationEst = 60
         var calvingDateEst: String? = null
         var dryOffTargetDateEst: String? = null
+
+        val hasRelevantPregnancyLogs = pdEvents.isNotEmpty() || aiEvents.isNotEmpty() || abortedEvents.isNotEmpty() || calvingEvents.isNotEmpty()
 
         if (isPositivePd) {
             isInCalf = true
@@ -493,32 +501,27 @@ object CattleLifecycleEngine {
                 calvingDateEst = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(pdCal.time)
                 dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             }
-        } else if (!isNegativePd && !isAbortionMostRecent && !isAiNewerThanPd && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
+        } else if (!hasRelevantPregnancyLogs && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
             val hasExplicitCalvingDate = animal.expectedCalving.isNotBlank() && animal.expectedCalving != "Jun 21, '24"
-            val hasAnyBreedingEvents = latestCurrentPd != null || hasExplicitCalvingDate
-            if (hasAnyBreedingEvents) {
-                isInCalf = true
-                if (latestCurrentAiDate != null && latestCurrentAi != null) {
-                    val aiCal = Calendar.getInstance().apply {
-                        time = latestCurrentAiDate
-                        set(Calendar.HOUR_OF_DAY, 0)
-                        set(Calendar.MINUTE, 0)
-                        set(Calendar.SECOND, 0)
-                        set(Calendar.MILLISECOND, 0)
-                    }
-                    val diff = todayCal.timeInMillis - aiCal.timeInMillis
-                    gestationEst = (diff / (1000 * 60 * 60 * 24)).toInt().coerceIn(21, 283)
-                    calvingDateEst = calculateExpectedCalving(latestCurrentAi.date)
-                    dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
-                } else {
-                    calvingDateEst = animal.expectedCalving.ifBlank {
-                        val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 120) }
-                        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(c.time)
-                    }
-                    dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
+            isInCalf = true
+            if (latestCurrentAiDate != null && latestCurrentAi != null) {
+                val aiCal = Calendar.getInstance().apply {
+                    time = latestCurrentAiDate
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
                 }
+                val diff = todayCal.timeInMillis - aiCal.timeInMillis
+                gestationEst = (diff / (1000 * 60 * 60 * 24)).toInt().coerceIn(21, 283)
+                calvingDateEst = calculateExpectedCalving(latestCurrentAi.date)
+                dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             } else {
-                isInCalf = false
+                calvingDateEst = animal.expectedCalving.ifBlank {
+                    val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 120) }
+                    SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(c.time)
+                }
+                dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             }
         }
 

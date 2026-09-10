@@ -259,13 +259,16 @@ fun DashboardScreen(
     }
 
     // Dynamic Aggregations
-    val cattleUnits = remember(units) {
-        units.filter {
+    val activeUnits = remember(units) {
+        units.filter { !it.isArchived && !it.healthStatus.contains("DISPOSED", ignoreCase = true) && it.headCount > 0 }
+    }
+    val cattleUnits = remember(activeUnits) {
+        activeUnits.filter {
             !it.type.contains("POULTRY", ignoreCase = true) && !it.breed.contains("Layer", ignoreCase = true) && !it.breed.contains("Flock", ignoreCase = true)
         }
     }
-    val poultryUnits = remember(units) {
-        units.filter {
+    val poultryUnits = remember(activeUnits) {
+        activeUnits.filter {
             it.type.contains("POULTRY", ignoreCase = true) || it.breed.contains("Layer", ignoreCase = true) || it.breed.contains("Flock", ignoreCase = true)
         }
     }

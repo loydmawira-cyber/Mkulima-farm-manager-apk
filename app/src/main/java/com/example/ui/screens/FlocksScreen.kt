@@ -98,6 +98,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -2350,41 +2351,75 @@ fun FlocksScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     if (selectedStatusFilter == "ARCHIVED") {
-                                        Surface(
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = Color.White,
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Text("${poultryList.size}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                                                Text("Disposed Flocks", fontSize = 10.sp, color = Color(0xFF64748B))
+                                        if (selectedFilterCategory.equals("POULTRY", ignoreCase = true)) {
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color(0xFFFEE2E2),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(12.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    val totalDisposedBirds = poultryList.sumOf { it.headCountInt }
+                                                    Text(
+                                                        "$totalDisposedBirds Birds Disposed from Flock Analytics",
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF991B1B),
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                    if (poultryList.isNotEmpty()) {
+                                                        val latestDate = poultryList.map { it.disposalDate }.filter { it.isNotBlank() }.maxOrNull() ?: ""
+                                                        if (latestDate.isNotBlank()) {
+                                                            Text(
+                                                                "Last disposed on $latestDate",
+                                                                fontSize = 11.sp,
+                                                                color = Color(0xFF7F1D1D),
+                                                                modifier = Modifier.padding(top = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
-                                        }
-
-                                        Surface(
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = Color(0xFFFEE2E2),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                                val totalDisposedBirds = poultryList.sumOf { it.headCountInt }
-                                                Text("$totalDisposedBirds", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
-                                                Text("Disposed Birds", fontSize = 10.sp, color = Color(0xFF7F1D1D))
+                                        } else {
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color.White,
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Text("${poultryList.size}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                                    Text("Disposed Flocks", fontSize = 10.sp, color = Color(0xFF64748B))
+                                                }
                                             }
-                                        }
 
-                                        Surface(
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = Color(0xFFDCFCE7),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                                val totalRevenue = poultryList.sumOf { it.disposalAmount }
-                                                Text("KSh %,.0f".format(totalRevenue), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, maxLines = 1)
-                                                Text("Total Revenue", fontSize = 10.sp, color = ForestGreenPrimary)
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color(0xFFFEE2E2),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    val totalDisposedBirds = poultryList.sumOf { it.headCountInt }
+                                                    Text("$totalDisposedBirds", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
+                                                    Text("Disposed Birds", fontSize = 10.sp, color = Color(0xFF7F1D1D))
+                                                }
+                                            }
+
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color(0xFFDCFCE7),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    val totalRevenue = poultryList.sumOf { it.disposalAmount }
+                                                    Text("KSh %,.0f".format(totalRevenue), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, maxLines = 1)
+                                                    Text("Total Revenue", fontSize = 10.sp, color = ForestGreenPrimary)
+                                                }
                                             }
                                         }
                                     } else {
@@ -7731,7 +7766,7 @@ fun DisposedPoultryCard(
                         )
                         val displayDate = animal.disposalDate.ifBlank { "N/A" }
                         Text(
-                            text = "Disposed on $displayDate",
+                            text = "${animal.headCountInt} birds disposed from flock on $displayDate",
                             fontSize = 12.5.sp,
                             color = Color(0xFF64748B),
                             fontWeight = FontWeight.Medium
@@ -7741,16 +7776,15 @@ fun DisposedPoultryCard(
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFFEE2E2),
-                    border = BorderStroke(1.dp, Color(0xFFFECACA))
+                    color = Color(0xFFF1F5F9),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                 ) {
-                    val count = if (animal.headCountInt > 0) "${animal.headCountInt} Birds" else "Disposed"
                     Text(
-                        text = count,
-                        fontSize = 12.sp,
+                        text = "Disposed",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF991B1B),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        color = Color(0xFF475569),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
 
@@ -7792,10 +7826,10 @@ fun DisposedPoultryCard(
                         }
                         if (animal.disposalAmount > 0.0) {
                             Text(
-                                text = "KSh %,.0f".format(animal.disposalAmount),
+                                text = "Amount: KSh %,.0f".format(animal.disposalAmount),
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ForestGreenPrimary
+                                color = Color(0xFF64748B)
                             )
                         }
                     }

@@ -1156,11 +1156,11 @@ fun FlocksScreen(
                 val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true) || unit.breed.contains("Layer", ignoreCase = true) || unit.breed.contains("Flock", ignoreCase = true)
                 val isHeiferOrCalfOrBull = !isPoultry && (
                     unit.healthStatus.contains("Heifer", ignoreCase = true) ||
-                    unit.healthStatus.contains("Calf", ignoreCase = true) ||
+                    (unit.healthStatus.contains("Calf", ignoreCase = true) && !unit.healthStatus.contains("In-Calf", ignoreCase = true) && !unit.healthStatus.contains("InCalf", ignoreCase = true)) ||
                     unit.healthStatus.contains("Bull", ignoreCase = true) ||
                     unit.healthStatus.contains("Steer", ignoreCase = true)
                 )
-                val cowLogs = if (isHeiferOrCalfOrBull) emptyList() else MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
+                val cowLogs = MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
                 val unitDbEvents = cattleEventsByUnit[unit.id].orEmpty()
                 val calculatedAge = if (unit.dob.isNotBlank()) {
                     CattleLifecycleEngine.calculateAgeFromDob(unit.dob)
@@ -1611,18 +1611,6 @@ fun FlocksScreen(
         if (flock.id.startsWith("unit_")) {
             val uId = flock.id.removePrefix("unit_").toLongOrNull()
             if (uId != null) {
-                viewModel.addPoultryLog(
-                    com.example.data.PoultryLog(
-                        farmId = farmSettings.farmId,
-                        unitId = uId,
-                        logType = "DISPOSAL",
-                        date = date,
-                        birdCount = quantity,
-                        disposalReason = reason,
-                        disposalAmount = amount,
-                        notes = notes
-                    )
-                )
                 if (isFullyDisposed) {
                     val matching = units.find { it.id == uId }
                     if (matching != null) {
@@ -1663,10 +1651,10 @@ fun FlocksScreen(
             val mockEvs = allAnimalEventsMap[animal.id] ?: allAnimalEventsMap[rawId] ?: emptyList()
             val combinedEvs = (dbEvs + mockEvs).distinctBy { it.id }
             val isExplicitNonLactating = animal.status.contains("Heifer", ignoreCase = true) ||
-                animal.status.contains("Calf", ignoreCase = true) ||
+                (animal.status.contains("Calf", ignoreCase = true) && !animal.status.contains("In-Calf", ignoreCase = true) && !animal.status.contains("InCalf", ignoreCase = true)) ||
                 animal.status.contains("Bull", ignoreCase = true) ||
                 animal.breedingStatus.contains("HEIFER", ignoreCase = true)
-            val cowMilkLogs = if (isExplicitNonLactating) emptyList() else com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
+            val cowMilkLogs = com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
             animal.id to CattleLifecycleEngine.evaluateCattleStage(animal, combinedEvs, cowMilkLogs)
         }
     }
@@ -2987,14 +2975,14 @@ fun AnimalDetailsView(
     var pendingFinanceDescription by remember { mutableStateOf("") }
     var pendingFinanceDate by remember { mutableStateOf("") }
 
-    val sortedAnimalEvents = remember(animalEvents) {
+    val sortedAnimalEvents = remember(dbEvents) {
         animalEvents.sortedWith(
             compareByDescending<CattleEventItem> { parseEventDateForSorting(it.date) }
                 .thenByDescending { it.id.toLongOrNull() ?: 0L }
         )
     }
 
-    val calvingLogs = remember(animalEvents) {
+    val calvingLogs = remember(dbEvents) {
         animalEvents.filter { it.category.equals("CALVING", ignoreCase = true) }
             .sortedWith(
                 compareByDescending<CattleEventItem> { parseEventDateForSorting(it.date) }
@@ -3007,20 +2995,24 @@ fun AnimalDetailsView(
 
     val isExplicitNonLactating = isCattle && (
         animal.status.contains("Heifer", ignoreCase = true) ||
-        animal.status.contains("Calf", ignoreCase = true) ||
+        (animal.status.contains("Calf", ignoreCase = true) && !animal.status.contains("In-Calf", ignoreCase = true) && !animal.status.contains("InCalf", ignoreCase = true)) ||
         animal.status.contains("Bull", ignoreCase = true) ||
         animal.breedingStatus.contains("HEIFER", ignoreCase = true)
     )
 
-    val cowMilkLogs = remember(animal.name, animal.tagNumber, milkLogs, isExplicitNonLactating) {
+    val realCowMilkLogs = remember(animal.name, animal.tagNumber, milkLogs) {
+        com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
+    }
+
+    val cowMilkLogs = remember(realCowMilkLogs, isExplicitNonLactating) {
         if (isExplicitNonLactating) emptyList()
-        else com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, animal.name, animal.tagNumber)
+        else realCowMilkLogs
     }
 
     // Evaluate dynamic cattle stage using CattleLifecycleEngine
-    val cattleEval = remember(animal, animalEvents, cowMilkLogs) {
+    val cattleEval = remember(animal, dbEvents, realCowMilkLogs) {
         if (isCattle) {
-            CattleLifecycleEngine.evaluateCattleStage(animal, animalEvents, cowMilkLogs)
+            CattleLifecycleEngine.evaluateCattleStage(animal, animalEvents, realCowMilkLogs)
         } else null
     }
 
@@ -3387,7 +3379,7 @@ fun AnimalDetailsView(
     }
 
     // Initialize events & alerts dynamically
-    val cattleNotifications = remember(cattleEval, animalEvents.toList(), tasks, eggLogs, isPoultry, reminderCompletions, allDbPoultryLogs) {
+    val cattleNotifications = remember(cattleEval, dbEvents, tasks, eggLogs, isPoultry, reminderCompletions, allDbPoultryLogs) {
         generateAnimalUpcomingEvents(
             animal = animal,
             cattleEval = cattleEval,
@@ -5044,15 +5036,15 @@ fun AnimalDetailsView(
                     "PD" -> {
                         val isPos = title.contains("Positive", ignoreCase = true) || details.contains("Positive", ignoreCase = true) || metricValue.contains("Positive", ignoreCase = true) || metricValue.contains("In-Calf", ignoreCase = true)
                         if (isPos) {
-                            (if (hasCalvedOrMilking) "INCALF / MILKING" else "INCALF") to (if (hasCalvedOrMilking) "IN-CALF & MILKING" else "IN-CALF HEIFER")
+                            (if (hasCalvedOrMilking) "In-Calf / Milking" else "In-Calf") to (if (hasCalvedOrMilking) "IN-CALF & MILKING" else "IN-CALF HEIFER")
                         } else {
-                            (if (hasCalvedOrMilking) "MILKING" else "HEIFER") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
+                            (if (hasCalvedOrMilking) "Milking" else "Heifer") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
                         }
                     }
-                    "INSEMINATION" -> (if (hasCalvedOrMilking) "MILKING" else "INSEMINATED") to "SERVED AI (Pending PD)"
-                    "CALVING" -> "MILKING" to "OPEN (In Milk)"
-                    "DRY_OFF" -> "DRY" to (if (cattleEval?.isInCalf == true) "IN-CALF (Dry)" else "DRY COW (Open)")
-                    "ABORTED" -> (if (hasCalvedOrMilking) "MILKING" else "HEIFER") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
+                    "INSEMINATION" -> (if (hasCalvedOrMilking) "Milking" else "Inseminated") to "SERVED AI (Pending PD)"
+                    "CALVING" -> "Milking" to "OPEN (In Milk)"
+                    "DRY_OFF" -> "Dry" to (if (cattleEval?.isInCalf == true) "IN-CALF (Dry)" else "DRY COW (Open)")
+                    "ABORTED" -> (if (hasCalvedOrMilking) "Milking" else "Heifer") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
                     else -> null to null
                 }
                 if (immediateStage != null && breedingDesc != null) {
@@ -5118,15 +5110,15 @@ fun AnimalDetailsView(
                     "PD" -> {
                         val isPos = title.contains("Positive", ignoreCase = true) || details.contains("Positive", ignoreCase = true) || metricValue.contains("Positive", ignoreCase = true) || metricValue.contains("In-Calf", ignoreCase = true)
                         if (isPos) {
-                            (if (hasCalvedOrMilking) "INCALF / MILKING" else "INCALF") to (if (hasCalvedOrMilking) "IN-CALF & MILKING" else "IN-CALF HEIFER")
+                            (if (hasCalvedOrMilking) "In-Calf / Milking" else "In-Calf") to (if (hasCalvedOrMilking) "IN-CALF & MILKING" else "IN-CALF HEIFER")
                         } else {
-                            (if (hasCalvedOrMilking) "MILKING" else "HEIFER") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
+                            (if (hasCalvedOrMilking) "Milking" else "Heifer") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
                         }
                     }
-                    "INSEMINATION" -> (if (hasCalvedOrMilking) "MILKING" else "INSEMINATED") to "SERVED AI (Pending PD)"
-                    "CALVING" -> "MILKING" to "OPEN (In Milk)"
-                    "DRY_OFF" -> "DRY" to (if (cattleEval?.isInCalf == true) "IN-CALF (Dry)" else "DRY COW (Open)")
-                    "ABORTED" -> (if (hasCalvedOrMilking) "MILKING" else "HEIFER") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
+                    "INSEMINATION" -> (if (hasCalvedOrMilking) "Milking" else "Inseminated") to "SERVED AI (Pending PD)"
+                    "CALVING" -> "Milking" to "OPEN (In Milk)"
+                    "DRY_OFF" -> "Dry" to (if (cattleEval?.isInCalf == true) "IN-CALF (Dry)" else "DRY COW (Open)")
+                    "ABORTED" -> (if (hasCalvedOrMilking) "Milking" else "Heifer") to (if (hasCalvedOrMilking) "OPEN (In Milk)" else "OPEN HEIFER")
                     else -> null to null
                 }
                 if (immediateStage != null && breedingDesc != null) {

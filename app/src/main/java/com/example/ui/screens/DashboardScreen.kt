@@ -366,10 +366,10 @@ fun DashboardScreen(
                 dam = unit.dam
             )
             val isExplicitNonLactating = unit.healthStatus.contains("Heifer", ignoreCase = true) ||
-                unit.healthStatus.contains("Calf", ignoreCase = true) ||
+                (unit.healthStatus.contains("Calf", ignoreCase = true) && !unit.healthStatus.contains("In-Calf", ignoreCase = true) && !unit.healthStatus.contains("InCalf", ignoreCase = true)) ||
                 unit.healthStatus.contains("Bull", ignoreCase = true) ||
                 unit.healthStatus.contains("Steer", ignoreCase = true)
-            val cowLogs = if (isExplicitNonLactating) emptyList() else com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
+            val cowLogs = com.example.data.MilkLogEntryRules.findLogsForCow(milkLogs, unit.name, unit.tagNumber)
             CattleLifecycleEngine.evaluateCattleStage(mockDetail, unitDbEvents, cowLogs)
         }
         stageCounts["Milking"] = evaluated.count { it.stage == CattleStage.MILKING }

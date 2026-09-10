@@ -496,116 +496,151 @@ fun EditAnimalDialog(
                         }
 
                         // Stage / Health Status
-                        OutlinedTextField(
-                            value = status,
-                            onValueChange = { status = it },
-                            label = { Text("Current Production Stage / Status") },
-                            placeholder = { Text("Milking, In-Calf, Inseminated, Heifer, Calf, Dry") },
-                            modifier = Modifier.fillMaxWidth().testTag("edit_animal_status_input"),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        // Quick Stage Chips
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Quick Select Stage:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
-                            if (evaluatedStage != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = evaluatedStage.badgeBgColor,
-                                    modifier = Modifier.clickable {
-                                        status = evaluatedStage.stage.displayName
-                                        breedingStatus = evaluatedStage.breedingStatusText
-                                    }
+                        if (isCattle) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.dp, Color(0xFFBBF7D0))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "Current: ${evaluatedStage.stage.displayName}",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = evaluatedStage.badgeTextColor,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    Icon(
+                                        imageVector = Icons.Filled.Pets,
+                                        contentDescription = "Auto Managed",
+                                        tint = ForestGreenPrimary,
+                                        modifier = Modifier.size(20.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            "Dynamic Stage Tracking",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF166534)
+                                        )
+                                        Text(
+                                            "This cattle's stage (${evaluatedStage?.stage?.displayName ?: "Dynamic"}) is automatically determined based on age, milk logs, calving history, and logged events.",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF1E5E3A)
+                                        )
+                                    }
                                 }
                             }
-                        }
+                        } else {
+                            OutlinedTextField(
+                                value = status,
+                                onValueChange = { status = it },
+                                label = { Text("Current Production Stage / Status") },
+                                placeholder = { Text("Milking, In-Calf, Inseminated, Heifer, Calf, Dry") },
+                                modifier = Modifier.fillMaxWidth().testTag("edit_animal_status_input"),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
 
-                        val quickStages = listOf(
-                            Triple("Auto", "✨ Auto (${evaluatedStage?.stage?.displayName ?: "Dynamic"})", evaluatedStage?.stage?.displayName ?: "Milking"),
-                            Triple("Milking", "🥛 Milking", "Active Lactation"),
-                            Triple("In-Calf / Milking", "🥛🤰 In-Calf / Milking", "Confirmed Pregnant (Milking)"),
-                            Triple("In-Calf", "🤰 In-Calf", "Confirmed Pregnant"),
-                            Triple("Inseminated", "💉 Inseminated", "Served / Pending PD"),
-                            Triple("Heifer", "🌾 Heifer", "Open Heifer"),
-                            Triple("Calf", "🍼 Calf", "Young Stock"),
-                            Triple("Dry", "🍂 Dry", "Dry / Resting"),
-                            Triple("Bull", "🐂 Bull", "Breeding Sire"),
-                            Triple("Disposed", "🚫 Disposed", "Culled / Disposed")
-                        )
+                            Spacer(modifier = Modifier.height(6.dp))
 
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            quickStages.forEach { (stKey, stLabel, defaultBreeding) ->
-                                val isSelected = when (stKey) {
-                                    "Auto" -> status.isBlank() || status.equals("AUTO", ignoreCase = true) || (evaluatedStage != null && status.equals(evaluatedStage.stage.displayName, ignoreCase = true))
-                                    "In-Calf / Milking" -> status.equals("In-Calf / Milking", ignoreCase = true) || status.equals("INCALF_MILKING", ignoreCase = true) || status.equals("INCALF / MILKING", ignoreCase = true)
-                                    else -> status.equals(stKey, ignoreCase = true)
+                            // Quick Stage Chips
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Quick Select Stage:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF64748B))
+                                if (evaluatedStage != null) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = evaluatedStage.badgeBgColor,
+                                        modifier = Modifier.clickable {
+                                            status = evaluatedStage.stage.displayName
+                                            breedingStatus = evaluatedStage.breedingStatusText
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "Current: ${evaluatedStage.stage.displayName}",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = evaluatedStage.badgeTextColor,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) ForestGreenPrimary.copy(alpha = 0.15f) else Color(0xFFF1F5F9),
-                                    border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFE2E8F0)),
-                                    modifier = Modifier.clickable {
-                                        if (stKey == "Auto") {
-                                            status = evaluatedStage?.stage?.displayName ?: "Milking"
-                                            breedingStatus = evaluatedStage?.breedingStatusText ?: "Healthy"
-                                        } else {
-                                            status = stKey
-                                            breedingStatus = when (stKey) {
-                                                "Milking" -> "Active Lactation"
-                                                "In-Calf / Milking" -> "Confirmed Pregnant (Milking)"
-                                                "In-Calf" -> "Confirmed Pregnant"
-                                                "Inseminated" -> "Served / Pending PD"
-                                                "Heifer" -> "Open Heifer"
-                                                "Calf" -> "Young Stock"
-                                                "Dry" -> "Dry / Resting"
-                                                "Bull" -> "Breeding Sire"
-                                                "Disposed" -> "Culled / Disposed"
-                                                else -> defaultBreeding
+                            }
+
+                            val quickStages = listOf(
+                                Triple("Auto", "✨ Auto (${evaluatedStage?.stage?.displayName ?: "Dynamic"})", evaluatedStage?.stage?.displayName ?: "Milking"),
+                                Triple("Milking", "🥛 Milking", "Active Lactation"),
+                                Triple("In-Calf / Milking", "🥛🤰 In-Calf / Milking", "Confirmed Pregnant (Milking)"),
+                                Triple("In-Calf", "🤰 In-Calf", "Confirmed Pregnant"),
+                                Triple("Inseminated", "💉 Inseminated", "Served / Pending PD"),
+                                Triple("Heifer", "🌾 Heifer", "Open Heifer"),
+                                Triple("Calf", "🍼 Calf", "Young Stock"),
+                                Triple("Dry", "🍂 Dry", "Dry / Resting"),
+                                Triple("Bull", "🐂 Bull", "Breeding Sire"),
+                                Triple("Disposed", "🚫 Disposed", "Culled / Disposed")
+                            )
+
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                quickStages.forEach { (stKey, stLabel, defaultBreeding) ->
+                                    val isSelected = when (stKey) {
+                                        "Auto" -> status.isBlank() || status.equals("AUTO", ignoreCase = true) || (evaluatedStage != null && status.equals(evaluatedStage.stage.displayName, ignoreCase = true))
+                                        "In-Calf / Milking" -> status.equals("In-Calf / Milking", ignoreCase = true) || status.equals("INCALF_MILKING", ignoreCase = true) || status.equals("INCALF / MILKING", ignoreCase = true)
+                                        else -> status.equals(stKey, ignoreCase = true)
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) ForestGreenPrimary.copy(alpha = 0.15f) else Color(0xFFF1F5F9),
+                                        border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFE2E8F0)),
+                                        modifier = Modifier.clickable {
+                                            if (stKey == "Auto") {
+                                                status = evaluatedStage?.stage?.displayName ?: "Milking"
+                                                breedingStatus = evaluatedStage?.breedingStatusText ?: "Healthy"
+                                            } else {
+                                                status = stKey
+                                                breedingStatus = when (stKey) {
+                                                    "Milking" -> "Active Lactation"
+                                                    "In-Calf / Milking" -> "Confirmed Pregnant (Milking)"
+                                                    "In-Calf" -> "Confirmed Pregnant"
+                                                    "Inseminated" -> "Served / Pending PD"
+                                                    "Heifer" -> "Open Heifer"
+                                                    "Calf" -> "Young Stock"
+                                                    "Dry" -> "Dry / Resting"
+                                                    "Bull" -> "Breeding Sire"
+                                                    "Disposed" -> "Culled / Disposed"
+                                                    else -> defaultBreeding
+                                                }
                                             }
                                         }
+                                    ) {
+                                        Text(
+                                            text = stLabel,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) ForestGreenPrimary else Color(0xFF334155),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
                                     }
-                                ) {
-                                    Text(
-                                        text = stLabel,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) ForestGreenPrimary else Color(0xFF334155),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            OutlinedTextField(
+                                value = breedingStatus,
+                                onValueChange = { breedingStatus = it },
+                                label = { Text("Breeding / Reproductive Notes") },
+                                placeholder = { Text("e.g. In-Calf (Day 110 of 283), AI Thunder #045") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
                         }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        OutlinedTextField(
-                            value = breedingStatus,
-                            onValueChange = { breedingStatus = it },
-                            label = { Text("Breeding / Reproductive Notes") },
-                            placeholder = { Text("e.g. In-Calf (Day 110 of 283), AI Thunder #045") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
 
                         Spacer(modifier = Modifier.height(12.dp))
 

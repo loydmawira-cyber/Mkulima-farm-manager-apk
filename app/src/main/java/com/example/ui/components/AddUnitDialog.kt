@@ -457,47 +457,35 @@ fun AddUnitDialog(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Select Cattle Stage / Category:",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF64748B)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val cattleStages = listOf(
-                            "HEIFER" to "🌾 Heifer",
-                            "MILKING" to "🥛 Milking",
-                            "INCALF" to "🤰 In-calf",
-                            "CALF" to "🍼 Calf",
-                            "DRY" to "🍂 Dry",
-                            "INSEMINATED" to "💉 Inseminated",
-                            "BULL" to "🐂 Bull",
-                            "DISPOSED" to "🚫 Disposed"
-                        )
-
-                        androidx.compose.foundation.layout.FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF0FDF4),
+                        border = BorderStroke(1.dp, Color(0xFFBBF7D0))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            cattleStages.forEach { (stageKey, stageLabel) ->
-                                val isSelected = status.equals(stageKey, ignoreCase = true)
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
-                                    border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else Color(0xFFCBD5E1)),
-                                    modifier = Modifier.clickable { status = stageKey }
-                                ) {
-                                    Text(
-                                        text = stageLabel,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.White else Color(0xFF334155),
-                                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 10.dp),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                    )
-                                }
+                            Icon(
+                                imageVector = Icons.Filled.Pets,
+                                contentDescription = "Auto Managed",
+                                tint = ForestGreenPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    "Dynamic Stage Tracking",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF166534)
+                                )
+                                Text(
+                                    "This cattle's stage is automatically determined based on age, milk logs, calving history, and logged events after registration.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF1E5E3A)
+                                )
                             }
                         }
                     }

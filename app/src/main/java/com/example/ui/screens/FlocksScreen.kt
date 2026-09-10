@@ -1212,7 +1212,7 @@ fun FlocksScreen(
                     "No data yet"
                 }
 
-                val newStatus = if (unitDbEvents.isNotEmpty() || baseAnimalDetail.status.isBlank() || baseAnimalDetail.status.equals("ACTIVE", ignoreCase = true) || baseAnimalDetail.status.equals("OPTIMAL", ignoreCase = true)) eval.stage.displayName else baseAnimalDetail.status
+                val newStatus = if (isPoultry) baseAnimalDetail.status else eval.stage.displayName
 
                 baseAnimalDetail.copy(
                     status = newStatus,
@@ -3154,31 +3154,16 @@ fun AnimalDetailsView(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
+                    Button(
+                        onClick = {
+                            showStageInfoDialog = false
+                            showAddCattleEventDialog = true
+                        },
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                showStageInfoDialog = false
-                                showUpdateStageDialog = true
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("Manual Override", fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = {
-                                showStageInfoDialog = false
-                                showAddCattleEventDialog = true
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-                        ) {
-                            Text("+ Log Event", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Text("+ Log Event", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

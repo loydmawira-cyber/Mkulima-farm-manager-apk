@@ -23,6 +23,7 @@ class MkulimaApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Africa/Nairobi"))
         com.example.util.NotificationHelper.createChannels(this)
         com.example.util.scheduleTaskReminders(this)
         initializeFirestoreOfflinePersistence()

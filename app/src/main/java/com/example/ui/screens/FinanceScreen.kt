@@ -92,38 +92,46 @@ fun FinanceRecord.matchesFilter(filter: String): Boolean {
     val cat = category.lowercase()
     val desc = description.lowercase()
     val origTarget = targetUnit.lowercase()
-    val f = filter.lowercase()
+    val fClean = filter.lowercase()
+        .removePrefix("🐄 ")
+        .removePrefix("🐔 ")
+        .removePrefix("🌾 ")
+        .trim()
 
     return when {
-        f == "cattle" || f == "all cattle" -> {
-            target.contains("cattle") || target.contains("cow") || cat.contains("cattle") || cat.contains("milk") || desc.contains("cattle") || desc.contains("cow") || origTarget.contains("cattle")
+        fClean == "cattle" || fClean == "all cattle" -> {
+            target.contains("cattle") || target.contains("cow") || cat.contains("cattle") || cat.contains("milk") || desc.contains("cattle") || desc.contains("cow") || origTarget.contains("cattle") || origTarget.contains("cow")
         }
-        f == "poultry" || f == "all poultry" -> {
+        fClean == "poultry" || fClean == "all poultry" -> {
             target.contains("poultry") || target.contains("flock") || cat.contains("egg") || cat.contains("poultry") || desc.contains("flock") || desc.contains("chick") || origTarget.contains("poultry") || origTarget.contains("flock")
         }
-        f.startsWith("flock") -> {
-            target.contains(f) || desc.contains(f) || cat.contains(f)
+        fClean.startsWith("flock") -> {
+            target.contains(fClean) || origTarget.contains(fClean) || desc.contains(fClean) || cat.contains(fClean)
         }
-        f.contains("feed") -> {
+        fClean.contains("feed") -> {
             cat.contains("feed") || desc.contains("feed") || desc.contains("mash") || desc.contains("silage")
         }
-        f.contains("vet") || f.contains("vaccin") -> {
+        fClean.contains("vet") || fClean.contains("vaccin") -> {
             cat.contains("vet") || cat.contains("vaccin") || cat.contains("medic") || desc.contains("vet") || desc.contains("vaccin")
         }
-        f.contains("milk") -> {
+        fClean.contains("milk") -> {
             cat.contains("milk") || desc.contains("milk")
         }
-        f.contains("egg") -> {
+        fClean.contains("egg") -> {
             cat.contains("egg") || desc.contains("egg")
         }
-        f.contains("labor") || f.contains("wage") -> {
+        fClean.contains("labor") || fClean.contains("wage") -> {
             cat.contains("labor") || cat.contains("wage") || cat.contains("salary")
         }
-        f.contains("equipment") || f.contains("repair") -> {
+        fClean.contains("equipment") || fClean.contains("repair") -> {
             cat.contains("equipment") || cat.contains("repair") || cat.contains("maintenance")
         }
         else -> {
-            target.contains(f) || cat.contains(f) || desc.contains(f)
+            target.contains(fClean) ||
+                    origTarget.contains(fClean) ||
+                    (origTarget.isNotBlank() && origTarget != "general farm" && fClean.contains(origTarget)) ||
+                    desc.contains(fClean) ||
+                    cat.contains(fClean)
         }
     }
 }
@@ -214,11 +222,11 @@ private fun FinanceTab(
     userRole: String = "OWNER",
     canEditPastDaysLogs: Boolean = true
 ) {
-    val currentCal = remember { Calendar.getInstance() }
-    val defaultMonthName = remember { SimpleDateFormat("MMMM", Locale.getDefault()).format(currentCal.time) }
-    val defaultYearName = remember { SimpleDateFormat("yyyy", Locale.getDefault()).format(currentCal.time) }
-    val currentYearNum = remember { currentCal.get(Calendar.YEAR) }
-    val todayDateStr = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(currentCal.time) }
+    val currentCal = Calendar.getInstance()
+    val defaultMonthName = SimpleDateFormat("MMMM", Locale.getDefault()).format(currentCal.time)
+    val defaultYearName = SimpleDateFormat("yyyy", Locale.getDefault()).format(currentCal.time)
+    val currentYearNum = currentCal.get(Calendar.YEAR)
+    val todayDateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(currentCal.time)
 
     val monthsList = remember {
         listOf(
@@ -240,31 +248,43 @@ private fun FinanceTab(
     var isFilterMenuExpanded by remember { mutableStateOf(false) }
 
     val activeFlocks = remember(units, records) {
-        val fromUnits = units.filter { it.type.equals("Poultry", ignoreCase = true) }.map { it.name }
-        val fromRecords = records.map { it.effectiveTargetUnit() }
-            .filter { it.contains("flock", ignoreCase = true) }
+        val fromUnits = units.filter { !it.isDeleted && (it.type.equals("Poultry", ignoreCase = true) || it.type.equals("Flock", ignoreCase = true)) }.map { it.name }
+        val fromRecords = records.map { it.targetUnit.ifBlank { it.effectiveTargetUnit() } }
+            .filter { it.contains("flock", ignoreCase = true) || it.contains("batch", ignoreCase = true) || it.contains("broiler", ignoreCase = true) || it.contains("layer", ignoreCase = true) || it.contains("poultry", ignoreCase = true) }
+            .filter { !it.equals("Poultry", ignoreCase = true) && !it.equals("General Farm", ignoreCase = true) }
         (fromUnits + fromRecords).distinct()
     }
     val activeCattleUnits = remember(units, records) {
-        val fromUnits = units.filter { it.type.equals("Cattle", ignoreCase = true) }.map { it.name }
-        val fromRecords = records.map { it.effectiveTargetUnit() }
-            .filter { it.contains("cow", ignoreCase = true) || it.contains("heifer", ignoreCase = true) }
+        val fromUnits = units.filter { !it.isDeleted && (it.type.equals("Cattle", ignoreCase = true) || it.type.equals("Cow", ignoreCase = true) || it.type.equals("Livestock", ignoreCase = true)) }.map { it.name }
+        val fromRecords = records.map { it.targetUnit.ifBlank { it.effectiveTargetUnit() } }
+            .filter { it.contains("cow", ignoreCase = true) || it.contains("heifer", ignoreCase = true) || it.contains("calf", ignoreCase = true) || it.contains("bull", ignoreCase = true) || it.contains("tag", ignoreCase = true) }
+            .filter { !it.equals("Cattle", ignoreCase = true) && !it.equals("General Farm", ignoreCase = true) }
         (fromUnits + fromRecords).distinct()
     }
 
-    val quickFilters = remember(activeFlocks) {
+    val quickFilters = remember(activeFlocks, activeCattleUnits) {
         val list = mutableListOf<Pair<String, String>>()
         list.add("ALL" to "All")
-        list.add("Cattle" to "🐄 Cattle")
-        list.add("Poultry" to "🐔 Poultry")
+        
+        // Poultry Enterprise Filters
+        list.add("Poultry" to "🐔 All Poultry")
         activeFlocks.forEach { flock ->
-            val label = if (flock.startsWith("flock", ignoreCase = true)) "🐔 $flock" else "🐔 Flock $flock"
+            val label = if (flock.contains("flock", ignoreCase = true) || flock.contains("poultry", ignoreCase = true) || flock.contains("batch", ignoreCase = true)) "🐔 $flock" else "🐔 Flock $flock"
             list.add(flock to label)
         }
+
+        // Cattle Enterprise Filters
+        list.add("Cattle" to "🐄 All Cattle")
+        activeCattleUnits.forEach { cow ->
+            list.add(cow to "🐄 $cow")
+        }
+
+        // Category Filters
         list.add("Feeds" to "🌾 Feeds")
         list.add("Vaccines & Vet" to "💉 Vet & Vaccines")
         list.add("Milk Sales" to "🥛 Milk Sales")
         list.add("Egg Sales" to "🥚 Egg Sales")
+        list.add("Poultry Sales" to "🐔 Poultry Sales")
         list.add("Labor" to "👷 Labor")
         list.add("Equipment" to "⚙️ Equipment")
         list
@@ -274,7 +294,7 @@ private fun FinanceTab(
     val targetYearInt = selectedFinanceYear.toIntOrNull() ?: currentYearNum
 
     // Time-based filtering
-    val timeFilteredRecords = remember(records, financeTimeframe, selectedFinanceMonth, selectedFinanceYear, targetMonthIdx, targetYearInt) {
+    val timeFilteredRecords = remember(records, financeTimeframe, selectedFinanceMonth, selectedFinanceYear, targetMonthIdx, targetYearInt, todayDateStr) {
         records.filter { record ->
             val cal = parseFinanceCalendar(record.date, record.updatedAt)
             when (financeTimeframe) {
@@ -283,8 +303,9 @@ private fun FinanceTab(
                         cal.get(Calendar.YEAR) == currentYearNum &&
                                 cal.get(Calendar.DAY_OF_YEAR) == currentCal.get(Calendar.DAY_OF_YEAR)
                     } else {
-                        record.date.contains("Today", ignoreCase = true) ||
-                                record.date.contains(todayDateStr, ignoreCase = true)
+                        (record.date.contains("Today", ignoreCase = true) ||
+                                record.date.contains(todayDateStr, ignoreCase = true)) &&
+                                !record.date.contains("Yesterday", ignoreCase = true)
                     }
                 }
                 "MONTH" -> {
@@ -564,15 +585,15 @@ private fun FinanceTab(
                                 isFilterMenuExpanded = false
                             }
                         )
+
+                        // --- POULTRY ENTERPRISE ---
                         DropdownMenuItem(
-                            text = { Text("🐄 Cattle (Dairy & Beef)") },
-                            onClick = {
-                                selectedCategoryOrUnitFilter = "Cattle"
-                                isFilterMenuExpanded = false
-                            }
+                            text = { Text("🐔 POULTRY ENTERPRISE", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = ForestGreenPrimary) },
+                            onClick = {},
+                            enabled = false
                         )
                         DropdownMenuItem(
-                            text = { Text("🐔 Poultry (All Flocks)") },
+                            text = { Text("   🐔 All Poultry") },
                             onClick = {
                                 selectedCategoryOrUnitFilter = "Poultry"
                                 isFilterMenuExpanded = false
@@ -580,57 +601,94 @@ private fun FinanceTab(
                         )
                         activeFlocks.forEach { flock ->
                             DropdownMenuItem(
-                                text = { Text("🐔 $flock") },
+                                text = { Text("      🐔 $flock") },
                                 onClick = {
                                     selectedCategoryOrUnitFilter = flock
                                     isFilterMenuExpanded = false
                                 }
                             )
                         }
+
+                        // --- CATTLE ENTERPRISE ---
                         DropdownMenuItem(
-                            text = { Text("🌾 Feeds & Nutrition") },
+                            text = { Text("🐄 CATTLE ENTERPRISE", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = ForestGreenPrimary) },
+                            onClick = {},
+                            enabled = false
+                        )
+                        DropdownMenuItem(
+                            text = { Text("   🐄 All Cattle") },
+                            onClick = {
+                                selectedCategoryOrUnitFilter = "Cattle"
+                                isFilterMenuExpanded = false
+                            }
+                        )
+                        activeCattleUnits.forEach { cow ->
+                            DropdownMenuItem(
+                                text = { Text("      🐄 $cow") },
+                                onClick = {
+                                    selectedCategoryOrUnitFilter = cow
+                                    isFilterMenuExpanded = false
+                                }
+                            )
+                        }
+
+                        // --- OPERATIONAL CATEGORIES ---
+                        DropdownMenuItem(
+                            text = { Text("📋 OPERATIONAL CATEGORIES", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = ForestGreenPrimary) },
+                            onClick = {},
+                            enabled = false
+                        )
+                        DropdownMenuItem(
+                            text = { Text("   🌾 Feeds & Nutrition") },
                             onClick = {
                                 selectedCategoryOrUnitFilter = "Feeds"
                                 isFilterMenuExpanded = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("💉 Vaccines & Vet Care") },
+                            text = { Text("   💉 Vaccines & Vet Care") },
                             onClick = {
                                 selectedCategoryOrUnitFilter = "Vaccines & Vet"
                                 isFilterMenuExpanded = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("🥛 Milk Sales") },
+                            text = { Text("   🥛 Milk Sales") },
                             onClick = {
                                 selectedCategoryOrUnitFilter = "Milk Sales"
                                 isFilterMenuExpanded = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("🥚 Egg Sales") },
+                            text = { Text("   🥚 Egg Sales") },
                             onClick = {
                                 selectedCategoryOrUnitFilter = "Egg Sales"
                                 isFilterMenuExpanded = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("👷 Labor & Wages") },
+                            text = { Text("   🐔 Poultry Sales") },
+                            onClick = {
+                                selectedCategoryOrUnitFilter = "Poultry Sales"
+                                isFilterMenuExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("   👷 Labor & Wages") },
                             onClick = {
                                 selectedCategoryOrUnitFilter = "Labor"
                                 isFilterMenuExpanded = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("⚙️ Equipment & Maintenance") },
+                            text = { Text("   ⚙️ Equipment & Maintenance") },
                             onClick = {
                                 selectedCategoryOrUnitFilter = "Equipment"
                                 isFilterMenuExpanded = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("🌾 Crops & Field Harvests") },
+                            text = { Text("   🌾 Crops & Field Harvests") },
                             onClick = {
                                 selectedCategoryOrUnitFilter = "Crops / Fields"
                                 isFilterMenuExpanded = false
@@ -997,7 +1055,33 @@ private fun EmptyState(title: String, body: String) {
 }
 
 private fun parseFinanceCalendar(dateStr: String, fallbackTimestamp: Long = 0L): Calendar? {
+    if (dateStr.isBlank()) {
+        if (fallbackTimestamp > 0L) {
+            return Calendar.getInstance().apply { timeInMillis = fallbackTimestamp }
+        }
+        return null
+    }
     val clean = dateStr.trim()
+    val todayCal = Calendar.getInstance()
+    if (clean.startsWith("Today", ignoreCase = true)) {
+        return todayCal
+    }
+    if (clean.startsWith("Yesterday", ignoreCase = true) || clean.startsWith("Overdue", ignoreCase = true)) {
+        return (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+    }
+    if (clean.startsWith("Tomorrow", ignoreCase = true)) {
+        return (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+    }
+
+    val parsedDate = com.example.util.DateValidationUtils.parseDate(clean)
+    if (parsedDate != null) {
+        val cal = Calendar.getInstance().apply { time = parsedDate }
+        if (cal.get(Calendar.YEAR) < 2000) {
+            cal.set(Calendar.YEAR, todayCal.get(Calendar.YEAR))
+        }
+        return cal
+    }
+
     val formats = arrayOf(
         "dd MMM yyyy",
         "d MMM yyyy",
@@ -1018,13 +1102,13 @@ private fun parseFinanceCalendar(dateStr: String, fallbackTimestamp: Long = 0L):
             if (parsed != null) {
                 val cal = Calendar.getInstance().apply { time = parsed }
                 if (cal.get(Calendar.YEAR) < 2000) {
-                    cal.set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
+                    cal.set(Calendar.YEAR, todayCal.get(Calendar.YEAR))
                 }
                 return cal
             }
         } catch (_: Exception) {}
     }
-    if (fallbackTimestamp > 0L) {
+    if (fallbackTimestamp > 0L && !clean.contains("Yesterday", ignoreCase = true)) {
         return Calendar.getInstance().apply { timeInMillis = fallbackTimestamp }
     }
     return null

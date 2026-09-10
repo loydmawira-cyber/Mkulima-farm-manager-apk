@@ -155,6 +155,7 @@ fun MkulimaAppContent(
     val allTasks by viewModel.rawTasks.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
     val allUnits by viewModel.allUnits.collectAsState()
+    val allArchivedUnits by viewModel.allArchivedUnits.collectAsState()
     val milkLogs by viewModel.allMilkLogs.collectAsState()
     val milkUsageLogs by viewModel.allMilkUsageLogs.collectAsState()
     val eggLogs by viewModel.allEggLogs.collectAsState()
@@ -165,7 +166,7 @@ fun MkulimaAppContent(
     val feedPlans by viewModel.allFeedPlans.collectAsState()
     val inventoryMovements by viewModel.allInventoryMovements.collectAsState()
     val employeeRequests by viewModel.allEmployeeRequests.collectAsState()
-    val allCattleEvents by viewModel.allCattleEvents.collectAsState(initial = emptyList())
+    val allCattleEvents by viewModel.allCattleEvents.collectAsState(initial = viewModel.allCattleEvents.value)
     val farmSettings by viewModel.farmSettings.collectAsState()
     val subscriptionAccess by viewModel.subscriptionAccess.collectAsState()
     val farmWorkers by viewModel.farmWorkers.collectAsState()
@@ -419,6 +420,7 @@ fun MkulimaAppContent(
                     showAddFinanceDialog = false
                 },
                 units = allUnits,
+                fieldPlans = fieldPlans,
                 userRole = userRole,
                 canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
             )
@@ -442,6 +444,7 @@ fun MkulimaAppContent(
                     editingFinanceRecord = null
                 },
                 units = allUnits,
+                fieldPlans = fieldPlans,
                 userRole = userRole,
                 canEditPastDaysLogs = userSession?.permissions?.canEditPastDaysLogs ?: true
             )
@@ -885,14 +888,15 @@ fun MkulimaAppContent(
                                 addTaskInitialTargetUnit = fieldName
                                 showAddTaskDialog = true
                             },
-                            onAddFinanceRecord = { type, category, amount, description, date ->
-                                viewModel.addFinanceRecord(type, category, amount, description, date)
+                            onAddFinanceRecord = { type, category, amount, description, date, targetUnit ->
+                                viewModel.addFinanceRecord(type, category, amount, description, date, targetUnit)
                             },
                             livestock = {
                                 FlocksScreen(
                                     viewModel = viewModel,
                                     userRole = userRole,
                                     units = allUnits,
+                                    archivedUnits = allArchivedUnits,
                                     milkLogs = milkLogs,
                                     eggLogs = eggLogs,
                                     financeRecords = financeRecords,

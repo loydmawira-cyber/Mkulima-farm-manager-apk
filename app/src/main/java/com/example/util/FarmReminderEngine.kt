@@ -56,7 +56,7 @@ object FarmReminderEngine {
 
     private fun parseDate(str: String?): Date? {
         if (str.isNullOrBlank()) return null
-        return try {
+        return DateValidationUtils.parseDate(str) ?: try {
             dateFormat.parse(str.trim())
         } catch (_: Exception) {
             try {
@@ -104,6 +104,10 @@ object FarmReminderEngine {
 
         // 1. EVALUATE LIVESTOCK UNITS (CATTLE & POULTRY)
         units.forEach { unit ->
+            if (unit.isDeleted || unit.isArchived || unit.healthStatus.contains("DISPOSED", ignoreCase = true)) {
+                return@forEach
+            }
+
             val isPoultry = unit.type.equals("Poultry", ignoreCase = true) ||
                     unit.name.contains("Flock", ignoreCase = true) ||
                     unit.name.contains("Broiler", ignoreCase = true) ||
@@ -466,31 +470,47 @@ object FarmReminderEngine {
         }
 
         // 2. EVALUATE SCHEDULED FARM TASKS
+        val disposedUnitNames = units.filter {
+            it.isDeleted || it.isArchived || it.healthStatus.contains("DISPOSED", ignoreCase = true)
+        }.map { it.name.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+
         tasks.filter { !it.isCompleted }.forEach { task ->
-            val isHigh = task.priority == TaskPriority.HIGH
-            val taskType = when {
-                task.title.contains("Vaccin", ignoreCase = true) -> ReminderType.VACCINATION
-                task.title.contains("Deworm", ignoreCase = true) || task.title.contains("Worm", ignoreCase = true) -> ReminderType.DEWORMING
-                task.title.contains("Calv", ignoreCase = true) || task.title.contains("Birth", ignoreCase = true) -> ReminderType.CALVING
-                else -> ReminderType.TASK
+            val taskTargetLower = task.targetUnit.trim().lowercase()
+            if (disposedUnitNames.any { taskTargetLower.contains(it) }) {
+                return@forEach
             }
 
-            reminders.add(
-                FarmReminder(
-                    id = "task_${task.id}",
-                    type = taskType,
-                    title = task.title,
-                    targetName = task.targetUnit.ifBlank { "General Farm Task" },
-                    targetTag = "[${task.category.name}]",
-                    dueDateStr = task.scheduledTime,
-                    daysRemaining = if (isHigh) 0 else 2,
-                    urgency = if (isHigh) ReminderUrgency.TODAY else ReminderUrgency.DUE_SOON,
-                    details = "Assigned Worker: ${task.assignedWorker ?: "Unassigned"} • Priority: ${task.priority.name}",
-                    recommendation = task.instructions ?: "Complete task checklist and submit operational confirmation.",
-                    actionLabel = "Mark Task Done",
-                    sourceTaskId = task.id
+            val isHigh = task.priority == TaskPriority.HIGH
+            val taskDate = parseDate(task.scheduledTime)
+            val daysRemaining = if (taskDate != null) getDaysDifference(taskDate, today) else if (isHigh) 0 else 2
+            val urgency = if (taskDate != null) calculateUrgency(daysRemaining) else if (isHigh) ReminderUrgency.TODAY else ReminderUrgency.DUE_SOON
+
+            // Only display tasks that are due today, overdue, or due soon (within 14 days)
+            if (daysRemaining <= 14 || urgency != ReminderUrgency.UPCOMING) {
+                val taskType = when {
+                    task.title.contains("Vaccin", ignoreCase = true) -> ReminderType.VACCINATION
+                    task.title.contains("Deworm", ignoreCase = true) || task.title.contains("Worm", ignoreCase = true) -> ReminderType.DEWORMING
+                    task.title.contains("Calv", ignoreCase = true) || task.title.contains("Birth", ignoreCase = true) -> ReminderType.CALVING
+                    else -> ReminderType.TASK
+                }
+
+                reminders.add(
+                    FarmReminder(
+                        id = "task_${task.id}",
+                        type = taskType,
+                        title = task.title,
+                        targetName = task.targetUnit.ifBlank { "General Farm Task" },
+                        targetTag = "[${task.category.name}]",
+                        dueDateStr = task.scheduledTime,
+                        daysRemaining = daysRemaining,
+                        urgency = urgency,
+                        details = "Assigned Worker: ${task.assignedWorker ?: "Unassigned"} • Priority: ${task.priority.name}",
+                        recommendation = task.instructions ?: "Complete task checklist and submit operational confirmation.",
+                        actionLabel = "Mark Task Done",
+                        sourceTaskId = task.id
+                    )
                 )
-            )
+            }
         }
 
         // 3. EVALUATE LOW INVENTORY & STOCK THRESHOLDS

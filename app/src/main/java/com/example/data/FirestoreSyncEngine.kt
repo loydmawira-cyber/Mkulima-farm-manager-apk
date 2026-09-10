@@ -471,6 +471,15 @@ class FirestoreSyncEngine(
                     "automaticFeedDeductionEnabled" to setting.automaticFeedDeductionEnabled,
                     "feedDeductionLastRunDate" to setting.feedDeductionLastRunDate,
                     "monthlyReportsEnabled" to setting.monthlyReportsEnabled,
+                    "notificationsEnabled" to setting.notificationsEnabled,
+                    "notifyMilkLogs" to setting.notifyMilkLogs,
+                    "notifyNewEntries" to setting.notifyNewEntries,
+                    "notifyAccountChanges" to setting.notifyAccountChanges,
+                    "notifyDeletions" to setting.notifyDeletions,
+                    "notifyReminders" to setting.notifyReminders,
+                    "subscriptionTier" to setting.subscriptionTier,
+                    "subscriptionStatus" to setting.subscriptionStatus,
+                    "subscriptionExpiresAt" to setting.subscriptionExpiresAt,
                     "updatedAt" to setting.updatedAt,
                     "isDeleted" to setting.isDeleted
                 )
@@ -542,6 +551,7 @@ class FirestoreSyncEngine(
                     "photoUri" to unit.photoUri,
                     "photoBase64" to photoBase64,
                     "notes" to unit.notes,
+                    "isArchived" to unit.isArchived,
                     "updatedAt" to unit.updatedAt,
                     "isDeleted" to unit.isDeleted
                 )
@@ -778,7 +788,27 @@ class FirestoreSyncEngine(
             val dirtyInventory = farmDao.getDirtyInventoryItems(farmId, lastInventoryPush)
             var maxInventoryUpdatedAt = lastInventoryPush
             for (item in dirtyInventory) {
-                val data = hashMapOf<String, Any>("syncId" to item.syncId, "farmId" to farmId, "itemName" to item.itemName, "category" to item.category, "skuOrBarcode" to item.skuOrBarcode, "description" to item.description, "quantityAvailable" to item.quantityAvailable, "unitOfMeasurement" to item.unitOfMeasurement, "minimumThreshold" to item.minimumThreshold, "storageLocation" to item.storageLocation, "batchOrLotNumber" to item.batchOrLotNumber, "purchaseDate" to item.purchaseDate, "expirationDate" to item.expirationDate, "unitCost" to item.unitCost, "isSilage" to item.isSilage, "updatedAt" to item.updatedAt, "isDeleted" to item.isDeleted)
+                val data = hashMapOf<String, Any>(
+                    "syncId" to item.syncId,
+                    "farmId" to farmId,
+                    "itemName" to item.itemName,
+                    "category" to item.category,
+                    "skuOrBarcode" to item.skuOrBarcode,
+                    "description" to item.description,
+                    "quantityAvailable" to item.quantityAvailable,
+                    "unitOfMeasurement" to item.unitOfMeasurement,
+                    "minimumThreshold" to item.minimumThreshold,
+                    "storageLocation" to item.storageLocation,
+                    "batchOrLotNumber" to item.batchOrLotNumber,
+                    "purchaseDate" to item.purchaseDate,
+                    "expirationDate" to item.expirationDate,
+                    "unitCost" to item.unitCost,
+                    "isSilage" to item.isSilage,
+                    "intendedLivestockType" to item.intendedLivestockType,
+                    "intendedUnitId" to item.intendedUnitId,
+                    "updatedAt" to item.updatedAt,
+                    "isDeleted" to item.isDeleted
+                )
                 writer.queueSet(farmRef.collection("inventory_items").document(item.syncId), data)
                 if (item.updatedAt > maxInventoryUpdatedAt) maxInventoryUpdatedAt = item.updatedAt
             }
@@ -1015,6 +1045,7 @@ class FirestoreSyncEngine(
                 dam = doc.getString("dam") ?: "",
                 photoUri = restoredPhotoUri,
                 notes = doc.getString("notes") ?: "",
+                isArchived = doc.getBoolean("isArchived") ?: false,
                 updatedAt = remoteUpdatedAt,
                 isDeleted = isDeleted
             )
@@ -1251,7 +1282,30 @@ class FirestoreSyncEngine(
         val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
         val existing = farmDao.getInventoryItemBySyncId(doc.id)
         if (existing == null || remoteUpdatedAt >= existing.updatedAt) {
-            farmDao.insertInventoryItem(InventoryItem(id = existing?.id ?: 0, syncId = doc.id, farmId = farmId, itemName = doc.getString("itemName") ?: "Inventory item", category = doc.getString("category") ?: "Other", skuOrBarcode = doc.getString("skuOrBarcode") ?: "", description = doc.getString("description") ?: "", quantityAvailable = doc.getDouble("quantityAvailable") ?: 0.0, unitOfMeasurement = doc.getString("unitOfMeasurement") ?: "kg", minimumThreshold = doc.getDouble("minimumThreshold") ?: 0.0, storageLocation = doc.getString("storageLocation") ?: "", batchOrLotNumber = doc.getString("batchOrLotNumber") ?: "", purchaseDate = doc.getString("purchaseDate") ?: "", expirationDate = doc.getString("expirationDate") ?: "", unitCost = doc.getDouble("unitCost") ?: 0.0, isSilage = doc.getBoolean("isSilage") ?: false, updatedAt = remoteUpdatedAt, isDeleted = doc.getBoolean("isDeleted") ?: false))
+            farmDao.insertInventoryItem(
+                InventoryItem(
+                    id = existing?.id ?: 0,
+                    syncId = doc.id,
+                    farmId = farmId,
+                    itemName = doc.getString("itemName") ?: "Inventory item",
+                    category = doc.getString("category") ?: "Other",
+                    skuOrBarcode = doc.getString("skuOrBarcode") ?: "",
+                    description = doc.getString("description") ?: "",
+                    quantityAvailable = doc.getDouble("quantityAvailable") ?: 0.0,
+                    unitOfMeasurement = doc.getString("unitOfMeasurement") ?: "kg",
+                    minimumThreshold = doc.getDouble("minimumThreshold") ?: 0.0,
+                    storageLocation = doc.getString("storageLocation") ?: "",
+                    batchOrLotNumber = doc.getString("batchOrLotNumber") ?: "",
+                    purchaseDate = doc.getString("purchaseDate") ?: "",
+                    expirationDate = doc.getString("expirationDate") ?: "",
+                    unitCost = doc.getDouble("unitCost") ?: 0.0,
+                    isSilage = doc.getBoolean("isSilage") ?: false,
+                    intendedLivestockType = doc.getString("intendedLivestockType") ?: "GENERAL",
+                    intendedUnitId = doc.getLong("intendedUnitId") ?: 0L,
+                    updatedAt = remoteUpdatedAt,
+                    isDeleted = doc.getBoolean("isDeleted") ?: false
+                )
+            )
         }
     }
 

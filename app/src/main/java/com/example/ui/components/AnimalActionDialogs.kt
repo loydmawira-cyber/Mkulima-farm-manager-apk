@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Egg
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NotInterested
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Warning
@@ -63,6 +64,7 @@ fun AnimalOptionsDialog(
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onDisposeClick: () -> Unit,
+    onRestoreClick: (() -> Unit)? = null,
     onViewDetailsClick: () -> Unit
 ) {
     val isPoultry = animal.category.equals("POULTRY", ignoreCase = true) ||
@@ -197,20 +199,35 @@ fun AnimalOptionsDialog(
                     Spacer(modifier = Modifier.height(10.dp))
                 }
 
-                // Action 3: Record Disposal / Sale
+                // Action 3: Record Disposal / Sale / Restore
                 if (canEdit) {
-                    AnimalActionOptionItem(
-                        icon = Icons.Filled.NotInterested,
-                        iconBg = Color(0xFFFFFBEB),
-                        iconTint = Color(0xFFD97706),
-                        title = if (isPoultry) "Dispose / Cull / Sell Flock" else "Record Disposal / Sale",
-                        subtitle = "Mark as sold, culled, or deceased (keeps audit history)",
-                        testTag = "option_dispose_animal",
-                        onClick = {
-                            onDismiss()
-                            onDisposeClick()
-                        }
-                    )
+                    if (animal.isArchived) {
+                        AnimalActionOptionItem(
+                            icon = Icons.Filled.Restore,
+                            iconBg = Color(0xFFE0F2FE),
+                            iconTint = Color(0xFF0284C7),
+                            title = "Restore / Unarchive",
+                            subtitle = "Return this animal to the active list",
+                            testTag = "option_restore_animal",
+                            onClick = {
+                                onDismiss()
+                                onRestoreClick?.invoke()
+                            }
+                        )
+                    } else {
+                        AnimalActionOptionItem(
+                            icon = Icons.Filled.NotInterested,
+                            iconBg = Color(0xFFFFFBEB),
+                            iconTint = Color(0xFFD97706),
+                            title = if (isPoultry) "Dispose / Cull / Sell Flock" else "Record Disposal / Sale",
+                            subtitle = "Mark as sold, culled, or deceased (keeps audit history)",
+                            testTag = "option_dispose_animal",
+                            onClick = {
+                                onDismiss()
+                                onDisposeClick()
+                            }
+                        )
+                    }
                     Spacer(modifier = Modifier.height(10.dp))
                 }
 

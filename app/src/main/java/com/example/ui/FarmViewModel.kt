@@ -100,6 +100,15 @@ class FarmViewModel(
         initialValue = emptyList()
     )
 
+    val allArchivedUnits: StateFlow<List<FarmUnit>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getArchivedUnitsForFarm(farmId)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
+
     val allMilkLogs: StateFlow<List<MilkLog>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getMilkLogsForFarm(farmId).map { list ->
@@ -841,6 +850,13 @@ class FarmViewModel(
                 title = "✏️ Animal Profile Updated",
                 message = "${unit.name} details updated."
             )
+        }
+    }
+
+    fun insertArchivedUnit(unit: FarmUnit) {
+        viewModelScope.launch {
+            if (!canWriteFarmData()) return@launch
+            repository.insertUnit(unit)
         }
     }
 
@@ -1639,6 +1655,12 @@ class FarmViewModel(
 
                     synchronizeRepeatHeatCheckTasks(event, existing)
                     if (isDewormingEvent(event.category, event.title, event.details)) {
+                        repository.markReminderComplete(farmId, "cattle_deworm_${existing.id}", existing.id)
+                        repository.markReminderComplete(farmId, "cattle_deworm_routine_${existing.id}", existing.id)
+                        if (existing.healthStatus.contains("Deworm", ignoreCase = true)) {
+                            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                            repository.updateUnit(existing.copy(healthStatus = "Healthy", lastUpdated = nowFormatted))
+                        }
                         synchronizeDewormingTask(
                             existing,
                             sourceEvents = allCattleEvents.value.filterNot { it.id == event.id } + event
@@ -1825,7 +1847,14 @@ class FarmViewModel(
             .filter { !it.isCompleted && it.id != existingPendingTask?.id }
             .forEach { duplicate -> repository.deleteTask(duplicate.id) }
 
-        if (existingPendingTask == null) {
+        if (existingPendingTask != null && latestDeworming != null) {
+            // Mark existing pending task as completed since deworming treatment was logged
+            val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+            repository.updateTask(existingPendingTask.copy(isCompleted = true, completedAt = nowFormatted))
+            // Insert next cycle task for future date
+            val nextCycleTask = nextPendingTask.copy(id = 0L)
+            repository.insertTask(nextCycleTask)
+        } else if (existingPendingTask == null) {
             repository.insertTask(nextPendingTask)
         } else {
             repository.updateTask(nextPendingTask)
@@ -1893,7 +1922,10 @@ class FarmViewModel(
             val prepared = log.copy(farmId = farmId)
             repository.insertPoultryLog(prepared)
 
-            val unitName = if (prepared.unitId > 0) allUnits.value.find { it.id == prepared.unitId }?.name ?: "Poultry" else "Poultry"
+            val unitObj = if (prepared.unitId > 0) {
+                allUnits.value.find { it.id == prepared.unitId } ?: repository.getUnitById(prepared.unitId)
+            } else null
+            val unitName = unitObj?.name ?: "Poultry"
             val logDate = prepared.date.ifBlank { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) }
 
             when (prepared.logType.uppercase()) {
@@ -1919,7 +1951,7 @@ class FarmViewModel(
                             FinanceRecord(
                                 farmId = farmId,
                                 type = FinanceType.INCOME,
-                                category = "Poultry Meat Sales",
+                                category = "Poultry Sales",
                                 amount = prepared.disposalAmount,
                                 date = logDate,
                                 description = "Bird / Cull sale (${prepared.birdCount} birds - ${prepared.disposalReason})",

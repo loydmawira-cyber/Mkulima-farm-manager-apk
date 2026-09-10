@@ -47,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.FinanceRecord
 import com.example.data.FinanceType
 import com.example.data.FarmUnit
+import com.example.data.FieldPlan
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -64,6 +65,7 @@ fun AddFinanceRecordDialog(
     initialDate: String? = null,
     initialTargetUnit: String? = null,
     units: List<FarmUnit> = emptyList(),
+    fieldPlans: List<FieldPlan> = emptyList(),
     userRole: String = "OWNER",
     canEditPastDaysLogs: Boolean = true,
     onSaveRecordWithDate: ((type: FinanceType, category: String, amount: Double, description: String, date: String) -> Unit)? = null,
@@ -74,15 +76,17 @@ fun AddFinanceRecordDialog(
     val effectiveType = existing?.type ?: initialType
     var selectedType by remember { mutableStateOf(effectiveType) }
     val incomeCategories = listOf(
+        "Crop Harvest Sales",
         "Egg Sales",
-        "Poultry Meat Sales",
+        "Poultry Sales",
         "Milk Sales",
         "Cattle Sales",
-        "Crop Harvest Sales",
         "Manure / Fertilizer Sales",
         "Other Income"
     )
     val expenseCategories = listOf(
+        "Seeds & Planting",
+        "Fertilizer & Chemicals",
         "Poultry Feed & Nutrition",
         "Cattle Feed & Nutrition",
         "Vaccines & Vet",
@@ -97,13 +101,6 @@ fun AddFinanceRecordDialog(
     var categoryOptions by remember { mutableStateOf(if (selectedType == FinanceType.INCOME) incomeCategories else expenseCategories) }
 
     var expandedCategory by remember { mutableStateOf(false) }
-    var selectedCategory by remember {
-        mutableStateOf(
-            existing?.category
-                ?: initialCategory?.takeIf { categoryOptions.contains(it) }
-                ?: categoryOptions.first()
-        )
-    }
 
     // Target Enterprise / Unit resolution
     var selectedTargetUnit by remember {
@@ -116,10 +113,41 @@ fun AddFinanceRecordDialog(
     var expandedTargetMenu by remember { mutableStateOf(false) }
 
     val activeFlocks = remember(units) {
-        units.filter { it.type.equals("Poultry", ignoreCase = true) }.map { it.name }
+        units.filter { !it.isDeleted && it.type.equals("Poultry", ignoreCase = true) }.map { it.name }
     }
     val activeCattleUnits = remember(units) {
-        units.filter { it.type.equals("Cattle", ignoreCase = true) }.map { it.name }
+        units.filter { !it.isDeleted && it.type.equals("Cattle", ignoreCase = true) }.map { it.name }
+    }
+    val activeFields = remember(fieldPlans) {
+        fieldPlans.filter { !it.isDeleted && it.fieldName.isNotBlank() }
+            .map { field ->
+                if (field.cropName.isNotBlank() && !field.fieldName.contains(field.cropName, ignoreCase = true)) {
+                    "${field.fieldName} (${field.cropName})"
+                } else {
+                    field.fieldName
+                }
+            }.distinct()
+    }
+    val isCropOrFieldTarget = selectedTargetUnit.equals("Crops / Fields", ignoreCase = true) ||
+            selectedTargetUnit.contains("crop", ignoreCase = true) ||
+            selectedTargetUnit.contains("field", ignoreCase = true) ||
+            activeFields.any { selectedTargetUnit.equals(it, ignoreCase = true) }
+
+    val effectiveCategoryOptions = remember(selectedType, isCropOrFieldTarget, activeFields, categoryOptions) {
+        if (isCropOrFieldTarget && activeFields.isNotEmpty()) {
+            val fieldCategoryList = activeFields.map { "🌾 $it" }
+            fieldCategoryList + categoryOptions
+        } else {
+            categoryOptions
+        }
+    }
+
+    var selectedCategory by remember {
+        mutableStateOf(
+            existing?.category
+                ?: initialCategory?.takeIf { categoryOptions.contains(it) }
+                ?: categoryOptions.first()
+        )
     }
     val otherUnits = remember(units) {
         units.filter { !it.type.equals("Poultry", ignoreCase = true) && !it.type.equals("Cattle", ignoreCase = true) }.map { it.name }
@@ -271,12 +299,28 @@ fun AddFinanceRecordDialog(
                             label = { Text("🐔 Poultry", fontSize = 11.5.sp) }
                         )
                     }
+                    item {
+                        FilterChip(
+                            selected = selectedTargetUnit.equals("Crops / Fields", ignoreCase = true) || selectedTargetUnit.equals("Crops", ignoreCase = true),
+                            onClick = { selectedTargetUnit = "Crops / Fields" },
+                            label = { Text("🌾 Crops / Fields", fontSize = 11.5.sp) }
+                        )
+                    }
                     if (activeFlocks.isNotEmpty()) {
                         items(activeFlocks) { flockName ->
                             FilterChip(
                                 selected = selectedTargetUnit.equals(flockName, ignoreCase = true),
                                 onClick = { selectedTargetUnit = flockName },
                                 label = { Text("🐔 $flockName", fontSize = 11.5.sp) }
+                            )
+                        }
+                    }
+                    if (activeFields.isNotEmpty()) {
+                        items(activeFields) { fieldName ->
+                            FilterChip(
+                                selected = selectedTargetUnit.equals(fieldName, ignoreCase = true),
+                                onClick = { selectedTargetUnit = fieldName },
+                                label = { Text("🌾 $fieldName", fontSize = 11.5.sp) }
                             )
                         }
                     }
@@ -329,6 +373,13 @@ fun AddFinanceRecordDialog(
                                 expandedTargetMenu = false
                             }
                         )
+                        DropdownMenuItem(
+                            text = { Text("🌾 Crops / Fields (All)") },
+                            onClick = {
+                                selectedTargetUnit = "Crops / Fields"
+                                expandedTargetMenu = false
+                            }
+                        )
                         if (activeFlocks.isNotEmpty()) {
                             activeFlocks.forEach { flock ->
                                 DropdownMenuItem(
@@ -346,6 +397,17 @@ fun AddFinanceRecordDialog(
                                     text = { Text("🐄 $cow") },
                                     onClick = {
                                         selectedTargetUnit = cow
+                                        expandedTargetMenu = false
+                                    }
+                                )
+                            }
+                        }
+                        if (activeFields.isNotEmpty()) {
+                            activeFields.forEach { fieldName ->
+                                DropdownMenuItem(
+                                    text = { Text("🌾 $fieldName") },
+                                    onClick = {
+                                        selectedTargetUnit = fieldName
                                         expandedTargetMenu = false
                                     }
                                 )
@@ -396,13 +458,50 @@ fun AddFinanceRecordDialog(
                             .clickable { expandedCategory = true }
                     )
                     DropdownMenu(expanded = expandedCategory, onDismissRequest = { expandedCategory = false }) {
-                        categoryOptions.forEach { cat ->
+                        effectiveCategoryOptions.forEach { cat ->
                             DropdownMenuItem(
                                 text = { Text(cat, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A)) },
                                 onClick = {
-                                    onCategoryChosen(cat)
+                                    if (cat.startsWith("🌾 ")) {
+                                        val fieldName = cat.removePrefix("🌾 ")
+                                        selectedTargetUnit = fieldName
+                                        selectedCategory = if (selectedType == FinanceType.INCOME) "Crop Harvest Sales" else "Seeds & Planting"
+                                    } else {
+                                        onCategoryChosen(cat)
+                                    }
                                     expandedCategory = false
                                 }
+                            )
+                        }
+                    }
+                }
+
+                if (isCropOrFieldTarget && activeFields.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Fields from Fields Tab:",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF166534)
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                    ) {
+                        items(activeFields) { fieldName ->
+                            FilterChip(
+                                selected = selectedTargetUnit.equals(fieldName, ignoreCase = true),
+                                onClick = {
+                                    selectedTargetUnit = fieldName
+                                    if (selectedCategory.isBlank() || selectedCategory == "General Farm") {
+                                        selectedCategory = if (selectedType == FinanceType.INCOME) "Crop Harvest Sales" else "Seeds & Planting"
+                                    }
+                                },
+                                label = { Text("🌾 $fieldName", fontSize = 11.5.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFFDCFCE7),
+                                    selectedLabelColor = Color(0xFF166534)
+                                )
                             )
                         }
                     }

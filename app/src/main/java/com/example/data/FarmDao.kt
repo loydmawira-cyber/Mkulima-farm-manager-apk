@@ -65,10 +65,13 @@ interface FarmDao {
     suspend fun deleteTaskById(id: Long)
 
     // ================= Units / Livestock & Crops =================
-    @Query("SELECT * FROM farm_units WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY name ASC")
+    @Query("SELECT * FROM farm_units WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 AND isArchived = 0 ORDER BY name ASC")
     fun getUnitsByFarm(farmId: String): Flow<List<FarmUnit>>
 
-    @Query("SELECT * FROM farm_units WHERE isDeleted = 0 ORDER BY name ASC")
+    @Query("SELECT * FROM farm_units WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 AND isArchived = 1 ORDER BY name ASC")
+    fun getArchivedUnitsByFarm(farmId: String): Flow<List<FarmUnit>>
+
+    @Query("SELECT * FROM farm_units WHERE isDeleted = 0 AND isArchived = 0 ORDER BY name ASC")
     fun getAllUnits(): Flow<List<FarmUnit>>
 
     @Query("SELECT * FROM farm_units WHERE id = :id LIMIT 1")

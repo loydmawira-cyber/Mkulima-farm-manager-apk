@@ -22,6 +22,8 @@ class FarmRepository(
     // Farm-scoped streams
     fun getTasksForFarm(farmId: String): Flow<List<FarmTask>> = farmDao.getTasksByFarm(farmId)
     fun getUnitsForFarm(farmId: String): Flow<List<FarmUnit>> = farmDao.getUnitsByFarm(farmId)
+    fun getArchivedUnitsForFarm(farmId: String): Flow<List<FarmUnit>> = farmDao.getArchivedUnitsByFarm(farmId)
+    suspend fun getUnitById(id: Long): FarmUnit? = farmDao.getUnitById(id)
     fun getMilkLogsForFarm(farmId: String): Flow<List<MilkLog>> = farmDao.getMilkLogsByFarm(farmId)
     fun getInventoryItemsForFarm(farmId: String): Flow<List<InventoryItem>> = farmDao.getInventoryItemsByFarm(farmId)
     fun getFeedPlansForFarm(farmId: String): Flow<List<FeedPlan>> = farmDao.getFeedPlansByFarm(farmId)

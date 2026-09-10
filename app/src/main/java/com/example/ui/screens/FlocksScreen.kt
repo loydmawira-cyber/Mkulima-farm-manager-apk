@@ -156,6 +156,15 @@ data class CattleEventItem(
 fun parseEventDateForSorting(dateStr: String): Long {
     if (dateStr.isBlank()) return 0L
     val clean = dateStr.trim()
+    if (clean.startsWith("Today", ignoreCase = true)) {
+        return System.currentTimeMillis()
+    }
+    if (clean.startsWith("Yesterday", ignoreCase = true) || clean.startsWith("Overdue", ignoreCase = true)) {
+        return System.currentTimeMillis() - 86400000L
+    }
+    if (clean.startsWith("Tomorrow", ignoreCase = true)) {
+        return System.currentTimeMillis() + 86400000L
+    }
     val formats = listOf(
         "dd MMM yyyy, hh:mm a",
         "dd MMM yyyy, HH:mm",
@@ -175,12 +184,6 @@ fun parseEventDateForSorting(dateStr: String): Long {
                 return parsed.time
             }
         } catch (_: Exception) {}
-    }
-    if (clean.startsWith("Today", ignoreCase = true)) {
-        return System.currentTimeMillis()
-    }
-    if (clean.startsWith("Yesterday", ignoreCase = true)) {
-        return System.currentTimeMillis() - 86400000L
     }
     return 0L
 }
@@ -671,7 +674,8 @@ data class AnimalDetailData(
     val headCountInt: Int = 1,
     val manuallySetStatus: String? = null,
     val photoUri: String? = null,
-    val notes: String = ""
+    val notes: String = "",
+    val isArchived: Boolean = false
 )
 
 data class FlockDisposalLogItem(
@@ -696,22 +700,20 @@ fun DisposeAnimalDialog(
     onConfirmDispose: (reason: String, amount: Double, notes: String, date: String) -> Unit
 ) {
     var reason by remember { mutableStateOf("Sold") } // "Sold", "Dead", "Other"
-    var amountText by remember { mutableStateOf("") }
     var notesText by remember { mutableStateOf("") }
     var dateText by remember { mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showConfirmDialog by remember { mutableStateOf(false) }
 
     if (showConfirmDialog) {
-        val amount = amountText.toDoubleOrNull() ?: 0.0
         com.example.ui.components.ConfirmDeleteDialog(
             title = "Confirm Animal Disposal",
-            message = "Are you sure you want to record the disposal of $animalName ($tagNumber) as '$reason'${if (reason == "Sold" && amount > 0) " for KSh %,.2f".format(amount) else ""}? This record will be archived.",
+            message = "Are you sure you want to record the disposal of $animalName ($tagNumber) as '$reason'? This record will be archived.",
             confirmButtonText = "Confirm Disposal",
             confirmButtonColor = Color(0xFFDC2626),
             onConfirm = {
                 showConfirmDialog = false
-                onConfirmDispose(reason, amount, notesText, dateText)
+                onConfirmDispose(reason, 0.0, notesText, dateText)
             },
             onDismiss = {
                 showConfirmDialog = false
@@ -787,23 +789,7 @@ fun DisposeAnimalDialog(
                 }
 
                 if (reason == "Sold") {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text("Sale Price / Revenue Amount (KSh):", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = amountText,
-                        onValueChange = { amountText = it; errorMessage = null },
-                        placeholder = { Text("e.g. 145000") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true
-                    )
-                    Text(
-                        "* This amount will be automatically recorded as Income in Finance.",
-                        fontSize = 11.sp,
-                        color = ForestGreenPrimary,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    // amount field removed
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -843,11 +829,6 @@ fun DisposeAnimalDialog(
                     }
                     Button(
                         onClick = {
-                            val amount = amountText.toDoubleOrNull() ?: 0.0
-                            if (reason == "Sold" && amount <= 0) {
-                                errorMessage = "Please enter a valid sale price (> 0)."
-                                return@Button
-                            }
                             showConfirmDialog = true
                         },
                         modifier = Modifier.weight(1f),
@@ -870,8 +851,7 @@ fun DisposeFlockDialog(
     onConfirmDisposeFlock: (quantity: Int, reason: String, amount: Double, notes: String, date: String) -> Unit
 ) {
     var reason by remember { mutableStateOf("Sold") } // "Sold", "Death", "Home Consumption", "Other"
-    var qtyText by remember { mutableStateOf("10") }
-    var amountText by remember { mutableStateOf("") }
+    var qtyText by remember { mutableStateOf("") }
     var notesText by remember { mutableStateOf("") }
     var dateText by remember { mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -879,15 +859,14 @@ fun DisposeFlockDialog(
 
     if (showConfirmDialog) {
         val qty = qtyText.toIntOrNull() ?: 0
-        val amount = amountText.toDoubleOrNull() ?: 0.0
         com.example.ui.components.ConfirmDeleteDialog(
             title = "Confirm Flock Disposal",
-            message = "Are you sure you want to dispose $qty birds from $flockName as '$reason'${if (amount > 0) " for KSh %,.2f".format(amount) else ""}? This will update the active flock size.",
+            message = "Are you sure you want to dispose $qty birds from $flockName as '$reason'? This will update the active flock size.",
             confirmButtonText = "Confirm Disposal",
             confirmButtonColor = Color(0xFFDC2626),
             onConfirm = {
                 showConfirmDialog = false
-                onConfirmDisposeFlock(qty, reason, amount, notesText, dateText)
+                onConfirmDisposeFlock(qty, reason, 0.0, notesText, dateText)
             },
             onDismiss = {
                 showConfirmDialog = false
@@ -1003,28 +982,7 @@ fun DisposeFlockDialog(
                 )
 
                 if (reason == "Sold" || reason == "Home Consumption") {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        if (reason == "Sold") "Sale Revenue / Amount (KSh):" else "Estimated Value / Amount (KSh):",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF334155)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    OutlinedTextField(
-                        value = amountText,
-                        onValueChange = { amountText = it; errorMessage = null },
-                        placeholder = { Text("e.g. 35000") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true
-                    )
-                    Text(
-                        "* Recorded as Income on Finance.",
-                        fontSize = 11.sp,
-                        color = ForestGreenPrimary,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    // amount field removed; will prompt for finance record separately
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -1073,11 +1031,6 @@ fun DisposeFlockDialog(
                                 errorMessage = "Quantity cannot exceed current flock size ($currentHeadCount)."
                                 return@Button
                             }
-                            val amount = amountText.toDoubleOrNull() ?: 0.0
-                            if (reason == "Sold" && amount <= 0) {
-                                errorMessage = "Please enter a valid sale price (> 0)."
-                                return@Button
-                            }
                             showConfirmDialog = true
                         },
                         modifier = Modifier.weight(1f),
@@ -1097,6 +1050,7 @@ fun FlocksScreen(
     viewModel: FarmViewModel,
     userRole: String, // Add userRole
     units: List<FarmUnit>,
+    archivedUnits: List<FarmUnit> = emptyList(),
     milkLogs: List<MilkLog>,
     eggLogs: List<EggLog>,
     financeRecords: List<FinanceRecord>,
@@ -1123,8 +1077,15 @@ fun FlocksScreen(
     var animalToEdit by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToDelete by remember { mutableStateOf<AnimalDetailData?>(null) }
     var animalToDispose by remember { mutableStateOf<AnimalDetailData?>(null) }
+    var showFinancePromptForDisposal by remember { mutableStateOf<Pair<String, String>?>(null) } // Pair(Description, InitialTargetUnit)
+    var showRecordFinanceDialog by remember { mutableStateOf(false) }
+    var pendingFinanceCategory by remember { mutableStateOf("Animal Sale") }
+    var pendingFinanceDescription by remember { mutableStateOf("") }
+    var pendingFinanceDate by remember { mutableStateOf("") }
+    var pendingFinanceTarget by remember { mutableStateOf("") }
     val initialCategory = if (farmSettings.farmType.equals("Poultry Only", ignoreCase = true)) "POULTRY" else "CATTLE"
     var selectedFilterCategory by remember(farmSettings.farmType) { mutableStateOf(initialCategory) }
+    var selectedStatusFilter by remember { mutableStateOf("ACTIVE") } // "ACTIVE" or "ARCHIVED"
     var selectedCattleStage by remember { mutableStateOf("ALL") }
     var showCategoryGuideDialog by remember { mutableStateOf(false) }
 
@@ -1151,10 +1112,10 @@ fun FlocksScreen(
         }
     }
 
-    val allDbCattleEvents by viewModel.allCattleEvents.collectAsStateWithLifecycle(initialValue = emptyList())
-    val allDbPoultryLogs by viewModel.allPoultryLogs.collectAsStateWithLifecycle(initialValue = emptyList())
-    val reminderCompletions by viewModel.reminderCompletions.collectAsStateWithLifecycle(initialValue = emptyList())
-    val rawTasks by viewModel.rawTasks.collectAsStateWithLifecycle(initialValue = emptyList())
+    val allDbCattleEvents by viewModel.allCattleEvents.collectAsStateWithLifecycle(initialValue = viewModel.allCattleEvents.value)
+    val allDbPoultryLogs by viewModel.allPoultryLogs.collectAsStateWithLifecycle(initialValue = viewModel.allPoultryLogs.value)
+    val reminderCompletions by viewModel.reminderCompletions.collectAsStateWithLifecycle(initialValue = viewModel.reminderCompletions.value)
+    val rawTasks by viewModel.rawTasks.collectAsStateWithLifecycle(initialValue = viewModel.rawTasks.value)
     val currentSession by viewModel.currentSession.collectAsStateWithLifecycle()
 
     val milkLogsByCow = remember(milkLogs) {
@@ -1175,8 +1136,9 @@ fun FlocksScreen(
             }
         }
     }
-    val roomAnimals = remember(units, milkLogs, cattleEventsByUnit, eggLogs) {
-        units.map { unit ->
+    val targetUnits = if (selectedStatusFilter == "ACTIVE") units else archivedUnits
+    val roomAnimals = remember(targetUnits, milkLogs, cattleEventsByUnit, eggLogs, allDbPoultryLogs) {
+        targetUnits.map { unit ->
             val isPoultry = unit.type.equals("POULTRY", ignoreCase = true) || unit.type.contains("Poultry", ignoreCase = true)
             val isHeiferOrCalfOrBull = !isPoultry && (
                 unit.healthStatus.contains("Heifer", ignoreCase = true) ||
@@ -1191,6 +1153,19 @@ fun FlocksScreen(
             } else {
                 "1y"
             }
+
+            val disposalReasonExtracted = if (unit.healthStatus.contains("DISPOSED", ignoreCase = true)) {
+                unit.healthStatus.substringAfter("(", "").substringBefore(")", "").ifBlank { "Disposed" }
+            } else ""
+
+            val poultryDisposalLog = if (isPoultry) allDbPoultryLogs.lastOrNull { it.unitId == unit.id && it.logType == "DISPOSAL" } else null
+            val cattleDisposalEvent = if (!isPoultry) unitDbEvents.lastOrNull { it.category.equals("DISPOSAL", ignoreCase = true) || it.title.contains("Dispos", ignoreCase = true) } else null
+
+            val resolvedDisposalDate = poultryDisposalLog?.date
+                ?: cattleDisposalEvent?.date
+                ?: if (unit.isArchived || unit.healthStatus.contains("DISPOSED", ignoreCase = true)) {
+                    unit.dateAdded.takeIf { it.isNotBlank() } ?: unit.lastUpdated.takeIf { it.isNotBlank() } ?: SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(unit.updatedAt))
+                } else ""
 
             val baseAnimalDetail = AnimalDetailData(
                 id = "unit_${unit.id}",
@@ -1212,9 +1187,14 @@ fun FlocksScreen(
                 weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
                 sire = unit.sire.ifBlank { "N/A" },
                 dam = unit.dam.ifBlank { "N/A" },
+                disposalReason = disposalReasonExtracted,
+                disposalDate = resolvedDisposalDate,
+                disposalAmount = poultryDisposalLog?.disposalAmount ?: 0.0,
+                disposalNotes = poultryDisposalLog?.notes ?: cattleDisposalEvent?.notes ?: "",
                 headCountInt = unit.headCount,
                 photoUri = unit.photoUri,
-                notes = unit.notes
+                notes = unit.notes,
+                isArchived = unit.isArchived
             )
 
             val eval = CattleLifecycleEngine.evaluateCattleStage(baseAnimalDetail, unitDbEvents, cowLogs)
@@ -1254,7 +1234,9 @@ fun FlocksScreen(
         mutableAnimals.addAll(currentFarmAnimals)
         if (selectedAnimal != null) {
             val curr = mutableAnimals.find { it.id == selectedAnimal?.id || it.name.equals(selectedAnimal?.name, ignoreCase = true) }
-            selectedAnimal = curr
+            if (curr != null && curr != selectedAnimal) {
+                selectedAnimal = curr
+            }
         }
     }
 
@@ -1420,22 +1402,24 @@ fun FlocksScreen(
             if (uId != null) {
                 val matching = units.find { it.id == uId }
                 if (matching != null) {
-                    onUpdateUnit(matching.copy(healthStatus = "DISPOSED ($reason)"))
+                    onUpdateUnit(matching.copy(healthStatus = "DISPOSED ($reason)", isArchived = true, lastUpdated = date))
                 }
+                viewModel.addCattleEvent(
+                    unitId = uId,
+                    category = "DISPOSAL",
+                    title = "Disposed ($reason)",
+                    date = date,
+                    details = if (notes.isNotBlank()) notes else "Disposal recorded ($reason)",
+                    notes = notes,
+                    metricValue = reason,
+                    costAmount = amount
+                )
             }
         } else {
             val matching = units.find { it.name.equals(animal.name, ignoreCase = true) }
             if (matching != null) {
-                onUpdateUnit(matching.copy(healthStatus = "DISPOSED ($reason)"))
+                onUpdateUnit(matching.copy(healthStatus = "DISPOSED ($reason)", isArchived = true, lastUpdated = date))
             }
-        }
-        if (reason.equals("Sold", ignoreCase = true) && amount > 0) {
-            onAddFinanceRecord(
-                FinanceType.INCOME,
-                "Animal Sale",
-                amount,
-                "Sold ${animal.name} (${animal.tagNumber}) - ${notes.ifBlank { "Individual animal disposal by sale" }}"
-            )
         }
     }
 
@@ -1475,7 +1459,11 @@ fun FlocksScreen(
         val updated = flock.copy(
             headCountInt = newCount,
             tagNumber = updatedTag,
-            lastMilk = "$newCount Birds"
+            lastMilk = "$newCount Birds",
+            disposalReason = reason,
+            disposalDate = date,
+            disposalAmount = amount,
+            disposalNotes = notes
         )
         val idx = mutableAnimals.indexOfFirst { it.id == flock.id }
         if (idx >= 0) {
@@ -1488,19 +1476,41 @@ fun FlocksScreen(
         if (flock.id.startsWith("unit_")) {
             val uId = flock.id.removePrefix("unit_").toLongOrNull()
             if (uId != null) {
-                onUpdateUnitHeadCount(uId, newCount)
-            }
-        }
-
-        if (amount > 0 || reason.equals("Sold", ignoreCase = true) || reason.equals("Home Consumption", ignoreCase = true)) {
-            val categoryName = if (reason.equals("Sold", ignoreCase = true)) "Poultry Sale" else "Farm Income"
-            if (amount > 0) {
-                onAddFinanceRecord(
-                    FinanceType.INCOME,
-                    categoryName,
-                    amount,
-                    "Disposed $quantity birds from ${flock.name} ($reason) - ${notes.ifBlank { "Flock disposal sale" }}"
+                viewModel.addPoultryLog(
+                    com.example.data.PoultryLog(
+                        farmId = farmSettings.farmId,
+                        unitId = uId,
+                        logType = "DISPOSAL",
+                        date = date,
+                        birdCount = quantity,
+                        disposalReason = reason,
+                        disposalAmount = amount,
+                        notes = notes
+                    )
                 )
+                if (newCount == 0) {
+                    val matching = units.find { it.id == uId }
+                    if (matching != null) {
+                        onUpdateUnit(matching.copy(headCount = 0, healthStatus = "DISPOSED ($reason)", isArchived = true, lastUpdated = date))
+                    }
+                } else {
+                    onUpdateUnitHeadCount(uId, newCount)
+                    val matching = units.find { it.id == uId }
+                    if (matching != null) {
+                        viewModel.insertArchivedUnit(
+                            matching.copy(
+                                id = 0, // Let DB generate new ID
+                                name = "${matching.name} (Disposed)",
+                                headCount = quantity,
+                                healthStatus = "DISPOSED ($reason)",
+                                isArchived = true,
+                                dateAdded = date,
+                                lastUpdated = date,
+                                notes = notes.ifBlank { "Partial disposal of ${quantity} birds from ${matching.name}" }
+                            )
+                        )
+                    }
+                }
             }
         }
     }
@@ -1663,6 +1673,16 @@ fun FlocksScreen(
                     animalToDispose = target
                 }
             },
+            onRestoreClick = {
+                animalForOptions = null
+                val uId = target.id.removePrefix("unit_").toLongOrNull()
+                if (uId != null) {
+                    val matching = archivedUnits.find { it.id == uId }
+                    if (matching != null) {
+                        onUpdateUnit(matching.copy(healthStatus = "ACTIVE", isArchived = false))
+                    }
+                }
+            },
             onViewDetailsClick = {
                 animalForOptions = null
                 selectedAnimal = target
@@ -1716,7 +1736,66 @@ fun FlocksScreen(
             onDismiss = { animalToDispose = null },
             onConfirmDispose = { reason, amount, notes, date ->
                 handleDisposeAnimal(animalToDispose!!, reason, amount, notes, date)
+                if (reason.equals("Sold", ignoreCase = true) || reason.equals("Home Consumption", ignoreCase = true)) {
+                    val catName = if (reason.equals("Sold", ignoreCase = true)) "Animal Sale" else "Farm Income"
+                    pendingFinanceCategory = catName
+                    pendingFinanceDate = date
+                    showFinancePromptForDisposal = Pair("Disposed ${animalToDispose!!.name} ($reason) - $notes", animalToDispose!!.name)
+                }
                 animalToDispose = null
+            }
+        )
+    }
+
+    if (showFinancePromptForDisposal != null) {
+        val (desc, targetUnit) = showFinancePromptForDisposal!!
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showFinancePromptForDisposal = null },
+            title = { Text("Log to Finance?", fontWeight = FontWeight.Bold) },
+            text = { Text("Disposal recorded successfully. Would you like to log this as an Income or Expense in your Finance records?") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        pendingFinanceDescription = desc
+                        pendingFinanceTarget = targetUnit
+                        showFinancePromptForDisposal = null
+                        showRecordFinanceDialog = true
+                    }
+                ) {
+                    Text("Yes, Log to Finance", color = ForestGreenPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showFinancePromptForDisposal = null }) {
+                    Text("No, Skip", color = Color(0xFF64748B))
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    if (showRecordFinanceDialog) {
+        com.example.ui.components.AddFinanceRecordDialog(
+            initialType = com.example.data.FinanceType.INCOME,
+            initialCategory = pendingFinanceCategory,
+            initialDescription = pendingFinanceDescription,
+            initialDate = pendingFinanceDate,
+            initialTargetUnit = pendingFinanceTarget,
+            userRole = userRole,
+            canEditPastDaysLogs = true,
+            onDismiss = { showRecordFinanceDialog = false },
+            onSaveRecordFull = { type, category, amount, description, date, targetUnit ->
+                viewModel.addFinanceRecord(type, category, amount, description, date, targetUnit)
+                showRecordFinanceDialog = false
+            },
+            onSaveRecordWithDate = { type, category, amount, description, date ->
+                viewModel.addFinanceRecord(type, category, amount, description, date, pendingFinanceTarget)
+                showRecordFinanceDialog = false
+            },
+            onSaveRecord = { type, category, amount, description ->
+                viewModel.addFinanceRecord(type, category, amount, description, pendingFinanceDate, pendingFinanceTarget)
+                showRecordFinanceDialog = false
             }
         )
     }
@@ -1799,6 +1878,12 @@ fun FlocksScreen(
                 onAddFinanceClick = onAddFinanceClick,
                 onDisposeFlock = { qty, reason, amount, notes, date ->
                     handleDisposeFlock(selectedAnimal!!, qty, reason, amount, notes, date)
+                    if (reason.equals("Sold", ignoreCase = true) || reason.equals("Home Consumption", ignoreCase = true)) {
+                        val catName = if (reason.equals("Sold", ignoreCase = true)) "Poultry Sale" else "Farm Income"
+                        pendingFinanceCategory = catName
+                        pendingFinanceDate = date
+                        showFinancePromptForDisposal = Pair("Disposed $qty birds from ${selectedAnimal!!.name} ($reason) - $notes", selectedAnimal!!.name)
+                    }
                 },
                 onEditFlock = { animalToEdit = selectedAnimal },
                 onDeleteFlock = { animalToDelete = selectedAnimal },
@@ -1967,6 +2052,30 @@ fun FlocksScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
                     }
+
+                    // Status Filter Chips [ ACTIVE ] [ ARCHIVED ]
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf("ACTIVE", "ARCHIVED").forEach { status ->
+                            val isSelected = selectedStatusFilter == status
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedStatusFilter = status },
+                                label = { Text(if (status == "ACTIVE") "Active" else "Disposed/Archived", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = if (status == "ACTIVE") ForestGreenPrimary else Color(0xFF64748B),
+                                    selectedLabelColor = Color.White,
+                                    containerColor = Color.White
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = isSelected,
+                                    borderColor = Color(0xFFE2E8F0)
+                                )
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Cattle Herd Breakdown Panel (Visible for CATTLE filter)
                     if (selectedFilterCategory == "CATTLE") {
@@ -2162,8 +2271,9 @@ fun FlocksScreen(
                             .mapNotNull { log -> PoultryAgeAndVaccinationUtils.matchVaccineRuleId(log.vaccineName, log.notes, log.targetStage) }
                             .toSet()
                         val schedule = PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(animal.dateOfBirth, completedVacs)
-                        val overdueCount = schedule.count { it.status == VaccineDueStatus.OVERDUE }
-                        val dueTodayCount = schedule.count { it.status == VaccineDueStatus.DUE_TODAY }
+                        val isDisposed = animal.status.contains("DISPOSED", ignoreCase = true) || animal.disposalReason.isNotBlank() || animal.headCountInt <= 0
+                        val overdueCount = if (isDisposed) 0 else schedule.count { it.status == VaccineDueStatus.OVERDUE }
+                        val dueTodayCount = if (isDisposed) 0 else schedule.count { it.status == VaccineDueStatus.DUE_TODAY }
 
                         PoultryAgeAndVaccinationUtils.evaluateAutomatedFlockStatus(
                             ageInfo = ageInfo,
@@ -2193,6 +2303,38 @@ fun FlocksScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
+                                val isDisposedUI = animal.status.contains("DISPOSED", ignoreCase = true) || animal.disposalReason.isNotBlank() || animal.headCountInt <= 0
+                                if (isDisposedUI) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = animal.name,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            val unitIdForDisposal = animal.id.removePrefix("unit_").toLongOrNull() ?: animal.id.toLongOrNull() ?: 0L
+                                            val latestDisposalLog = allDbPoultryLogs.lastOrNull { it.unitId == unitIdForDisposal && it.logType == "DISPOSAL" }
+                                            val displayDate = animal.disposalDate.ifEmpty { latestDisposalLog?.date ?: "N/A" }
+                                            Text(
+                                                text = "Disposed on $displayDate",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFFEE2E2)) {
+                                            val unitIdForDisposalCount = animal.id.removePrefix("unit_").toLongOrNull() ?: animal.id.toLongOrNull() ?: 0L
+                                            val disposedBirdsCount = allDbPoultryLogs.filter { it.unitId == unitIdForDisposalCount && it.logType == "DISPOSAL" }.sumOf { it.birdCount }
+                                            val countToDisplay = if (disposedBirdsCount > 0) disposedBirdsCount else if (animal.headCountInt > 0) animal.headCountInt else "All"
+                                            Text("$countToDisplay Birds", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                                        }
+                                    }
+                                } else {
                                 // Header Row
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -2455,6 +2597,7 @@ fun FlocksScreen(
                                         }
                                     }
                                 }
+                                }
                             }
                         }
                     } else {
@@ -2666,14 +2809,14 @@ fun AnimalDetailsView(
     var pendingFinanceDescription by remember { mutableStateOf("") }
     var pendingFinanceDate by remember { mutableStateOf("") }
 
-    val sortedAnimalEvents = remember(animalEvents.toList()) {
+    val sortedAnimalEvents = remember(animalEvents) {
         animalEvents.sortedWith(
             compareByDescending<CattleEventItem> { parseEventDateForSorting(it.date) }
                 .thenByDescending { it.id.toLongOrNull() ?: 0L }
         )
     }
 
-    val calvingLogs = remember(animalEvents.toList()) {
+    val calvingLogs = remember(animalEvents) {
         animalEvents.filter { it.category.equals("CALVING", ignoreCase = true) }
             .sortedWith(
                 compareByDescending<CattleEventItem> { parseEventDateForSorting(it.date) }
@@ -2697,9 +2840,9 @@ fun AnimalDetailsView(
     }
 
     // Evaluate dynamic cattle stage using CattleLifecycleEngine
-    val cattleEval = remember(animal, animalEvents.toList(), cowMilkLogs) {
+    val cattleEval = remember(animal, animalEvents, cowMilkLogs) {
         if (isCattle) {
-            CattleLifecycleEngine.evaluateCattleStage(animal, animalEvents.toList(), cowMilkLogs)
+            CattleLifecycleEngine.evaluateCattleStage(animal, animalEvents, cowMilkLogs)
         } else null
     }
 
@@ -2725,9 +2868,9 @@ fun AnimalDetailsView(
     var showStageInfoDialog by remember { mutableStateOf(false) }
 
     // Keep animal status in sync with calculated stage if cattle and status is default/empty
-    LaunchedEffect(cattleEval?.stage) {
+    LaunchedEffect(animal.id, cattleEval?.stage) {
         if (cattleEval != null && !animal.status.startsWith("DISPOSED", ignoreCase = true) && (animal.status.isBlank() || animal.status.equals("ACTIVE", ignoreCase = true) || animal.status.equals("OPTIMAL", ignoreCase = true) || animal.status.equals("HEALTHY", ignoreCase = true))) {
-            if (currentStatus != cattleEval.stage.displayName) {
+            if (currentStatus != cattleEval.stage.displayName && animal.status != cattleEval.stage.displayName) {
                 currentStatus = cattleEval.stage.displayName
                 onUpdateAnimalStage(cattleEval.stage.displayName, cattleEval.breedingStatusText)
             }
@@ -5121,19 +5264,26 @@ fun FlockDetailsView(
     }
 
     // Dynamic calculated vaccination schedule
-    val calculatedVaccineSchedule = remember(flockDateAdded, completedVaccineRuleIds, dismissedVaccineRuleIds.toList()) {
-        PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(flockDateAdded, completedVaccineRuleIds)
-            .filter { !dismissedVaccineRuleIds.contains(it.ruleId) }
+    val calculatedVaccineSchedule = remember(flockDateAdded, completedVaccineRuleIds, dismissedVaccineRuleIds.toList(), flock.status, flock.disposalReason, liveHeadCount) {
+        if (flock.status.contains("DISPOSED", ignoreCase = true) || flock.disposalReason.isNotBlank() || liveHeadCount <= 0) {
+            emptyList()
+        } else {
+            PoultryAgeAndVaccinationUtils.calculateVaccinationSchedule(flockDateAdded, completedVaccineRuleIds)
+                .filter { !dismissedVaccineRuleIds.contains(it.ruleId) }
+        }
     }
 
-    val overdueVaccineCount = remember(calculatedVaccineSchedule) {
-        calculatedVaccineSchedule.count { it.status == VaccineDueStatus.OVERDUE }
+    val overdueVaccineCount = remember(calculatedVaccineSchedule, flock.status, flock.disposalReason, liveHeadCount) {
+        if (flock.status.contains("DISPOSED", ignoreCase = true) || flock.disposalReason.isNotBlank() || liveHeadCount <= 0) 0
+        else calculatedVaccineSchedule.count { it.status == VaccineDueStatus.OVERDUE }
     }
-    val dueTodayVaccineCount = remember(calculatedVaccineSchedule) {
-        calculatedVaccineSchedule.count { it.status == VaccineDueStatus.DUE_TODAY }
+    val dueTodayVaccineCount = remember(calculatedVaccineSchedule, flock.status, flock.disposalReason, liveHeadCount) {
+        if (flock.status.contains("DISPOSED", ignoreCase = true) || flock.disposalReason.isNotBlank() || liveHeadCount <= 0) 0
+        else calculatedVaccineSchedule.count { it.status == VaccineDueStatus.DUE_TODAY }
     }
-    val dueSoonVaccineCount = remember(calculatedVaccineSchedule) {
-        calculatedVaccineSchedule.count { it.status == VaccineDueStatus.DUE_SOON }
+    val dueSoonVaccineCount = remember(calculatedVaccineSchedule, flock.status, flock.disposalReason, liveHeadCount) {
+        if (flock.status.contains("DISPOSED", ignoreCase = true) || flock.disposalReason.isNotBlank() || liveHeadCount <= 0) 0
+        else calculatedVaccineSchedule.count { it.status == VaccineDueStatus.DUE_SOON }
     }
 
     val customVaccines = remember(flock.id) {
@@ -6111,10 +6261,11 @@ fun FlockDetailsView(
             }
 
             // 3. Complete Standard Vaccination Schedule & Alerts Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
+            if (!flock.status.contains("DISPOSED", ignoreCase = true) && flock.disposalReason.isBlank() && liveHeadCount > 0) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                 ) {
@@ -6440,6 +6591,7 @@ fun FlockDetailsView(
                     }
                 }
             }
+        }
 
             // 4. Mortality & Health Log Card
             item {

@@ -137,20 +137,33 @@ data class DashboardAlert(
 private fun parseDashboardCalendar(rawValue: String?): Calendar? {
     val raw = rawValue?.trim().orEmpty()
     if (raw.isBlank()) return null
-    if (raw.equals("today", ignoreCase = true)) return Calendar.getInstance()
+    val todayCal = Calendar.getInstance()
+    if (raw.startsWith("today", ignoreCase = true)) return todayCal
+    if (raw.startsWith("yesterday", ignoreCase = true) || raw.startsWith("overdue", ignoreCase = true)) {
+        return (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+    }
+    if (raw.startsWith("tomorrow", ignoreCase = true)) {
+        return (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+    }
+
     val parsedDate = DateValidationUtils.parseDate(raw)
     if (parsedDate != null) {
         val cal = Calendar.getInstance().apply { time = parsedDate }
         if (cal.get(Calendar.YEAR) < 2000) {
-            cal.set(Calendar.YEAR, Calendar.getInstance().get(Calendar.YEAR))
+            cal.set(Calendar.YEAR, todayCal.get(Calendar.YEAR))
         }
         return cal
     }
-    val formats = listOf("dd MMM yyyy", "d MMM yyyy", "yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MM-yyyy", "d MMM")
+    val formats = listOf("dd MMM yyyy, hh:mm a", "dd MMM yyyy, HH:mm", "dd MMM yyyy", "d MMM yyyy", "yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MM-yyyy", "dd MMM, hh:mm a", "d MMM")
     return formats.firstNotNullOfOrNull { pattern ->
         runCatching {
             SimpleDateFormat(pattern, Locale.getDefault()).apply { isLenient = false }.parse(raw)?.let { parsed ->
-                Calendar.getInstance().apply { time = parsed }
+                Calendar.getInstance().apply {
+                    time = parsed
+                    if (get(Calendar.YEAR) < 2000) {
+                        set(Calendar.YEAR, todayCal.get(Calendar.YEAR))
+                    }
+                }
             }
         }.getOrNull()
     }

@@ -36,6 +36,16 @@ object DateValidationUtils {
     fun parseDate(str: String?): Date? {
         if (str.isNullOrBlank()) return null
         val clean = str.trim()
+        val todayCal = Calendar.getInstance()
+        if (clean.startsWith("Today", ignoreCase = true)) {
+            return todayCal.time
+        }
+        if (clean.startsWith("Yesterday", ignoreCase = true) || clean.startsWith("Overdue", ignoreCase = true)) {
+            return (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }.time
+        }
+        if (clean.startsWith("Tomorrow", ignoreCase = true)) {
+            return (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }.time
+        }
         for (format in dateFormats) {
             try {
                 val sdf = SimpleDateFormat(format, Locale.getDefault())

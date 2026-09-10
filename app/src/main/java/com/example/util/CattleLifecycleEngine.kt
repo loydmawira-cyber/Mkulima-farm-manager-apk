@@ -215,12 +215,14 @@ object CattleLifecycleEngine {
             animal.disposalDate.isNotBlank() ||
             animal.disposalReason.isNotBlank()
         ) {
+            val dispDate = animal.disposalDate.ifBlank { "record" }
+            val dispReason = animal.disposalReason.ifBlank { "Archived" }
             return CattleStageEvaluation(
                 stage = CattleStage.DISPOSED,
                 stageKey = CattleStage.DISPOSED.key,
                 label = "Disposed",
-                summaryReason = "Culled or sold on ${animal.disposalDate.ifBlank { "record" }} (${animal.disposalReason.ifBlank { "Archived" }})",
-                breedingStatusText = "DISPOSED",
+                summaryReason = "Culled or sold on $dispDate ($dispReason)",
+                breedingStatusText = if (animal.disposalDate.isNotBlank()) "Disposed on ${animal.disposalDate}" else "DISPOSED ($dispReason)",
                 isInCalf = false,
                 isMilking = false,
                 badgeBgColor = Color(0xFFF1F5F9),

@@ -67,7 +67,7 @@ fun AssetsScreen(
     onDeleteFeedPlan: (Long) -> Unit,
     onAutomaticFeedDeductionChanged: (Boolean) -> Unit,
     onLogCropActivity: ((activityType: String, fieldName: String) -> Unit)? = null,
-    onAddFinanceRecord: ((type: FinanceType, category: String, amount: Double, description: String, date: String) -> Unit)? = null,
+    onAddFinanceRecord: ((type: FinanceType, category: String, amount: Double, description: String, date: String, targetUnit: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isOwner = userRole.equals("OWNER", ignoreCase = true)
@@ -87,18 +87,21 @@ fun AssetsScreen(
     var pendingFinanceAmount by remember { mutableStateOf(0.0) }
     var pendingFinanceDescription by remember { mutableStateOf("") }
     var pendingFinanceDate by remember { mutableStateOf("") }
+    var pendingFinanceTargetUnit by remember { mutableStateOf("General Farm") }
 
     if (showNewInventory) {
         InventoryEntryDialog(
             existing = null,
             prefillTemplate = null,
+            units = units,
             onDismiss = { showNewInventory = false },
             onSave = { onAddInventory(it); showNewInventory = false },
-            onRequestRecordExpense = if (onAddFinanceRecord != null) { cat, amount, desc, date ->
+            onRequestRecordExpense = if (onAddFinanceRecord != null) { cat, amount, desc, date, targetUnit ->
                 pendingFinanceCategory = cat
                 pendingFinanceAmount = amount
                 pendingFinanceDescription = desc
                 pendingFinanceDate = date
+                pendingFinanceTargetUnit = targetUnit.ifBlank { "General Farm" }
                 showRecordFinanceDialog = true
             } else null
         )
@@ -107,13 +110,15 @@ fun AssetsScreen(
         InventoryEntryDialog(
             existing = null,
             prefillTemplate = template,
+            units = units,
             onDismiss = { restockTemplate = null },
             onSave = { onUpdateInventory(it); restockTemplate = null },
-            onRequestRecordExpense = if (onAddFinanceRecord != null) { cat, amount, desc, date ->
+            onRequestRecordExpense = if (onAddFinanceRecord != null) { cat, amount, desc, date, targetUnit ->
                 pendingFinanceCategory = cat
                 pendingFinanceAmount = amount
                 pendingFinanceDescription = desc
                 pendingFinanceDate = date
+                pendingFinanceTargetUnit = targetUnit.ifBlank { "General Farm" }
                 showRecordFinanceDialog = true
             } else null
         )
@@ -122,6 +127,7 @@ fun AssetsScreen(
         InventoryEntryDialog(
             existing = existing,
             prefillTemplate = null,
+            units = units,
             onDismiss = { inventoryEditor = null },
             onSave = { onUpdateInventory(it); inventoryEditor = null },
             onRequestRecordExpense = null
@@ -159,21 +165,22 @@ fun AssetsScreen(
             initialAmount = pendingFinanceAmount,
             initialDescription = pendingFinanceDescription,
             initialDate = pendingFinanceDate,
-            initialTargetUnit = "Crops / Fields",
+            initialTargetUnit = pendingFinanceTargetUnit,
             units = units,
+            fieldPlans = fieldPlans,
             userRole = userRole,
             canEditPastDaysLogs = true,
             onDismiss = { showRecordFinanceDialog = false },
             onSaveRecordWithDate = { type, category, amount, description, date ->
-                onAddFinanceRecord(type, category, amount, description, date)
+                onAddFinanceRecord(type, category, amount, description, date, pendingFinanceTargetUnit)
                 showRecordFinanceDialog = false
             },
-            onSaveRecordFull = { type, category, amount, description, date, _ ->
-                onAddFinanceRecord(type, category, amount, description, date)
+            onSaveRecordFull = { type, category, amount, description, date, targetUnit ->
+                onAddFinanceRecord(type, category, amount, description, date, targetUnit)
                 showRecordFinanceDialog = false
             },
             onSaveRecord = { type, category, amount, description ->
-                onAddFinanceRecord(type, category, amount, description, pendingFinanceDate)
+                onAddFinanceRecord(type, category, amount, description, pendingFinanceDate, pendingFinanceTargetUnit)
                 showRecordFinanceDialog = false
             }
         )
@@ -768,16 +775,28 @@ private fun EmptyState(title: String, body: String) {
 private fun InventoryEntryDialog(
     existing: InventoryItem?,
     prefillTemplate: InventoryItem? = null,
+    units: List<FarmUnit> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (InventoryItem) -> Unit,
-    onRequestRecordExpense: ((category: String, amount: Double, description: String, date: String) -> Unit)? = null
+    onRequestRecordExpense: ((category: String, amount: Double, description: String, date: String, targetUnit: String) -> Unit)? = null
 ) {
     val isEdit = existing != null
     val isRestock = !isEdit && prefillTemplate != null
     val source = existing ?: prefillTemplate
     val stateKey = existing?.syncId ?: prefillTemplate?.syncId ?: "new"
+    val activeFlocks = remember(units) {
+        units.filter { !it.isDeleted && it.type.equals("Poultry", ignoreCase = true) }
+            .map { it.name }.distinct()
+    }
     var itemName by remember(stateKey) { mutableStateOf(source?.itemName.orEmpty()) }
     var category by remember(stateKey) { mutableStateOf(source?.category ?: "Seeds") }
+    var targetUnit by remember(stateKey) {
+        mutableStateOf(
+            source?.storageLocation.orEmpty().ifBlank {
+                if (source?.category.equals("Feed", ignoreCase = true)) activeFlocks.firstOrNull() ?: "Poultry" else "General Farm"
+            }
+        )
+    }
     var description by remember(stateKey) { mutableStateOf(source?.description.orEmpty()) }
     var quantity by remember(stateKey) { mutableStateOf(if (isRestock) "" else existing?.quantityAvailable?.toString().orEmpty()) }
     var unit by remember(stateKey) { mutableStateOf(source?.unitOfMeasurement ?: "kg") }
@@ -786,6 +805,7 @@ private fun InventoryEntryDialog(
     var purchaseDate by remember(stateKey) { mutableStateOf(if (isRestock) today() else (existing?.purchaseDate?.ifBlank { today() } ?: today())) }
     var expiryDate by remember(stateKey) { mutableStateOf(if (isRestock) "" else existing?.expirationDate.orEmpty()) }
     var categoryMenu by remember { mutableStateOf(false) }
+    var targetUnitMenu by remember { mutableStateOf(false) }
     var pendingItemToSave by remember { mutableStateOf<InventoryItem?>(null) }
     var pendingRestockQty by remember { mutableStateOf(0.0) }
     var showExpensePrompt by remember { mutableStateOf(false) }
@@ -803,7 +823,8 @@ private fun InventoryEntryDialog(
                 Button(
                     onClick = {
                         val financeCat = when (item.category.lowercase()) {
-                            "feed", "silage" -> "Feeds & Supplies"
+                            "feed" -> "Poultry Feed & Nutrition"
+                            "silage" -> "Feeds & Supplies"
                             "seeds", "harvested crops" -> "Seeds & Planting"
                             "fertilizers", "pesticides" -> "Fertilizer & Chemicals"
                             "tools" -> "Equipment & Maintenance"
@@ -815,7 +836,8 @@ private fun InventoryEntryDialog(
                             "Inventory: ${item.itemName} (${item.quantityAvailable} ${item.unitOfMeasurement})"
                         }
                         onSave(item)
-                        onRequestRecordExpense?.invoke(financeCat, 0.0, expDesc, item.purchaseDate.ifBlank { today() })
+                        val effTarget = item.storageLocation.ifBlank { targetUnit }.ifBlank { "General Farm" }
+                        onRequestRecordExpense?.invoke(financeCat, 0.0, expDesc, item.purchaseDate.ifBlank { today() }, effTarget)
                         showExpensePrompt = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
@@ -850,7 +872,7 @@ private fun InventoryEntryDialog(
                     )
                     Text("Enter the new quantity to add to this item.", fontSize = 12.sp, color = Color.Gray)
                 } else {
-                    Text("Record quantity in stock, minimum alert threshold, and batch details.", fontSize = 12.sp, color = Color.Gray)
+                    Text("Record quantity in stock, target flock/unit, threshold, and batch details.", fontSize = 12.sp, color = Color.Gray)
                 }
                 Input(itemName, { itemName = it }, "Item Name *")
                 Box {
@@ -861,10 +883,26 @@ private fun InventoryEntryDialog(
                                 category = choice
                                 if (choice.equals("Silage", ignoreCase = true)) {
                                     unit = "kgs"
+                                } else if (choice.equals("Feed", ignoreCase = true) && (targetUnit == "General Farm" || targetUnit.isBlank())) {
+                                    targetUnit = activeFlocks.firstOrNull() ?: "Poultry"
                                 }
                                 categoryMenu = false
                             })
                         }
+                    }
+                }
+                Box(Modifier.padding(top = 4.dp)) {
+                    OutlinedButton(onClick = { targetUnitMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Target Enterprise / Flock: $targetUnit")
+                    }
+                    DropdownMenu(expanded = targetUnitMenu, onDismissRequest = { targetUnitMenu = false }) {
+                        DropdownMenuItem(text = { Text("🏠 General Farm") }, onClick = { targetUnit = "General Farm"; targetUnitMenu = false })
+                        DropdownMenuItem(text = { Text("🐔 Poultry (All Flocks)") }, onClick = { targetUnit = "Poultry"; targetUnitMenu = false })
+                        activeFlocks.forEach { flockName ->
+                            DropdownMenuItem(text = { Text("🐔 $flockName") }, onClick = { targetUnit = flockName; targetUnitMenu = false })
+                        }
+                        DropdownMenuItem(text = { Text("🐄 Cattle") }, onClick = { targetUnit = "Cattle"; targetUnitMenu = false })
+                        DropdownMenuItem(text = { Text("🌾 Crops / Fields") }, onClick = { targetUnit = "Crops / Fields"; targetUnitMenu = false })
                     }
                 }
                 Input(description, { description = it }, "Description")
@@ -898,7 +936,7 @@ private fun InventoryEntryDialog(
                                     quantityAvailable = finalQuantity,
                                     unitOfMeasurement = if (silage) "kgs" else unit.ifBlank { "kg" },
                                     minimumThreshold = minimum.toDoubleOrNull() ?: 0.0,
-                                    storageLocation = "",
+                                    storageLocation = targetUnit.ifBlank { "General Farm" },
                                     batchOrLotNumber = batch.trim(),
                                     purchaseDate = purchaseDate,
                                     expirationDate = expiryDate,

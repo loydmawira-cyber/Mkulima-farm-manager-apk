@@ -177,6 +177,7 @@ data class FarmUnit(
     val dam: String = "",
     val photoUri: String? = null,
     val notes: String = "",
+    val isArchived: Boolean = false,
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity

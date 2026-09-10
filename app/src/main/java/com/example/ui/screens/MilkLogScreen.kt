@@ -220,12 +220,24 @@ fun isLogForCow(log: MilkLog, cow: AnimalCowItem): Boolean {
 }
 
 fun parseMilkLogCalendar(dateStr: String): java.util.Calendar? {
+    if (dateStr.isBlank()) return null
     val clean = dateStr.trim()
+    val todayCal = java.util.Calendar.getInstance()
+    if (clean.startsWith("Today", ignoreCase = true)) {
+        return todayCal
+    }
+    if (clean.startsWith("Yesterday", ignoreCase = true) || clean.startsWith("Overdue", ignoreCase = true)) {
+        return (todayCal.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, -1) }
+    }
+    if (clean.startsWith("Tomorrow", ignoreCase = true)) {
+        return (todayCal.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, 1) }
+    }
+
     val parsedDate = DateValidationUtils.parseDate(clean)
     if (parsedDate != null) {
         val cal = java.util.Calendar.getInstance().apply { time = parsedDate }
         if (cal.get(java.util.Calendar.YEAR) < 2000) {
-            cal.set(java.util.Calendar.YEAR, java.util.Calendar.getInstance().get(java.util.Calendar.YEAR))
+            cal.set(java.util.Calendar.YEAR, todayCal.get(java.util.Calendar.YEAR))
         }
         return cal
     }
@@ -772,9 +784,9 @@ fun MilkLogScreen(
             }
         }
     }
-    val currentCal = remember { java.util.Calendar.getInstance() }
-    val defaultMonthName = remember { SimpleDateFormat("MMMM", Locale.getDefault()).format(currentCal.time) } // e.g. "August"
-    val defaultYearName = remember { SimpleDateFormat("yyyy", Locale.getDefault()).format(currentCal.time) } // e.g. "2026"
+    val currentCal = java.util.Calendar.getInstance()
+    val defaultMonthName = SimpleDateFormat("MMMM", Locale.getDefault()).format(currentCal.time) // e.g. "August"
+    val defaultYearName = SimpleDateFormat("yyyy", Locale.getDefault()).format(currentCal.time) // e.g. "2026"
 
     val monthsList = remember {
         listOf(
@@ -1247,14 +1259,12 @@ fun MilkLogScreen(
                                     "TODAY" -> {
                                         val todayLogs = milkLogs.filter { log ->
                                             val c = parseMilkLogCalendar(log.date)
-                                            (c != null && c.get(java.util.Calendar.YEAR) == cYear && c.get(java.util.Calendar.DAY_OF_YEAR) == cDayOfYear) ||
+                                            ((c != null && c.get(java.util.Calendar.YEAR) == cYear && c.get(java.util.Calendar.DAY_OF_YEAR) == cDayOfYear) ||
                                                     log.date.equals(todayDateStr, ignoreCase = true) ||
-                                                    log.date.contains("Today", ignoreCase = true)
+                                                    log.date.contains("Today", ignoreCase = true)) &&
+                                                    !log.date.contains("Yesterday", ignoreCase = true)
                                         }
-                                        val targetLogs = if (todayLogs.isNotEmpty()) todayLogs else {
-                                            val latestDate = milkLogs.firstOrNull()?.date ?: todayDateStr
-                                            milkLogs.filter { it.date == latestDate }
-                                        }
+                                        val targetLogs = todayLogs
                                         val morningLogs = targetLogs.filter { it.session.contains("Morning", ignoreCase = true) || it.session.contains("AM", ignoreCase = true) }
                                         val afternoonLogs = targetLogs.filter { it.session.contains("Afternoon", ignoreCase = true) || it.session.contains("Midday", ignoreCase = true) || it.session.contains("Noon", ignoreCase = true) }
                                         val eveningLogs = targetLogs.filter { it.session.contains("Evening", ignoreCase = true) || it.session.contains("Night", ignoreCase = true) || (it.session.contains("PM", ignoreCase = true) && !it.session.contains("Afternoon", ignoreCase = true)) }

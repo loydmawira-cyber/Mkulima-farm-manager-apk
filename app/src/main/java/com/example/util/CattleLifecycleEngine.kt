@@ -493,9 +493,9 @@ object CattleLifecycleEngine {
                 calvingDateEst = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(pdCal.time)
                 dryOffTargetDateEst = calculateExpectedDryOff(calvingDateEst)
             }
-        } else if (!isNegativePd && !isAbortionMostRecent && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
+        } else if (!isNegativePd && !isAbortionMostRecent && !isAiNewerThanPd && (cleanStatus.contains("PREGNANT") || cleanStatus.contains("INCALF") || cleanStatus.contains("IN-CALF") || cleanBreeding.contains("PREGNANT") || cleanBreeding.contains("IN-CALF"))) {
             val hasExplicitCalvingDate = animal.expectedCalving.isNotBlank() && animal.expectedCalving != "Jun 21, '24"
-            val hasAnyBreedingEvents = latestCurrentPd != null || latestCurrentAi != null || hasExplicitCalvingDate
+            val hasAnyBreedingEvents = latestCurrentPd != null || hasExplicitCalvingDate
             if (hasAnyBreedingEvents) {
                 isInCalf = true
                 if (latestCurrentAiDate != null && latestCurrentAi != null) {

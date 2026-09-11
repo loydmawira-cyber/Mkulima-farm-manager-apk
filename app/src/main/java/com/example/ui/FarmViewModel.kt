@@ -26,6 +26,7 @@ import com.example.data.MilkLogEntryRules
 import com.example.data.MilkUsageLog
 import com.example.data.MonthlyReport
 import com.example.data.PoultryLog
+import com.example.data.IncubationBatch
 import com.example.data.ReminderCompletion
 import com.example.data.RequestStatus
 import com.example.data.SyncStatus
@@ -143,6 +144,15 @@ class FarmViewModel(
     val allPoultryLogs: StateFlow<List<PoultryLog>> = currentSession.flatMapLatest { session ->
         val farmId = session?.farmId ?: "FARM-DEFAULT"
         repository.getAllPoultryLogs(farmId)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
+
+    val allIncubationBatches: StateFlow<List<IncubationBatch>> = currentSession.flatMapLatest { session ->
+        val farmId = session?.farmId ?: "FARM-DEFAULT"
+        repository.getAllIncubationBatches(farmId)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -804,6 +814,9 @@ class FarmViewModel(
             runCatching {
                 val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
                 val nowFormatted = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+                val todayDateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+                val effectiveDob = dob.ifBlank { dateAdded }
+                val effectiveDateAdded = dateAdded.ifBlank { dob.ifBlank { todayDateStr } }
                 val newUnit = FarmUnit(
                     farmId = farmId,
                     name = name.ifBlank { "Farm Unit" },
@@ -814,8 +827,8 @@ class FarmViewModel(
                     lastUpdated = nowFormatted,
                     tagNumber = tagNumber,
                     breed = breed,
-                    dob = dob,
-                    dateAdded = if (dateAdded.isNotBlank()) dateAdded else dob,
+                    dob = effectiveDob,
+                    dateAdded = effectiveDateAdded,
                     weightAtBirth = weightAtBirth,
                     currentWeight = currentWeight,
                     sire = sire,
@@ -2067,6 +2080,63 @@ class FarmViewModel(
     }
     fun setAutomaticFeedDeductionEnabled(enabled: Boolean) = viewModelScope.launch {
         updateSettings(farmSettings.value.copy(automaticFeedDeductionEnabled = enabled, updatedAt = System.currentTimeMillis()))
+    }
+
+    fun addIncubationBatch(batch: IncubationBatch) = viewModelScope.launch {
+        val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+        repository.insertIncubationBatch(batch.copy(farmId = farmId))
+    }
+
+    fun updateIncubationBatch(batch: IncubationBatch) = viewModelScope.launch {
+        val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+        repository.updateIncubationBatch(batch.copy(farmId = farmId))
+    }
+
+    fun deleteIncubationBatch(id: Long) = viewModelScope.launch {
+        repository.deleteIncubationBatch(id)
+    }
+
+    fun moveIncubationBatchToFlock(
+        batchId: Long,
+        newFlockName: String,
+        hatchedCount: Int,
+        breed: String,
+        hatchDate: String = "",
+        onComplete: () -> Unit
+    ) = viewModelScope.launch {
+        val batch = allIncubationBatches.value.find { it.id == batchId } ?: return@launch
+        val farmId = currentSession.value?.farmId ?: "FARM-DEFAULT"
+
+        repository.updateIncubationBatch(
+            batch.copy(
+                status = "HATCHED",
+                hatchedCount = hatchedCount,
+                movedToFlockName = newFlockName,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+
+        val rawHatchDate = hatchDate.ifBlank { batch.expectedHatchDate.ifBlank { batch.dateSet } }
+        val parsedDate = com.example.utils.PoultryAgeAndVaccinationUtils.parseDate(rawHatchDate) ?: java.util.Date()
+        val formattedHatchDate = com.example.utils.PoultryAgeAndVaccinationUtils.formatDate(parsedDate)
+        val today = java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+
+        val newUnit = FarmUnit(
+            farmId = farmId,
+            name = newFlockName,
+            type = "Poultry",
+            breed = breed.ifBlank { batch.breed },
+            tagNumber = "INC-BATCH-${batch.batchName}",
+            headCount = hatchedCount,
+            dateAdded = formattedHatchDate,
+            dob = formattedHatchDate,
+            healthStatus = "Healthy",
+            location = "Poultry House",
+            lastUpdated = today,
+            notes = "Hatched from incubation batch: ${batch.batchName}"
+        )
+        repository.insertUnit(newUnit)
+        onComplete()
     }
 
 }

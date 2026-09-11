@@ -659,6 +659,31 @@ class FarmRepository(
         syncEngine?.triggerPush(log.farmId)
     }
 
+    // Incubation Batches
+    fun getAllIncubationBatches(farmId: String): Flow<List<IncubationBatch>> = farmDao.getAllIncubationBatches(farmId)
+
+    suspend fun insertIncubationBatch(batch: IncubationBatch): Long {
+        val prepared = batch.copy(
+            syncId = if (batch.syncId.isBlank()) UUID.randomUUID().toString() else batch.syncId,
+            updatedAt = System.currentTimeMillis()
+        )
+        val id = farmDao.insertIncubationBatch(prepared)
+        syncEngine?.triggerPush(batch.farmId)
+        return id
+    }
+
+    suspend fun updateIncubationBatch(batch: IncubationBatch) {
+        val prepared = batch.copy(updatedAt = System.currentTimeMillis())
+        farmDao.updateIncubationBatch(prepared)
+        syncEngine?.triggerPush(batch.farmId)
+    }
+
+    suspend fun deleteIncubationBatch(id: Long) {
+        val batch = farmDao.getIncubationBatchById(id) ?: return
+        farmDao.softDeleteIncubationBatch(id, System.currentTimeMillis())
+        syncEngine?.triggerPush(batch.farmId)
+    }
+
     // Reminder Completions (for computed reminders — vaccination, deworming, PD check, etc.
     // that aren't backed by their own FarmTask row)
     fun getReminderCompletionsForFarm(farmId: String): Flow<List<ReminderCompletion>> =

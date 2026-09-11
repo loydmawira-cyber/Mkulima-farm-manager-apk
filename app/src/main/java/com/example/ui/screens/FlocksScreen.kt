@@ -17,6 +17,10 @@ import com.example.ui.components.DeleteAnimalConfirmDialog
 import com.example.utils.PoultryAgeAndVaccinationUtils
 import com.example.utils.VaccineDueStatus
 import com.example.data.ReminderCompletion
+import com.example.data.IncubationBatch
+import com.example.ui.components.IncubationBatchCard
+import com.example.ui.components.IncubationBatchFormDialog
+import com.example.ui.components.MoveIncubationBatchDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1096,9 +1100,16 @@ fun FlocksScreen(
     var selectedCattleStage by remember { mutableStateOf("ALL") }
     var showCategoryGuideDialog by remember { mutableStateOf(false) }
 
+    val incubationBatches by viewModel.allIncubationBatches.collectAsStateWithLifecycle()
+    var showAddIncubationDialog by remember { mutableStateOf(false) }
+    var incubationBatchToEdit by remember { mutableStateOf<IncubationBatch?>(null) }
+    var incubationBatchToMove by remember { mutableStateOf<IncubationBatch?>(null) }
+    var incubationBatchToDelete by remember { mutableStateOf<IncubationBatch?>(null) }
+
     val hasFlocksOverlay = (selectedAnimal != null) || (animalForOptions != null) ||
             (animalToEdit != null) || (animalToDelete != null) || (animalToDispose != null) ||
-            (flockToDispose != null) || showCategoryGuideDialog
+            (flockToDispose != null) || showCategoryGuideDialog || showAddIncubationDialog ||
+            (incubationBatchToEdit != null) || (incubationBatchToMove != null) || (incubationBatchToDelete != null)
 
     BackHandler(enabled = hasFlocksOverlay) {
         when {
@@ -1108,6 +1119,10 @@ fun FlocksScreen(
             animalToDispose != null -> animalToDispose = null
             flockToDispose != null -> flockToDispose = null
             showCategoryGuideDialog -> showCategoryGuideDialog = false
+            showAddIncubationDialog -> showAddIncubationDialog = false
+            incubationBatchToEdit != null -> incubationBatchToEdit = null
+            incubationBatchToMove != null -> incubationBatchToMove = null
+            incubationBatchToDelete != null -> incubationBatchToDelete = null
             selectedAnimal != null -> selectedAnimal = null
         }
     }
@@ -1185,7 +1200,7 @@ fun FlocksScreen(
                         ?: unit.currentWeight.ifBlank { if (isPoultry) "1.8kg avg" else "450kg" },
                     lastMilk = "No data yet",
                     breedingStatus = if (unit.healthStatus.isNotBlank() && !unit.healthStatus.equals("ACTIVE", ignoreCase = true) && !unit.healthStatus.equals("OPTIMAL", ignoreCase = true)) unit.healthStatus else "HEALTHY",
-                    dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },
+                    dateOfBirth = unit.dob.ifBlank { unit.dateAdded.ifBlank { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) } },
                     weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
                     sire = unit.sire.ifBlank { "N/A" },
                     dam = unit.dam.ifBlank { "N/A" },
@@ -1323,7 +1338,7 @@ fun FlocksScreen(
                         weight = unit.currentWeight.ifBlank { "450kg" },
                         lastMilk = "Not Lactating",
                         breedingStatus = "DISPOSED",
-                        dateOfBirth = unit.dob.ifBlank { "12 Apr 2023" },
+                        dateOfBirth = unit.dob.ifBlank { unit.dateAdded.ifBlank { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()) } },
                         weightAtBirth = unit.weightAtBirth.ifBlank { "32 kg" },
                         sire = unit.sire.ifBlank { "N/A" },
                         dam = unit.dam.ifBlank { "N/A" },
@@ -1431,6 +1446,7 @@ fun FlocksScreen(
                         tagNumber = tagNumber,
                         breed = breed,
                         dob = dob,
+                        dateAdded = if (matching.dateAdded.isBlank() || dob.isNotBlank()) dob else matching.dateAdded,
                         weightAtBirth = weightAtBirth,
                         currentWeight = currentWeight,
                         sire = sire,
@@ -2052,6 +2068,26 @@ fun FlocksScreen(
                         photoUri = newPhoto
                     )
                 },
+                onUpdateDateAdded = { newDate ->
+                    handleModifyAnimal(
+                        animalId = selectedAnimal!!.id,
+                        name = selectedAnimal!!.name,
+                        tagNumber = selectedAnimal!!.tagNumber,
+                        breed = selectedAnimal!!.breed,
+                        category = selectedAnimal!!.category,
+                        status = selectedAnimal!!.status,
+                        breedingStatus = selectedAnimal!!.breedingStatus,
+                        age = selectedAnimal!!.age,
+                        dob = newDate,
+                        weightAtBirth = selectedAnimal!!.weightAtBirth,
+                        currentWeight = selectedAnimal!!.weight,
+                        sire = selectedAnimal!!.sire,
+                        dam = selectedAnimal!!.dam,
+                        headCount = selectedAnimal!!.headCountInt,
+                        photoUri = selectedAnimal!!.photoUri,
+                        notes = selectedAnimal!!.notes
+                    )
+                },
                 canEditLivestock = effectiveCanEditLivestock,
                 modifier = modifier
             )
@@ -2161,9 +2197,9 @@ fun FlocksScreen(
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF1C1D1F)
                     )
+                }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
+                item {
                     // Category Filter Chips [ CATTLE ] [ POULTRY ]
                     val availableCategories = when {
                         farmSettings.farmType.equals("Cattle Only", ignoreCase = true) -> listOf("CATTLE")
@@ -2195,20 +2231,30 @@ fun FlocksScreen(
                                 )
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(12.dp))
                     }
+                }
 
-                    // Status Filter Chips [ ACTIVE ] [ ARCHIVED ]
+                item {
+                    // Status Filter Chips [ ACTIVE ] [ INCUBATION ] [ ARCHIVED ]
+                    val statusList = if (selectedFilterCategory.equals("POULTRY", ignoreCase = true)) {
+                        listOf("ACTIVE", "INCUBATION", "ARCHIVED")
+                    } else {
+                        listOf("ACTIVE", "ARCHIVED")
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        listOf("ACTIVE", "ARCHIVED").forEach { status ->
+                        statusList.forEach { status ->
                             val isSelected = selectedStatusFilter == status
+                            val labelText = when (status) {
+                                "ACTIVE" -> "Active"
+                                "INCUBATION" -> "Incubation"
+                                else -> "Disposed/Archived"
+                            }
                             FilterChip(
                                 selected = isSelected,
                                 onClick = { selectedStatusFilter = status },
-                                label = { Text(if (status == "ACTIVE") "Active" else "Disposed/Archived", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                label = { Text(labelText, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = if (status == "ACTIVE") ForestGreenPrimary else Color(0xFF64748B),
+                                    selectedContainerColor = if (status == "INCUBATION") Color(0xFFD97706) else if (status == "ACTIVE") ForestGreenPrimary else Color(0xFF64748B),
                                     selectedLabelColor = Color.White,
                                     containerColor = Color.White
                                 ),
@@ -2220,11 +2266,10 @@ fun FlocksScreen(
                             )
                         }
                     }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
-                    // Cattle Herd Breakdown Panel (Visible for CATTLE filter)
-                    if (selectedFilterCategory == "CATTLE") {
+                if (selectedFilterCategory == "CATTLE") {
+                    item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
@@ -2325,7 +2370,9 @@ fun FlocksScreen(
                                 }
                             }
                         }
-                    } else if (selectedFilterCategory == "POULTRY") {
+                    }
+                } else if (selectedFilterCategory == "POULTRY" && selectedStatusFilter != "INCUBATION") {
+                    item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
@@ -2351,74 +2398,34 @@ fun FlocksScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     if (selectedStatusFilter == "ARCHIVED") {
-                                        if (selectedFilterCategory.equals("POULTRY", ignoreCase = true)) {
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = Color(0xFFFEE2E2),
-                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
-                                                modifier = Modifier.fillMaxWidth()
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color(0xFFFEE2E2),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
-                                                Column(
-                                                    modifier = Modifier.padding(12.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally
-                                                ) {
-                                                    val totalDisposedBirds = poultryList.sumOf { it.headCountInt }
-                                                    Text(
-                                                        "$totalDisposedBirds Birds Disposed from Flock Analytics",
-                                                        fontSize = 15.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color(0xFF991B1B),
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                    if (poultryList.isNotEmpty()) {
-                                                        val latestDate = poultryList.map { it.disposalDate }.filter { it.isNotBlank() }.maxOrNull() ?: ""
-                                                        if (latestDate.isNotBlank()) {
-                                                            Text(
-                                                                "Last disposed on $latestDate",
-                                                                fontSize = 11.sp,
-                                                                color = Color(0xFF7F1D1D),
-                                                                modifier = Modifier.padding(top = 2.dp)
-                                                            )
-                                                        }
+                                                val totalDisposedBirds = poultryList.sumOf { it.headCountInt }
+                                                Text(
+                                                    "$totalDisposedBirds Birds Disposed from Flock Analytics",
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF991B1B),
+                                                    textAlign = TextAlign.Center
+                                                )
+                                                if (poultryList.isNotEmpty()) {
+                                                    val latestDate = poultryList.map { it.disposalDate }.filter { it.isNotBlank() }.maxOrNull() ?: ""
+                                                    if (latestDate.isNotBlank()) {
+                                                        Text(
+                                                            "Last disposed on $latestDate",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF7F1D1D),
+                                                            modifier = Modifier.padding(top = 2.dp)
+                                                        )
                                                     }
-                                                }
-                                            }
-                                        } else {
-                                            Surface(
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = Color.White,
-                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Text("${poultryList.size}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
-                                                    Text("Disposed Flocks", fontSize = 10.sp, color = Color(0xFF64748B))
-                                                }
-                                            }
-
-                                            Surface(
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = Color(0xFFFEE2E2),
-                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    val totalDisposedBirds = poultryList.sumOf { it.headCountInt }
-                                                    Text("$totalDisposedBirds", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
-                                                    Text("Disposed Birds", fontSize = 10.sp, color = Color(0xFF7F1D1D))
-                                                }
-                                            }
-
-                                            Surface(
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = Color(0xFFDCFCE7),
-                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    val totalRevenue = poultryList.sumOf { it.disposalAmount }
-                                                    Text("KSh %,.0f".format(totalRevenue), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, maxLines = 1)
-                                                    Text("Total Revenue", fontSize = 10.sp, color = ForestGreenPrimary)
                                                 }
                                             }
                                         }
@@ -2463,11 +2470,121 @@ fun FlocksScreen(
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                items(filteredList, key = { it.id }) { animal ->
+                if (selectedFilterCategory.equals("POULTRY", ignoreCase = true) && selectedStatusFilter == "INCUBATION") {
+                    val totalIncubatingEggs = incubationBatches.filter { it.status == "INCUBATING" }.sumOf { it.eggsSet }
+                    val completedBatches = incubationBatches.filter { it.status == "HATCHED" || it.hatchedCount > 0 }
+                    val totalEggsInCompleted = completedBatches.sumOf { it.eggsSet }
+                    val totalHatchedChicks = completedBatches.sumOf { it.hatchedCount }
+                    val overallHatchRatePercent = if (totalEggsInCompleted > 0) (totalHatchedChicks.toDouble() / totalEggsInCompleted.toDouble()) * 100 else 0.0
+                    val overallHatchRateStr = if (totalEggsInCompleted > 0) String.format(Locale.getDefault(), "%.1f%%", overallHatchRatePercent) else "--%"
+
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFFEF3C7),
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(20.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text("Incubation & Hatch Rate", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF92400E))
+                                            Text("${incubationBatches.size} Batches Total • ${completedBatches.size} Completed", fontSize = 12.sp, color = Color(0xFFB45309))
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+                                HorizontalDivider(color = Color(0xFFFDE68A))
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(horizontalAlignment = Alignment.Start) {
+                                        Text("Overall Hatch Rate", fontSize = 11.sp, color = Color(0xFFB45309))
+                                        Text(
+                                            overallHatchRateStr,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 20.sp,
+                                            color = if (overallHatchRateStr != "--%") ForestGreenPrimary else Color(0xFF92400E)
+                                        )
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Total Hatched", fontSize = 11.sp, color = Color(0xFFB45309))
+                                        Text("$totalHatchedChicks chicks", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1E293B))
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("Eggs Incubating", fontSize = 11.sp, color = Color(0xFFB45309))
+                                        Text("$totalIncubatingEggs eggs", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1E293B))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Button(
+                            onClick = { showAddIncubationDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            modifier = Modifier.fillMaxWidth().testTag("add_incubation_button")
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("New Incubation Batch", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (incubationBatches.isEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(Icons.Filled.Egg, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(40.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text("No Incubation Batches", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF92400E))
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Track egg setting dates, candling reminders, lockdown periods, and move hatched chicks directly to active flocks.", fontSize = 13.sp, color = Color(0xFF78350F), textAlign = TextAlign.Center)
+                                }
+                            }
+                        }
+                    } else {
+                        items(incubationBatches, key = { it.id }) { batch ->
+                            IncubationBatchCard(
+                                batch = batch,
+                                onMoveToFlock = { incubationBatchToMove = batch },
+                                onEdit = { incubationBatchToEdit = batch },
+                                onDelete = { incubationBatchToDelete = batch }
+                            )
+                        }
+                    }
+                } else {
+                    items(filteredList, key = { it.id }) { animal ->
                     val isCattleItem = animal.category.equals("CATTLE", ignoreCase = true)
                     val cattleEval = if (isCattleItem) {
                         evaluatedCattleMap[animal.id]
@@ -2930,6 +3047,7 @@ fun FlocksScreen(
                         }
                     }
                 }
+                }
 
                 item {
                     Spacer(modifier = Modifier.height(80.dp))
@@ -2955,6 +3073,70 @@ fun FlocksScreen(
                     }
                 }
             }
+        }
+
+        if (showAddIncubationDialog) {
+            IncubationBatchFormDialog(
+                onDismiss = { showAddIncubationDialog = false },
+                onSave = { batch ->
+                    viewModel.addIncubationBatch(batch)
+                    showAddIncubationDialog = false
+                }
+            )
+        }
+
+        if (incubationBatchToEdit != null) {
+            IncubationBatchFormDialog(
+                initialBatch = incubationBatchToEdit,
+                onDismiss = { incubationBatchToEdit = null },
+                onSave = { batch ->
+                    viewModel.updateIncubationBatch(batch)
+                    incubationBatchToEdit = null
+                }
+            )
+        }
+
+        if (incubationBatchToMove != null) {
+            MoveIncubationBatchDialog(
+                batch = incubationBatchToMove!!,
+                onDismiss = { incubationBatchToMove = null },
+                onConfirm = { newFlockName, hatchedCount, breed, hatchDate ->
+                    viewModel.moveIncubationBatchToFlock(
+                        batchId = incubationBatchToMove!!.id,
+                        newFlockName = newFlockName,
+                        hatchedCount = hatchedCount,
+                        breed = breed,
+                        hatchDate = hatchDate,
+                        onComplete = {
+                            incubationBatchToMove = null
+                        }
+                    )
+                }
+            )
+        }
+
+        if (incubationBatchToDelete != null) {
+            AlertDialog(
+                onDismissRequest = { incubationBatchToDelete = null },
+                title = { Text("Delete Incubation Batch?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to delete batch '${incubationBatchToDelete!!.batchName}'?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteIncubationBatch(incubationBatchToDelete!!.id)
+                            incubationBatchToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Delete", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { incubationBatchToDelete = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -5415,6 +5597,7 @@ fun FlockDetailsView(
     onEditFlock: () -> Unit = {},
     onDeleteFlock: () -> Unit = {},
     onUpdatePhoto: (String?) -> Unit = {},
+    onUpdateDateAdded: (String) -> Unit = {},
     canEditLivestock: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -5431,7 +5614,7 @@ fun FlockDetailsView(
     var poultryLogToDelete by remember { mutableStateOf<PoultryLogAction?>(null) }
 
     var flockDateAdded by remember(flock.id, flock.dateOfBirth) {
-        mutableStateOf(if (flock.dateOfBirth.isNotBlank()) flock.dateOfBirth else "01 Jul 2026")
+        mutableStateOf(if (flock.dateOfBirth.isNotBlank()) flock.dateOfBirth else SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()))
     }
 
     val initialHeadCount = remember(flock.tagNumber, flock.headCountInt) {
@@ -5636,6 +5819,7 @@ fun FlockDetailsView(
                         Button(
                             onClick = {
                                 flockDateAdded = tempDate
+                                onUpdateDateAdded(tempDate)
                                 showEditDateAddedDialog = false
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)

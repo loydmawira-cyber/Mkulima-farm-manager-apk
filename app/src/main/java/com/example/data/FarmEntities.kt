@@ -470,3 +470,24 @@ data class InventoryMovement(
     override val updatedAt: Long = System.currentTimeMillis(),
     override val isDeleted: Boolean = false
 ) : SyncableEntity
+
+/** An egg incubation batch for hatching control, reminders, and chick placement. */
+@Entity(tableName = "incubation_batches")
+data class IncubationBatch(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    override val syncId: String = UUID.randomUUID().toString(),
+    override val farmId: String = "FARM-DEFAULT",
+    val batchName: String,
+    val breed: String = "Layers / Broilers",
+    val eggsSet: Int,
+    val dateSet: String,
+    val expectedHatchDate: String,
+    val incubatorName: String = "Main Incubator",
+    val status: String = "INCUBATING", // INCUBATING, HATCHED, FAILED
+    val fertileEggsCount: Int = 0,
+    val hatchedCount: Int = 0,
+    val notes: String = "",
+    val movedToFlockName: String = "",
+    override val updatedAt: Long = System.currentTimeMillis(),
+    override val isDeleted: Boolean = false
+) : SyncableEntity

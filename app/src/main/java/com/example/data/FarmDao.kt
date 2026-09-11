@@ -433,6 +433,26 @@ interface FarmDao {
     @Query("UPDATE poultry_logs SET unitId = :unitId WHERE unitSyncId = :unitSyncId")
     suspend fun updatePoultryLogsUnitIdByUnitSyncId(unitSyncId: String, unitId: Long)
 
+    // ================= Incubation Batches =================
+    @Query("SELECT * FROM incubation_batches WHERE (farmId = :farmId OR farmId = 'FARM-DEFAULT') AND isDeleted = 0 ORDER BY dateSet DESC, id DESC")
+    fun getAllIncubationBatches(farmId: String): Flow<List<IncubationBatch>>
+
+    @Query("SELECT * FROM incubation_batches WHERE id = :id LIMIT 1")
+    suspend fun getIncubationBatchById(id: Long): IncubationBatch?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertIncubationBatch(batch: IncubationBatch): Long
+
+    @Update
+    suspend fun updateIncubationBatch(batch: IncubationBatch)
+
+    @Query("UPDATE incubation_batches SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun softDeleteIncubationBatch(id: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM incubation_batches WHERE farmId = :farmId")
+    suspend fun deleteIncubationBatchesForFarm(farmId: String)
+
+
     // ================= Farm Accounts =================
     @Query("SELECT * FROM farm_accounts WHERE farmId = :farmId LIMIT 1")
     suspend fun getFarmAccount(farmId: String): FarmAccount?
